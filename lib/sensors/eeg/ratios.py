@@ -36,14 +36,15 @@ def calculate_band_ratios(df, resample_interval='10S', bands=None):
 
     ratio_df = pd.DataFrame({'TimeStamp': df['TimeStamp']})
 
+    # 比率定義（英語名、日本語表示名、分子、分母）
     ratio_configs = [
-        ('リラックス度 (α/β)', 'Alpha', 'Beta'),
-        ('集中度 (β/θ)', 'Beta', 'Theta'),
-        ('瞑想深度 (θ/α)', 'Theta', 'Alpha'),
+        ('Alpha/Beta', 'リラックス度 (α/β)', 'Alpha', 'Beta'),
+        ('Beta/Theta', '集中度 (β/θ)', 'Beta', 'Theta'),
+        ('Theta/Alpha', '瞑想深度 (θ/α)', 'Theta', 'Alpha'),
     ]
 
     # 各比率を計算
-    for ratio_name, num_band, den_band in ratio_configs:
+    for ratio_name, display_name, num_band, den_band in ratio_configs:
         ratios = []
         for col in [c for c in df.columns if c.startswith(f'{num_band}_')]:
             electrode = col.split('_', 1)[1]
@@ -62,11 +63,11 @@ def calculate_band_ratios(df, resample_interval='10S', bands=None):
     # リサンプリング
     ratio_df_resampled = ratio_df.set_index('TimeStamp').resample(resample_interval).mean().reset_index()
 
-    # 統計サマリー（外れ値除去版）
+    # 統計サマリー（外れ値除去版）→縦長形式（Metric/Value/Unit）
     summary_scores = []
     z_threshold = 3.0
 
-    for ratio_name, _, _ in ratio_configs:
+    for ratio_name, display_name, _, _ in ratio_configs:
         if ratio_name in ratio_df.columns:
             values = ratio_df[ratio_name].dropna()
 
@@ -82,32 +83,31 @@ def calculate_band_ratios(df, resample_interval='10S', bands=None):
                     q3 = filtered_values.quantile(0.75)
                     iqr = q3 - q1
 
-                    summary_scores.append({
-                        '指標': ratio_name,
-                        '平均値': filtered_values.mean(),
-                        '中央値': filtered_values.median(),
-                        '標準偏差': filtered_values.std(),
-                        '最小値': filtered_values.min(),
-                        '最大値': filtered_values.max(),
-                        'IQR': iqr,
-                        '除外サンプル数': n_outliers,
-                    })
+                    # 縦長形式で各統計量を追加
+                    summary_scores.extend([
+                        {'Metric': f'{ratio_name} Mean', 'Value': filtered_values.mean(), 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} Median', 'Value': filtered_values.median(), 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} Std Dev', 'Value': filtered_values.std(), 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} Min', 'Value': filtered_values.min(), 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} Max', 'Value': filtered_values.max(), 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} IQR', 'Value': iqr, 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} Outliers', 'Value': n_outliers, 'Unit': 'count', 'DisplayName': display_name},
+                    ])
                 else:
                     # 全て外れ値の場合
-                    summary_scores.append({
-                        '指標': ratio_name,
-                        '平均値': np.nan,
-                        '中央値': np.nan,
-                        '標準偏差': np.nan,
-                        '最小値': np.nan,
-                        '最大値': np.nan,
-                        'IQR': np.nan,
-                        '除外サンプル数': n_outliers,
-                    })
+                    summary_scores.extend([
+                        {'Metric': f'{ratio_name} Mean', 'Value': np.nan, 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} Median', 'Value': np.nan, 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} Std Dev', 'Value': np.nan, 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} Min', 'Value': np.nan, 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} Max', 'Value': np.nan, 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} IQR', 'Value': np.nan, 'Unit': 'ratio', 'DisplayName': display_name},
+                        {'Metric': f'{ratio_name} Outliers', 'Value': n_outliers, 'Unit': 'count', 'DisplayName': display_name},
+                    ])
 
     # スパイク分析
     spike_info = []
-    for ratio_name, _, _ in ratio_configs:
+    for ratio_name, display_name, _, _ in ratio_configs:
         if ratio_name in ratio_df_resampled.columns:
             values = ratio_df_resampled[ratio_name].dropna()
 
@@ -117,10 +117,11 @@ def calculate_band_ratios(df, resample_interval='10S', bands=None):
                 cv = (values.std() / values.mean()) * 100
 
                 spike_info.append({
-                    '指標': ratio_name,
-                    '外れ値数': len(outliers),
-                    '外れ値割合 (%)': len(outliers) / len(values) * 100,
-                    '変動係数 (%)': cv
+                    'Metric': ratio_name,
+                    'Outlier Count': len(outliers),
+                    'Outlier Ratio (%)': len(outliers) / len(values) * 100,
+                    'CV (%)': cv,
+                    'DisplayName': display_name
                 })
 
     return {

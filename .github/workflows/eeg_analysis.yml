@@ -77,7 +77,7 @@ jobs:
           echo "  出力先: $OUTPUT_DIR"
 
           # レポート生成
-          python issues/003_improve_daily_report/generate_report.py \
+          python scripts/generate_report.py \
             --data "$CSV_PATH" \
             --output "$OUTPUT_DIR"
 
@@ -104,22 +104,14 @@ jobs:
           echo "  タグ: ${TAG_NAME}"
           echo "  タイトル: ${RELEASE_TITLE}"
 
-          # セッション情報ヘッダーを作成
-          echo "## 📊 脳波分析レポート" > /tmp/release_header.md
-          echo "" >> /tmp/release_header.md
-          echo "- 計測日時: ${COMMIT_DATE}" >> /tmp/release_header.md
-          echo "- 入力CSV: ${CSV_NAME}" >> /tmp/release_header.md
-          echo "- ワークフロー実行: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" >> /tmp/release_header.md
-          echo "" >> /tmp/release_header.md
-          echo "---" >> /tmp/release_header.md
-          echo "" >> /tmp/release_header.md
-
           # 画像パスをReleaseのURLに置換（元の順序を保持）
           sed "s|img/\([^)]*\.png\)|https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/\1|g" \
             "$REPORT_MD" > /tmp/report_with_images.md
 
-          # ヘッダーとレポートを結合
-          cat /tmp/release_header.md /tmp/report_with_images.md > /tmp/release_notes.md
+          # ワークフロー実行リンクをレポート冒頭に追加
+          echo "> **ワークフロー実行**: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" > /tmp/release_notes.md
+          echo "" >> /tmp/release_notes.md
+          cat /tmp/report_with_images.md >> /tmp/release_notes.md
 
           # 画像ファイル一覧を取得
           IMG_FILES=$(ls "${OUTPUT_DIR}"/img/*.png 2>/dev/null || echo "")

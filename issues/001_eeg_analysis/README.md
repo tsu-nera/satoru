@@ -41,7 +41,7 @@
 
 ```bash
 # プロジェクトルートから
-source titan/bin/activate
+source venv/bin/activate
 ```
 
 ### 2. 必要なパッケージのインストール

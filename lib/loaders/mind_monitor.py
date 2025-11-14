@@ -13,7 +13,7 @@ from pathlib import Path
 from ..sensors.eeg.constants import DEFAULT_SFREQ
 
 
-def load_mind_monitor_csv(csv_path, filter_headband=True):
+def load_mind_monitor_csv(csv_path, filter_headband=True, warmup_seconds=60.0):
     """
     Mind Monitor CSVファイルを読み込む（全センサー共通の基本前処理）
 
@@ -21,6 +21,7 @@ def load_mind_monitor_csv(csv_path, filter_headband=True):
     - TimeStampカラムの存在を前提
     - HeadBandOnによるデバイス装着状態フィルタリング（全センサー共通）
     - Time_sec相対時間カラムの自動追加
+    - ウォームアップ期間の除外（フィルタ・処理のエッジ効果回避）
 
     Parameters
     ----------
@@ -29,6 +30,10 @@ def load_mind_monitor_csv(csv_path, filter_headband=True):
     filter_headband : bool
         True の場合、HeadBandOn=1（装着中）のデータのみ抽出
         全センサー（EEG, Optics, Heart Rate等）に共通のフィルタ
+    warmup_seconds : float, default 60.0
+        記録開始からの除外期間（秒）。信号処理のエッジ効果とデバイス装着直後の
+        不安定性を回避するため、セッション冒頭のデータを除外します。
+        EEG研究の標準的な慣行に従い、60秒を推奨。0にすると除外しません。
 
     Returns
     -------
@@ -46,6 +51,12 @@ def load_mind_monitor_csv(csv_path, filter_headband=True):
     # HeadBandOnフィルタリング（全センサー共通）
     if filter_headband:
         df = df[df['HeadBandOn'] == 1].copy()
+
+    # ウォームアップ期間の除外（全センサー共通）
+    if warmup_seconds and warmup_seconds > 0:
+        start_time = df['TimeStamp'].min()
+        warmup_cutoff = start_time + pd.Timedelta(seconds=warmup_seconds)
+        df = df[df['TimeStamp'] >= warmup_cutoff].copy()
 
     return df
 

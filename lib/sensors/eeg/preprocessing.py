@@ -84,7 +84,8 @@ def filter_eeg_quality(df, require_all_good=False):
     return filtered, quality_mask
 
 
-def prepare_mne_raw(df, sfreq=None):
+def prepare_mne_raw(df, sfreq=None, apply_bandpass=True, apply_notch=True,
+                    l_freq=1.0, h_freq=50.0, notch_freqs=(50, 60)):
     """
     MNE RawArrayの準備
 
@@ -94,6 +95,16 @@ def prepare_mne_raw(df, sfreq=None):
         Mind Monitorデータフレーム（RAW_*列を含む、HeadBandOnで事前フィルタ済みを推奨）
     sfreq : float, optional
         サンプリングレート（Noneの場合は自動推定）
+    apply_bandpass : bool, default True
+        バンドパスフィルタを適用するか
+    apply_notch : bool, default True
+        ノッチフィルタを適用するか（電源ノイズ除去）
+    l_freq : float, default 1.0
+        バンドパスフィルタの下限周波数（Hz）
+    h_freq : float, default 50.0
+        バンドパスフィルタの上限周波数（Hz）
+    notch_freqs : tuple, default (50, 60)
+        ノッチフィルタで除去する周波数（Hz）
 
     Returns
     -------
@@ -105,6 +116,28 @@ def prepare_mne_raw(df, sfreq=None):
             'n_samples': int
         }
         RAWチャネルが見つからない場合はNone
+
+    Notes
+    -----
+    **サンプリングレート**:
+    Interaxon社とMind Monitor開発者の公式見解により、タイムスタンプは
+    Bluetoothバッファリングの影響で不正確（重複や不均一な間隔）です。
+    ハードウェアは正確に256Hzでサンプリングしているため、
+    sfreq=Noneの場合は256Hz固定と仮定します。
+
+    **フィルタリング**:
+    デフォルトで以下のフィルタが適用されます：
+    - バンドパスフィルタ: 1-50Hz（Museの有効帯域）
+    - ノッチフィルタ: 50Hz, 60Hz（電源ノイズ除去）
+
+    フィルタの適用順序：
+    1. バンドパスフィルタ（ベースラインドリフト除去 + 高周波ノイズカット）
+    2. ノッチフィルタ（電源ノイズの狭帯域除去）
+
+    参考：
+    - Mind Monitor Forums: https://mind-monitor.com/forums0/viewtopic.php?p=4644
+    - muse-lsl: examples/utils.py (60Hzノッチフィルタ)
+    - MNE-Python: Filtering and resampling tutorial
     """
     raw_cols = [c for c in df.columns if c.startswith('RAW_')]
     if not raw_cols:
@@ -112,38 +145,71 @@ def prepare_mne_raw(df, sfreq=None):
 
     df_filtered, _ = filter_eeg_quality(df)
 
-    # 数値変換と前処理
+    # 数値変換
     numeric = df_filtered[raw_cols].apply(pd.to_numeric, errors='coerce')
-    frame = pd.concat([df_filtered['TimeStamp'], numeric], axis=1)
-    frame = frame.set_index('TimeStamp')
 
-    # 重複タイムスタンプは平均化
-    frame = frame.groupby(level=0).mean()
+    # 欠損値を補間（前後の値から線形補間）
+    numeric = numeric.interpolate(method='linear').ffill().bfill()
 
-    # 時間補間で欠損値を埋める
-    frame = frame.interpolate(method='time').ffill().bfill()
-
-    # サンプリングレートの推定
+    # サンプリングレートの決定
+    # Interaxon社公式推奨：タイムスタンプは不正確（Bluetoothバッファリング起因）
+    # ハードウェアは正確に256Hzでサンプリングしているため、256Hz固定と仮定
+    # 参考: https://mind-monitor.com/forums0/viewtopic.php?p=4644
     if sfreq is None:
-        sfreq = _estimate_sampling_rate(frame)
+        sfreq = 256.0  # Muse標準サンプリングレート（MU-01は220Hz）
 
     # MNE RawArrayの作成
-    ch_names = list(frame.columns)
+    ch_names = list(numeric.columns)
     ch_types = ['eeg'] * len(ch_names)
     info = mne.create_info(ch_names=ch_names, sfreq=sfreq, ch_types=ch_types)
 
     # μVスケールをVに変換
-    data = frame.to_numpy().T * 1e-6
+    data = numeric.to_numpy().T * 1e-6
 
     raw = mne.io.RawArray(data, info, copy='auto', verbose=False)
 
-    # DCドリフト軽減のためのハイパスフィルタ
+    # フィルタリング
     if sfreq > 2.0:
-        raw = raw.filter(l_freq=1.0, h_freq=None, fir_design='firwin', verbose=False)
+        # 1. バンドパスフィルタ（ベースラインドリフト + 高周波ノイズ除去）
+        if apply_bandpass:
+            # Museの有効周波数帯域に制限（デフォルト: 1-50Hz）
+            nyquist = sfreq / 2.0
+            safety_margin = max(0.5, nyquist * 0.05)
+
+            effective_l_freq = l_freq if (l_freq is not None and l_freq < nyquist) else None
+            effective_h_freq = h_freq if h_freq is not None else None
+
+            if effective_h_freq is not None:
+                max_h_freq = max(nyquist - safety_margin, 0)
+                if max_h_freq <= 0:
+                    effective_h_freq = None
+                else:
+                    effective_h_freq = min(effective_h_freq, max_h_freq)
+
+            # Nyquist制限により同時指定できない場合はハイパスのみを優先
+            if (effective_l_freq is not None and effective_h_freq is not None
+                    and effective_h_freq <= effective_l_freq):
+                effective_h_freq = None
+
+            if effective_l_freq is not None or effective_h_freq is not None:
+                raw = raw.filter(
+                    l_freq=effective_l_freq,
+                    h_freq=effective_h_freq,
+                    fir_design='firwin',
+                    verbose=False,
+                )
+
+        # 2. ノッチフィルタ（電源ノイズ除去）
+        if apply_notch and notch_freqs:
+            # 50Hz/60Hz電源ノイズを除去
+            nyquist = sfreq / 2.0
+            valid_notch_freqs = [freq for freq in notch_freqs if 0 < freq < nyquist]
+            if valid_notch_freqs:
+                raw = raw.notch_filter(freqs=valid_notch_freqs, verbose=False)
 
     return {
         'raw': raw,
         'channels': ch_names,
         'sfreq': sfreq,
-        'n_samples': len(frame)
+        'n_samples': len(numeric)
     }

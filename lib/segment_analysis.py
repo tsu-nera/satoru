@@ -22,6 +22,13 @@ from .sensors.eeg.preprocessing import filter_eeg_quality
 if TYPE_CHECKING:
     import mne
 
+try:
+    import mne
+    from mne import Epochs, make_fixed_length_events
+    MNE_AVAILABLE = True
+except ImportError:
+    MNE_AVAILABLE = False
+
 
 # ========================================
 # 総合スコア算出の重み定数
@@ -64,6 +71,101 @@ def _min_max_normalize(series: pd.Series) -> pd.Series:
     return (series - min_val) / (max_val - min_val)
 
 
+def _calculate_band_power_from_epochs(
+    raw: 'mne.io.RawArray',
+    segment_minutes: int,
+    session_start: pd.Timestamp,
+    warmup_minutes: float = 0.0,
+) -> Dict[str, pd.Series]:
+    """
+    MNE Epochsを使用してセグメントごとのバンドパワーを計算する。
+
+    Parameters
+    ----------
+    raw : mne.io.RawArray
+        MNE RawArrayオブジェクト
+    segment_minutes : int
+        セグメント長（分単位）
+    session_start : pd.Timestamp
+        セッション開始時刻
+    warmup_minutes : float
+        ウォームアップ期間（分単位）
+
+    Returns
+    -------
+    Dict[str, pd.Series]
+        各バンドの時系列データ（キー: 'Alpha', 'Beta', 'Theta'）
+        SeriesのindexはタイムスタンプでBels（10*log10）単位
+    """
+    if not MNE_AVAILABLE:
+        raise ImportError('MNE-Pythonが必要です。pip install mne でインストールしてください。')
+
+    # ウォームアップ期間をスキップ
+    tmin_sec = warmup_minutes * 60.0
+    tmax_sec = raw.times[-1]
+
+    if tmin_sec >= tmax_sec:
+        raise ValueError(f'ウォームアップ期間（{warmup_minutes}分）がデータ長を超えています。')
+
+    # ウォームアップ後のデータをクロップ
+    raw_cropped = raw.copy().crop(tmin=tmin_sec, tmax=tmax_sec)
+
+    # 固定長イベント作成
+    duration_sec = segment_minutes * 60.0
+    events = make_fixed_length_events(raw_cropped, duration=duration_sec)
+
+    if len(events) == 0:
+        raise ValueError('セグメント用のイベントが生成できませんでした。')
+
+    # Epochsオブジェクト作成
+    epochs = Epochs(
+        raw_cropped,
+        events,
+        tmin=0,
+        tmax=duration_sec,
+        baseline=None,
+        preload=True,
+        verbose=False,
+    )
+
+    # PSD計算（Welch法）
+    # fmaxはNyquist周波数を超えないように自動調整
+    sfreq = raw_cropped.info['sfreq']
+    nyquist = sfreq / 2.0
+    fmax = min(50.0, nyquist * 0.95)  # 安全マージン5%
+
+    spectrum = epochs.compute_psd(method='welch', fmin=1.0, fmax=fmax, verbose=False)
+    psds, freqs = spectrum.get_data(return_freqs=True)
+
+    # バンド定義
+    bands = {
+        'Theta': (4, 8),
+        'Alpha': (8, 13),
+        'Beta': (13, 30),
+    }
+
+    # 各エポックのバンドパワー計算（全チャネル平均）
+    band_series = {}
+    for band_name, (fmin, fmax) in bands.items():
+        freq_mask = (freqs >= fmin) & (freqs < fmax)
+        # shape: (n_epochs, n_channels, n_freqs) -> (n_epochs,)
+        band_power = psds[:, :, freq_mask].mean(axis=(1, 2))
+
+        # Bels変換（10*log10）
+        band_power_bels = 10 * np.log10(band_power + 1e-12)  # ゼロ除算回避
+
+        # タイムスタンプ生成
+        # エポック開始時刻 = session_start + warmup + epoch_index * duration
+        timestamps = [
+            session_start + pd.Timedelta(minutes=warmup_minutes) + pd.Timedelta(seconds=i * duration_sec)
+            for i in range(len(band_power))
+        ]
+
+        band_series[band_name] = pd.Series(band_power_bels, index=timestamps)
+
+    return band_series
+
+
 def calculate_segment_analysis(
     df_clean: pd.DataFrame,
     fmtheta_series: pd.Series,
@@ -71,6 +173,8 @@ def calculate_segment_analysis(
     band_means: Optional[Dict[str, pd.Series]] = None,
     iaf_series: Optional[pd.Series] = None,
     warmup_minutes: float = 0.0,
+    raw: Optional['mne.io.RawArray'] = None,
+    use_mne_epochs: bool = True,
 ) -> SegmentAnalysisResult:
     """
     セッションを一定時間のセグメントに分割し、主要指標を算出する。
@@ -85,16 +189,27 @@ def calculate_segment_analysis(
         セグメント長（分単位）。
     band_means : dict of pd.Series, optional
         事前計算されたバンド平均値の辞書 {'Alpha': series, 'Beta': series, 'Theta': series}。
-        未指定の場合は内部で計算する。
+        未指定の場合は内部で計算する。（use_mne_epochs=Falseの場合のみ使用）
     iaf_series : pd.Series, optional
         IAF（Individual Alpha Frequency）の時系列データ（indexはタイムスタンプ）。
     warmup_minutes : float, default 0.0
         セッション開始後の除外期間（分単位）。アーティファクト除去のため。
+    raw : mne.io.RawArray, optional
+        MNE RawArrayオブジェクト。use_mne_epochs=Trueの場合は必須。
+    use_mne_epochs : bool, default True
+        MNE Epochsを使用してバンドパワーを計算するかどうか。
+        True: MNE Epochsで高精度な計算（推奨）
+        False: 既存のDataFrameベース計算（後方互換性のため保持）
 
     Returns
     -------
     SegmentAnalysisResult
         集計表・正規化値・メタデータを含む時間セグメント分析結果。
+
+    Notes
+    -----
+    use_mne_epochs=Trueの場合、バンドパワーはMNE EpochsのPSD計算から取得され、
+    より正確な周波数解析が可能になります。df_cleanのバンドパワー列は使用されません。
     """
     if 'TimeStamp' not in df_clean.columns:
         raise ValueError('TimeStamp列が存在しません。')
@@ -129,8 +244,19 @@ def calculate_segment_analysis(
         iaf_series = iaf_series.sort_index()
         iaf_series = iaf_series[iaf_series.index >= session_start]
 
-    # バンド別の平均値（外部から渡されない場合は内部で計算）
-    if band_means is None:
+    # バンド別の平均値を取得
+    # use_mne_epochs=Trueかつrawが渡された場合はMNE Epochsで計算（推奨）
+    # そうでない場合は既存のDataFrameベース計算（後方互換性）
+    if use_mne_epochs and raw is not None and MNE_AVAILABLE:
+        # MNE Epochsでバンドパワーを計算
+        band_series = _calculate_band_power_from_epochs(
+            raw, segment_minutes, original_start, warmup_minutes
+        )
+    elif band_means is not None:
+        # 外部から渡された場合はそのまま使用
+        band_series = band_means
+    else:
+        # DataFrameから計算（レガシーパス）
         band_series: Dict[str, pd.Series] = {}
         for band in ('Alpha', 'Beta', 'Theta'):
             cols = [c for c in df_clean.columns if c.startswith(f'{band}_')]
@@ -141,31 +267,52 @@ def calculate_segment_analysis(
             band_mean = numeric.mean(axis=1)
             band_mean.index = df_clean['TimeStamp']
             band_series[band] = band_mean.sort_index()
-    else:
-        band_series = band_means
 
-    # セグメント境界の生成
-    segment_starts = []
-    current = session_start
-    while current < session_end:
-        segment_starts.append(current)
-        current += segment_delta
-    if not segment_starts:
-        segment_starts = [session_start]
+    # MNE Epochsを使う場合、バンドパワーは既にセグメント化されている
+    # そのため、セグメント境界の生成とループを簡素化できる
+    if use_mne_epochs and raw is not None and MNE_AVAILABLE:
+        # バンドパワーはすでにセグメントごとに計算済み
+        # band_series[band].index にセグメント開始タイムスタンプが入っている
+        segment_timestamps = band_series['Alpha'].index
+        segment_starts = list(segment_timestamps)
+    else:
+        # レガシーパス：手動でセグメント境界を生成
+        segment_starts = []
+        current = session_start
+        while current < session_end:
+            segment_starts.append(current)
+            current += segment_delta
+        if not segment_starts:
+            segment_starts = [session_start]
 
     records = []
     comments = []
 
     for idx, start in enumerate(segment_starts, start=1):
-        end = min(start + segment_delta, session_end)
-        clean_mask = (df_clean['TimeStamp'] >= start) & (df_clean['TimeStamp'] < end)
-        clean_slice_exists = clean_mask.any()
+        end = start + segment_delta
 
-        fm_slice = fmtheta_series.loc[(fmtheta_series.index >= start) & (fmtheta_series.index < end)]
+        # MNE Epochsを使う場合、バンドパワーは既に計算済み
+        if use_mne_epochs and raw is not None and MNE_AVAILABLE:
+            # 直接値を取得（セグメント化済み）
+            alpha_mean = band_series['Alpha'].iloc[idx - 1] if idx - 1 < len(band_series['Alpha']) else np.nan
+            beta_mean = band_series['Beta'].iloc[idx - 1] if idx - 1 < len(band_series['Beta']) else np.nan
+            theta_mean = band_series['Theta'].iloc[idx - 1] if idx - 1 < len(band_series['Theta']) else np.nan
+        else:
+            # レガシーパス：時間範囲で平均を計算
+            def _segment_mean(series: pd.Series) -> float:
+                if series.empty:
+                    return np.nan
+                window = series.loc[(series.index >= start) & (series.index < end)]
+                return window.mean()
+
+            alpha_mean = _segment_mean(band_series['Alpha'])
+            beta_mean = _segment_mean(band_series['Beta'])
+            theta_mean = _segment_mean(band_series['Theta'])
 
         # Fmθ平均の計算（外れ値除去）
+        fm_slice = fmtheta_series.loc[(fmtheta_series.index >= start) & (fmtheta_series.index < end)]
         fm_clean = fm_slice.dropna()
-        if len(fm_clean) > 3:  # 最低限のサンプル数が必要
+        if len(fm_clean) > 3:
             z_scores = np.abs(stats.zscore(fm_clean))
             fm_filtered = fm_clean[z_scores < 3.0]
             fm_mean = fm_filtered.mean() if len(fm_filtered) > 0 else fm_clean.mean()
@@ -178,15 +325,8 @@ def calculate_segment_analysis(
             iaf_slice = iaf_series.loc[(iaf_series.index >= start) & (iaf_series.index < end)]
             iaf_mean = iaf_slice.mean()
 
-        def _segment_mean(series: pd.Series) -> float:
-            if series.empty:
-                return np.nan
-            window = series.loc[(series.index >= start) & (series.index < end)]
-            return window.mean()
-
-        alpha_mean = _segment_mean(band_series['Alpha'])
-        beta_mean = _segment_mean(band_series['Beta'])
-        theta_mean = _segment_mean(band_series['Theta'])
+        clean_mask = (df_clean['TimeStamp'] >= start) & (df_clean['TimeStamp'] < end)
+        clean_slice_exists = clean_mask.any()
 
         # θ/α比: 対数値（Bels）なので引き算でlog(theta/alpha)を計算
         theta_alpha_ratio = np.nan
@@ -342,7 +482,7 @@ def plot_segment_comparison(
         'fmtheta_mean': 'Fmθ',
         'alpha_mean': 'Alpha',
         'beta_mean': 'Beta',
-        'theta_alpha_ratio': 'θ/α比',
+        'theta_alpha_ratio': 'θ/α',
     }
     colors = {
         'fmtheta_mean': '#1f77b4',
@@ -384,9 +524,9 @@ def plot_segment_comparison(
     ax.set_xticks(x_positions)
     ax.set_xticklabels(xtick_labels, rotation=30, ha='right')
     ax.set_ylim(0.0, 1.05)
-    ax.set_ylabel('正規化スコア (0-1)')
-    ax.set_xlabel('時間セグメント')
-    ax.set_title(title or '時間セグメント別主要指標', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Normalized Score (0-1)')
+    ax.set_xlabel('Time Segment')
+    ax.set_title(title or 'Key Metrics by Time Segment', fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0))
     fig.tight_layout()
