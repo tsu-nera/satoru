@@ -70,7 +70,6 @@ def calculate_segment_analysis(
     fmtheta_series: pd.Series,
     statistical_df: Dict[str, pd.DataFrame],
     segment_minutes: int = 5,
-    iaf_series: Optional[pd.Series] = None,
     warmup_minutes: float = 0.0,
 ) -> SegmentAnalysisResult:
     """
@@ -87,8 +86,6 @@ def calculate_segment_analysis(
         必須キー: 'band_powers', 'band_ratios'
     segment_minutes : int, default 5
         セグメント長（分単位）。
-    iaf_series : pd.Series, optional
-        IAF（Individual Alpha Frequency）の時系列データ（indexはタイムスタンプ）。
     warmup_minutes : float, default 0.0
         セッション開始後の除外期間（分単位）。アーティファクト除去のため。
 
@@ -99,11 +96,11 @@ def calculate_segment_analysis(
 
     Notes
     -----
-    バンドパワーと比率はstatistical_dfから取得されます（MNE Epochsベース）。
+    バンドパワー・比率・IAFはstatistical_dfから自動取得されます（MNE Epochsベース）。
     df_cleanのバンドパワー列は使用されません。
     """
     # Statistical DFのバリデーション
-    required_keys = ['band_powers', 'band_ratios', 'spectral_entropy']
+    required_keys = ['band_powers', 'band_ratios', 'spectral_entropy', 'iaf']
     missing_keys = [k for k in required_keys if k not in statistical_df]
     if missing_keys:
         raise ValueError(f'statistical_dfには{missing_keys}キーが必要です。')
@@ -139,10 +136,9 @@ def calculate_segment_analysis(
     fmtheta_series = fmtheta_series.sort_index()
     fmtheta_series = fmtheta_series[fmtheta_series.index >= session_start]
 
-    # IAF時系列（渡されている場合、ウォームアップ期間を除外）
-    if iaf_series is not None:
-        iaf_series = iaf_series.sort_index()
-        iaf_series = iaf_series[iaf_series.index >= session_start]
+    # IAF時系列をStatistical DFから取得
+    iaf_series = statistical_df['iaf'].sort_index()
+    iaf_series = iaf_series[iaf_series.index >= session_start]
 
     # セグメント開始時刻のリストを取得（band_powersから）
     # band_powersのindexがセグメント開始タイムスタンプ
@@ -184,18 +180,17 @@ def calculate_segment_analysis(
         else:
             fm_mean = fm_clean.mean() if len(fm_clean) > 0 else np.nan
 
-        # IAF平均（渡されている場合）
+        # IAF平均（Statistical DFから自動取得済み）
         iaf_mean = np.nan
         iaf_cv = np.nan
-        if iaf_series is not None:
-            iaf_slice = iaf_series.loc[(iaf_series.index >= start) & (iaf_series.index < end)]
-            iaf_mean = iaf_slice.mean()
-            # IAF変動係数
-            if len(iaf_slice) > 1:
-                iaf_std = iaf_slice.std()
-                iaf_val = iaf_slice.mean()
-                if pd.notna(iaf_val) and iaf_val != 0:
-                    iaf_cv = iaf_std / iaf_val
+        iaf_slice = iaf_series.loc[(iaf_series.index >= start) & (iaf_series.index < end)]
+        iaf_mean = iaf_slice.mean()
+        # IAF変動係数
+        if len(iaf_slice) > 1:
+            iaf_std = iaf_slice.std()
+            iaf_val = iaf_slice.mean()
+            if pd.notna(iaf_val) and iaf_val != 0:
+                iaf_cv = iaf_std / iaf_val
 
         # 総合スコア計算（利用可能な指標のみ）
         segment_score_result = calculate_meditation_score(
@@ -261,7 +256,7 @@ def calculate_segment_analysis(
         display_rows.append({
             'No.': int(row['segment_index']),
             '時間帯': row['label'],
-            'Fmθ平均 (μV²)': row['fmtheta_mean'],
+            'Fmθ平均 (Bels)': row['fmtheta_mean'],
             'SE': row['spectral_entropy'],
             'IAF平均 (Hz)': row['iaf_mean'],
             'Alpha (Bels)': row['alpha_mean'],
@@ -296,93 +291,6 @@ def calculate_segment_analysis(
         normalized=normalized,
         metadata=metadata,
     )
-
-
-def plot_segment_comparison(
-    result: SegmentAnalysisResult,
-    img_path: Optional[str] = None,
-    title: Optional[str] = None,
-) -> 'matplotlib.figure.Figure':
-    """
-    セグメントごとの主要指標を可視化する。
-
-    Parameters
-    ----------
-    result : SegmentAnalysisResult
-        `calculate_segment_analysis` の戻り値。
-    img_path : str, optional
-        保存先パス（Noneなら保存しない）。
-    title : str, optional
-        グラフタイトル。
-
-    Returns
-    -------
-    matplotlib.figure.Figure
-        生成したFigureオブジェクト。
-    """
-    import matplotlib.pyplot as plt
-
-    if result.normalized.empty:
-        raise ValueError('プロット対象のセグメントデータが空です。')
-
-    metric_labels = {
-        'fmtheta_mean': 'Fmθ',
-        'alpha_mean': 'Alpha',
-        'beta_mean': 'Beta',
-        'theta_alpha_ratio': 'θ/α',
-    }
-    colors = {
-        'fmtheta_mean': '#1f77b4',
-        'alpha_mean': '#2ca02c',
-        'beta_mean': '#ff7f0e',
-        'theta_alpha_ratio': '#9467bd',
-    }
-
-    segments = result.segments
-    x_positions = np.arange(len(segments))
-    xtick_labels = segments['label'].tolist()
-
-    fig, ax = plt.subplots(figsize=(11, 6))
-
-    for metric in result.normalized.columns:
-        series = result.normalized[metric]
-        if series.isna().all():
-            continue
-        ax.plot(
-            x_positions,
-            series.values,
-            marker='o',
-            linewidth=2.2,
-            label=metric_labels.get(metric, metric),
-            color=colors.get(metric, None),
-        )
-
-    peak_idx = result.metadata.get('peak_segment_index')
-    if peak_idx is not None:
-        peak_pos = segments.index.get_loc(peak_idx)
-        ax.axvspan(
-            peak_pos - 0.35,
-            peak_pos + 0.35,
-            color='gold',
-            alpha=0.18,
-            label='Peak Segment' if 'Peak Segment' not in ax.get_legend_handles_labels()[1] else None,
-        )
-
-    ax.set_xticks(x_positions)
-    ax.set_xticklabels(xtick_labels, rotation=30, ha='right')
-    ax.set_ylim(0.0, 1.05)
-    ax.set_ylabel('Normalized Score (0-1)')
-    ax.set_xlabel('Time Segment')
-    ax.set_title(title or 'Key Metrics by Time Segment', fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3, linestyle='--')
-    ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0))
-    fig.tight_layout()
-
-    if img_path:
-        fig.savefig(img_path, dpi=150, bbox_inches='tight')
-        plt.close(fig)
-
-    return fig
 
 
 def _normalize_indicator(
@@ -445,13 +353,13 @@ def calculate_meditation_score(
     Parameters
     ----------
     fmtheta : float, optional
-        Frontal Midline Thetaパワー（μV²）
+        Frontal Midline Thetaパワー（Bels）
     spectral_entropy : float, optional
         Spectral Entropy（0-1正規化済み）
     theta_alpha_ratio : float, optional
         θ/α比（Bels差）
     faa : float, optional
-        Frontal Alpha Asymmetry（ln(μV²)）
+        Frontal Alpha Asymmetry（Bels差）
     alpha_beta_ratio : float, optional
         α/β比（無次元）
     iaf_cv : float, optional
@@ -477,8 +385,9 @@ def calculate_meditation_score(
     scores = {}
 
     # Fmθスコア（高いほど良い）
+    # 旧: 50-200 μV² → 新: 17-23 Bels (10*log10(50) ≈ 17, 10*log10(200) ≈ 23)
     if fmtheta is not None:
-        scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=50.0, max_val=200.0)
+        scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=17.0, max_val=23.0)
     else:
         scores['fmtheta'] = 0.5
 
@@ -500,8 +409,9 @@ def calculate_meditation_score(
         scores['theta_alpha_ratio'] = 0.5
 
     # FAAスコア（正値ほど良い、中心化）
+    # 旧: -0.5 ~ 0.5 (ln) → 新: -2.0 ~ 2.0 (Bels差分)
     if faa is not None:
-        scores['faa'] = _normalize_indicator(faa, min_val=-0.5, max_val=0.5)
+        scores['faa'] = _normalize_indicator(faa, min_val=-2.0, max_val=2.0)
     else:
         scores['faa'] = 0.5
 

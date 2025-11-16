@@ -58,6 +58,7 @@ def create_statistical_dataframe(
             'band_powers': DataFrame,      # セグメント別バンドパワー時系列（Bels）
             'band_ratios': DataFrame,      # セグメント別バンド比率時系列
             'spectral_entropy': DataFrame, # セグメント別Spectral Entropy時系列（正規化済み）
+            'iaf': Series,                 # Individual Alpha Frequency時系列（Hz）
             'statistics': DataFrame        # 統計サマリー（縦長形式）
         }
 
@@ -164,6 +165,30 @@ def create_statistical_dataframe(
     # DataFrameに変換
     se_df = pd.DataFrame({'spectral_entropy': se_values}, index=timestamps)
 
+    # IAF（Individual Alpha Frequency）計算
+    # Epochsごとにアルファ帯域のピーク周波数を計算
+    iaf_values = []
+    alpha_range = (8.0, 13.0)
+
+    for epoch_idx in range(len(epochs)):
+        # このエポックのPSD (n_channels, n_freqs)
+        psd_epoch = psds[epoch_idx]
+
+        # アルファ帯域のマスク
+        alpha_mask = (freqs >= alpha_range[0]) & (freqs <= alpha_range[1])
+        alpha_freqs = freqs[alpha_mask]
+
+        # 全チャネルの平均PSD（アルファ帯域）
+        psd_alpha_avg = psd_epoch[:, alpha_mask].mean(axis=0)
+
+        # ピーク周波数を検出
+        peak_idx = psd_alpha_avg.argmax()
+        iaf = alpha_freqs[peak_idx]
+        iaf_values.append(iaf)
+
+    # IAF時系列をSeriesに変換
+    iaf_series = pd.Series(iaf_values, index=timestamps)
+
     # バンド比率計算
     ratios_dict = {}
 
@@ -264,6 +289,47 @@ def create_statistical_dataframe(
             },
         ])
 
+    # IAF統計
+    iaf_clean = iaf_series.dropna()
+    if len(iaf_clean) > 0:
+        # Z-score外れ値除去（閾値3.0）
+        if len(iaf_clean) > 3:
+            z_scores = np.abs(stats.zscore(iaf_clean))
+            filtered_iaf = iaf_clean[z_scores < 3.0]
+            if len(filtered_iaf) > 0:
+                iaf_clean = filtered_iaf
+
+        statistics_rows.extend([
+            {
+                'Category': 'IAF',
+                'Metric': 'iaf_Mean',
+                'Value': iaf_clean.mean(),
+                'Unit': 'Hz',
+                'DisplayName': 'IAF平均 (Hz)',
+            },
+            {
+                'Category': 'IAF',
+                'Metric': 'iaf_Median',
+                'Value': iaf_clean.median(),
+                'Unit': 'Hz',
+                'DisplayName': 'IAF中央値 (Hz)',
+            },
+            {
+                'Category': 'IAF',
+                'Metric': 'iaf_Std',
+                'Value': iaf_clean.std(),
+                'Unit': 'Hz',
+                'DisplayName': 'IAF標準偏差 (Hz)',
+            },
+            {
+                'Category': 'IAF',
+                'Metric': 'iaf_CV',
+                'Value': iaf_clean.std() / iaf_clean.mean() if iaf_clean.mean() > 0 else np.nan,
+                'Unit': 'ratio',
+                'DisplayName': 'IAF変動係数',
+            },
+        ])
+
     # バンド比率統計
     ratio_configs = [
         ('alpha_beta', 'α/β比', 'ratio', 'リラックス度'),
@@ -318,6 +384,7 @@ def create_statistical_dataframe(
         'band_powers': band_powers_df,
         'band_ratios': band_ratios_df,
         'spectral_entropy': se_df,
+        'iaf': iaf_series,
         'statistics': statistics_df,
     }
 

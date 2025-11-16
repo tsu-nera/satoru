@@ -3,6 +3,8 @@ Frontal Midline Theta (Fmθ) 解析モジュール
 
 AF7/AF8チャネルをMNE-Pythonの処理パイプラインでバンドパス→ヒルベルト包絡へ変換し、
 Fmθパワーの時系列と統計指標を算出する。
+
+パワーは Bels 単位（10*log10(μV²)）で出力される。
 """
 
 from __future__ import annotations
@@ -80,11 +82,14 @@ def calculate_frontal_theta(
         可視化用にリサンプルする間隔。
     smoothing_seconds : float
         ローリング平均による平滑化時定数（秒）。
+    raw : mne.io.BaseRaw, optional
+        既存のRawオブジェクト。Noneの場合は新規作成。
 
     Returns
     -------
     FrontalThetaResult
         時系列・統計情報・メタデータを含む解析結果。
+        時系列パワーはBels単位（10*log10(μV²)）で出力される。
     """
     if channels is None:
         channels = ('RAW_AF7', 'RAW_AF8')
@@ -120,8 +125,13 @@ def calculate_frontal_theta(
     start_time = pd.to_datetime(df['TimeStamp'].min())
     time_index = start_time + pd.to_timedelta(times, unit='s')
 
+    # パワー計算: エンベロープの二乗をBelsに変換
+    power_uv2 = env_data_uv.T ** 2
+    epsilon = 1e-12  # ゼロ除算防止
+    power_bels = 10 * np.log10(power_uv2 + epsilon)
+
     power_df = pd.DataFrame(
-        env_data_uv.T ** 2,
+        power_bels,
         index=time_index,
         columns=list(channel_list),
     )
@@ -151,9 +161,9 @@ def calculate_frontal_theta(
         raise ValueError('Fmθ time series is empty.')
 
     stats = {
-        'Mean (μV²)': series.mean(),
-        'Median (μV²)': series.median(),
-        'Std Dev (μV²)': series.std(),
+        'Mean (Bels)': series.mean(),
+        'Median (Bels)': series.median(),
+        'Std Dev (Bels)': series.std(),
     }
 
     midpoint = series.index[0] + (series.index[-1] - series.index[0]) / 2
@@ -163,19 +173,20 @@ def calculate_frontal_theta(
     first_mean = first_half.mean() if not first_half.empty else np.nan
     second_mean = second_half.mean() if not second_half.empty else np.nan
 
-    if first_mean and not np.isnan(first_mean) and first_mean != 0:
-        increase_rate = ((second_mean - first_mean) / first_mean) * 100.0
+    # Belsでの増加量（対数スケールなので差分が意味を持つ）
+    if pd.notna(first_mean) and pd.notna(second_mean):
+        increase_bels = second_mean - first_mean
     else:
-        increase_rate = np.nan
+        increase_bels = np.nan
 
     stats_df = pd.DataFrame(
         [
-            {'Metric': 'Mean', 'Value': stats['Mean (μV²)'], 'Unit': 'μV²'},
-            {'Metric': 'Median', 'Value': stats['Median (μV²)'], 'Unit': 'μV²'},
-            {'Metric': 'Std Dev', 'Value': stats['Std Dev (μV²)'], 'Unit': 'μV²'},
-            {'Metric': 'First Half Mean', 'Value': first_mean, 'Unit': 'μV²'},
-            {'Metric': 'Second Half Mean', 'Value': second_mean, 'Unit': 'μV²'},
-            {'Metric': 'Increase Rate (2nd/1st)', 'Value': increase_rate, 'Unit': '%'},
+            {'Metric': 'Mean', 'Value': stats['Mean (Bels)'], 'Unit': 'Bels'},
+            {'Metric': 'Median', 'Value': stats['Median (Bels)'], 'Unit': 'Bels'},
+            {'Metric': 'Std Dev', 'Value': stats['Std Dev (Bels)'], 'Unit': 'Bels'},
+            {'Metric': 'First Half Mean', 'Value': first_mean, 'Unit': 'Bels'},
+            {'Metric': 'Second Half Mean', 'Value': second_mean, 'Unit': 'Bels'},
+            {'Metric': 'Increase (2nd-1st)', 'Value': increase_bels, 'Unit': 'Bels'},
         ]
     )
 
@@ -186,8 +197,9 @@ def calculate_frontal_theta(
         'sfreq': float(raw.info['sfreq']),
         'first_half_mean': first_mean,
         'second_half_mean': second_mean,
-        'increase_rate_percent': increase_rate,
-        'method': 'mne_hilbert',
+        'increase_bels': increase_bels,
+        'unit': 'Bels',
+        'method': 'mne_hilbert_bels',
         'filter_settings': {
             'l_freq': band_tuple[0],
             'h_freq': band_tuple[1],
@@ -206,76 +218,3 @@ def calculate_frontal_theta(
         statistics=stats_df,
         metadata=metadata,
     )
-
-
-def plot_frontal_theta(
-    result: FrontalThetaResult,
-    img_path: Optional[str] = None,
-    title: Optional[str] = None,
-) -> Tuple[pd.Series, object]:
-    """
-    Fmθの時間推移をプロットする。
-
-    Parameters
-    ----------
-    result : FrontalThetaResult
-        `calculate_frontal_theta` の戻り値。
-    img_path : str, optional
-        画像保存パス。
-    title : str
-        グラフタイトル。
-
-    Returns
-    -------
-    (series, fig)
-        表示に使用した時系列とFigureオブジェクト。
-    """
-    import matplotlib.pyplot as plt
-
-    series = result.time_series
-    if series.empty:
-        raise ValueError('Fmθ time series for plotting is empty.')
-
-    elapsed_minutes = (series.index - series.index[0]).total_seconds() / 60.0
-
-    metadata = result.metadata
-    band_key = metadata.get('band_key', '')
-    band_range = metadata.get('band', (None, None))
-    label = f'Fmθ ({band_range[0]}-{band_range[1]} Hz)' if None not in band_range else 'Fmθ'
-    default_title = f'Frontal Midline Theta - {band_key}' if band_key else 'Frontal Midline Theta'
-    plot_title = title or default_title
-
-    fig, ax = plt.subplots(figsize=(12, 6))
-    ax.plot(
-        elapsed_minutes,
-        series.values,
-        color='#1f77b4',
-        linewidth=2.2,
-        label=label,
-    )
-    midpoint = elapsed_minutes[len(elapsed_minutes) // 2] if len(elapsed_minutes) else 0
-    if midpoint:
-        ax.axvline(midpoint, color='gray', linestyle='--', alpha=0.5, label='Session midpoint')
-
-    increase = metadata.get('increase_rate_percent')
-    if increase is not None and not np.isnan(increase):
-        ax.text(
-            0.02,
-            0.95,
-            f'Δ後半/前半: {increase:.1f}%',
-            transform=ax.transAxes,
-            fontsize=11,
-            bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7),
-        )
-    ax.set_xlabel('Elapsed Time (min)', fontsize=12)
-    ax.set_ylabel('Fmθ Power (μV²)', fontsize=12)
-    ax.set_title(plot_title, fontsize=14, fontweight='bold')
-    ax.grid(True, alpha=0.3, linestyle='--')
-    ax.legend(loc='upper right')
-    plt.tight_layout()
-
-    if img_path:
-        fig.savefig(img_path, dpi=150, bbox_inches='tight')
-        plt.close(fig)
-
-    return series, fig
