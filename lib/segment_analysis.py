@@ -256,7 +256,7 @@ def calculate_segment_analysis(
         display_rows.append({
             'No.': int(row['segment_index']),
             '時間帯': row['label'],
-            'Fmθ平均 (μV²)': row['fmtheta_mean'],
+            'Fmθ平均 (Bels)': row['fmtheta_mean'],
             'SE': row['spectral_entropy'],
             'IAF平均 (Hz)': row['iaf_mean'],
             'Alpha (Bels)': row['alpha_mean'],
@@ -353,13 +353,13 @@ def calculate_meditation_score(
     Parameters
     ----------
     fmtheta : float, optional
-        Frontal Midline Thetaパワー（μV²）
+        Frontal Midline Thetaパワー（Bels）
     spectral_entropy : float, optional
         Spectral Entropy（0-1正規化済み）
     theta_alpha_ratio : float, optional
         θ/α比（Bels差）
     faa : float, optional
-        Frontal Alpha Asymmetry（ln(μV²)）
+        Frontal Alpha Asymmetry（Bels差）
     alpha_beta_ratio : float, optional
         α/β比（無次元）
     iaf_cv : float, optional
@@ -385,8 +385,9 @@ def calculate_meditation_score(
     scores = {}
 
     # Fmθスコア（高いほど良い）
+    # 旧: 50-200 μV² → 新: 17-23 Bels (10*log10(50) ≈ 17, 10*log10(200) ≈ 23)
     if fmtheta is not None:
-        scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=50.0, max_val=200.0)
+        scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=17.0, max_val=23.0)
     else:
         scores['fmtheta'] = 0.5
 
@@ -408,8 +409,9 @@ def calculate_meditation_score(
         scores['theta_alpha_ratio'] = 0.5
 
     # FAAスコア（正値ほど良い、中心化）
+    # 旧: -0.5 ~ 0.5 (ln) → 新: -2.0 ~ 2.0 (Bels差分)
     if faa is not None:
-        scores['faa'] = _normalize_indicator(faa, min_val=-0.5, max_val=0.5)
+        scores['faa'] = _normalize_indicator(faa, min_val=-2.0, max_val=2.0)
     else:
         scores['faa'] = 0.5
 

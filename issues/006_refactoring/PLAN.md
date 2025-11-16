@@ -3,7 +3,7 @@
 **Issue**: #006
 **作成日**: 2025-11-16
 **最終更新**: 2025-11-16
-**ステータス**: In Progress（Phase 1-2完了）
+**ステータス**: In Progress（Phase 1-3完了）
 
 ---
 
@@ -288,53 +288,70 @@ statistical_df = create_statistical_dataframe(
 
 ---
 
-### Phase 3: スケーリング単位の統一 【優先度: 中】
+### Phase 3: スケーリング単位の統一 【優先度: 中】✅ **完了**
 
-**期間**: 3-5日
+**期間**: 1日（2025-11-16完了）
 **目的**: 全指標を Bels に統一し、物理的意味を明確化
 
-#### タスク
+#### 完了したタスク
 
-- [ ] **3.1** Fmθ のBels変換
-  - `frontal_theta.py` の計算結果を μV² → Bels に変換
-  - `10 * np.log10(fmtheta_power_uv2 + 1e-12)` を適用
-  - 既存の統計量（前半/後半比較、増加率）も Bels ベースに
+- [x] **3.1** Fmθ のBels変換
+  - ✅ `frontal_theta.py` の計算結果を μV² → Bels に変換
+  - ✅ `10 * np.log10(fmtheta_power_uv2 + 1e-12)` を適用
+  - ✅ 既存の統計量（前半/後半比較）を Bels ベースに変更
+  - ✅ 増加率（%）を増加量（Bels差）に変更
+  - ✅ メタデータに `'unit': 'Bels'`, `'method': 'mne_hilbert_bels'` を追加
 
-- [ ] **3.2** FAA のBels差分変換
-  - 現在: `FAA = ln(右) - ln(左)`
-  - 変更後: `FAA = 10*log10(右) - 10*log10(左)` (Bels差分)
-  - 解釈基準の更新（0.5 Bels ≈ 12%差）
+- [x] **3.2** FAA のBels差分変換
+  - ✅ 現在: `FAA = ln(右) - ln(左)` → 変更後: `FAA = 10*log10(右) - 10*log10(左)` (Bels差分)
+  - ✅ 解釈基準の更新（0.2 Bels ≈ ln(1.05) ≈ 5%差）
+  - ✅ 左右パワーもBels単位で出力
+  - ✅ メタデータに `'unit': 'Bels'`, `'method': 'mne_hilbert_bels'` を追加
 
-- [ ] **3.3** 総合スコア正規化範囲の見直し
-  ```python
-  # segment_analysis.py の _normalize_indicator() を更新
+- [x] **3.3** 総合スコア正規化範囲の見直し
+  - ✅ Fmθ正規化（Bels単位）: 17-23 Bels (10*log10(50) ~ 10*log10(200))
+  - ✅ FAA正規化（Bels差分）: -2.0 ~ 2.0 (旧: -0.5 ~ 0.5 ln)
+  - ✅ segment_analysis.py の表示ラベルを「Fmθ平均 (Bels)」に更新
+  - ✅ docstringの単位表記を更新
 
-  # Fmθ正規化（Bels単位）
-  if fmtheta is not None:
-      # 旧: 50-200 μV²
-      # 新: 17-23 Bels (10*log10(50) ~ 10*log10(200))
-      scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=17.0, max_val=23.0)
+- [x] **3.4** テストデータでの検証
+  - ✅ `tests/test_phase3_bels_conversion.py` を作成
+  - ✅ Fmθ/FAAのBels単位出力を検証
+  - ✅ 総合スコア正規化範囲を検証
+  - ✅ μV²とBelsの変換一貫性を検証
+  - ✅ 全テスト成功
 
-  # FAA正規化（Bels差分）
-  if faa is not None:
-      # 旧: -0.5 ~ 0.5 (ln)
-      # 新: -2.0 ~ 2.0 (Bels差分)
-      scores['faa'] = _normalize_indicator(faa, min_val=-2.0, max_val=2.0)
-  ```
+#### 達成された効果
+- ✅ 全指標で物理的意味が統一（3 Bels = 2倍、10 Bels = 10倍）
+- ✅ 総合スコア計算の透明性向上
+- ✅ 異なるセッション間の比較が容易
+- ✅ Fmθ/FAAの単位が Bels で統一（バンドパワーと同じ）
+- ✅ 対数スケールでの解釈が容易（加算/減算が意味を持つ）
 
-- [ ] **3.4** テストデータでの検証
-  - 既存のCSVデータで新旧スケール比較
-  - 総合スコアの変化を確認
-  - ドキュメント更新（単位の解釈）
+#### Breaking Changes
+**Fmθ・FAA計算の出力単位変更:**
+```python
+# ❌ 旧（動作しない）
+fmtheta_result.time_series  # μV²単位
+faa_result.time_series      # ln(μV²)単位
 
-#### 期待される効果
-- 全指標で物理的意味が統一（3 Bels = 2倍、10 Bels = 10倍）
-- 総合スコア計算の透明性向上
-- 異なるセッション間の比較が容易
+# ✅ 新（正しい）
+fmtheta_result.time_series  # Bels単位（10*log10(μV²)）
+faa_result.time_series      # Bels差分（10*log10(右) - 10*log10(左)）
+
+# メタデータで確認可能
+fmtheta_result.metadata['unit']    # 'Bels'
+fmtheta_result.metadata['method']  # 'mne_hilbert_bels'
+```
+
+**総合スコア正規化範囲の変更:**
+- Fmθ: 50-200 μV² → 17-23 Bels
+- FAA: -0.5 ~ 0.5 ln → -2.0 ~ 2.0 Bels
 
 #### 注意事項
-- **影響範囲が大きい**: 既存の解析結果との互換性が失われる
-- **段階的移行推奨**: 新旧両方の値を出力し、検証期間を設ける
+- **Breaking Change**: 既存の解析結果との互換性がない（即座に適用）
+- **物理的意味の統一**: 全てのパワー指標がBelsで表現される
+- **解釈の簡潔化**: 対数スケールなので、差分が倍率を表す（3 Bels = 2倍）
 
 ---
 
@@ -401,10 +418,11 @@ statistical_df = create_statistical_dataframe(
 
 | 指標 | 現状 | 改善後 |
 |------|------|--------|
-| バンドパワー計算の重複 | 3箇所 | 1箇所（`statistical_dataframe.py`） |
-| 可視化関数の分散 | 5ファイル | 1ディレクトリ（`lib/visualization/`） |
-| スケーリング単位の種類 | 4種類 | 2種類（Bels、正規化値） |
-| 計算と可視化の混在モジュール | 4ファイル | 0ファイル |
+| バンドパワー計算の重複 | 3箇所 | 1箇所（`statistical_dataframe.py`） ✅ |
+| 可視化関数の分散 | 5ファイル | 1ディレクトリ（`lib/visualization/`） ✅ |
+| スケーリング単位の種類 | 4種類（μV², ln, Bels, 正規化値） | 2種類（Bels、正規化値） ✅ |
+| 計算と可視化の混在モジュール | 4ファイル | 0ファイル ✅ |
+| IAF計算箇所 | 3箇所 | 1箇所（`statistical_dataframe.py`） ✅ |
 
 ### 定性的効果
 
