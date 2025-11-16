@@ -32,13 +32,6 @@ from .eeg import (
     calculate_spectrogram,
     calculate_paf,
     calculate_paf_time_evolution,
-    plot_band_power_time_series,
-    plot_psd,
-    plot_psd_time_series,
-    plot_spectrogram,
-    plot_band_ratios,
-    plot_paf,
-    plot_paf_time_evolution,
     get_psd_peak_frequencies
 )
 
@@ -61,12 +54,5 @@ __all__ = [
     'calculate_spectrogram',
     'calculate_paf',
     'calculate_paf_time_evolution',
-    'plot_band_power_time_series',
-    'plot_psd',
-    'plot_psd_time_series',
-    'plot_spectrogram',
-    'plot_band_ratios',
-    'plot_paf',
-    'plot_paf_time_evolution',
     'get_psd_peak_frequencies',
 ]

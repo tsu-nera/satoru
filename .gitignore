@@ -32,3 +32,6 @@ private/
 # Temporary data
 /tmp_data/
 /tmp/
+
+venv
+.env

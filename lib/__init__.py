@@ -22,14 +22,6 @@ from .sensors.ppg import (
     analyze_respiratory
 )
 
-from .visualization import (
-    plot_fnirs,
-    plot_fnirs_muse_style,
-    plot_respiratory,
-    plot_frequency_spectrum,
-    plot_integrated_dashboard
-)
-
 from .sensors.eeg import (
     calculate_band_statistics,
     calculate_hsi_statistics,
@@ -40,33 +32,20 @@ from .sensors.eeg import (
     calculate_spectrogram_all_channels,
     calculate_paf,
     calculate_paf_time_evolution,
-    plot_band_power_time_series,
-    plot_psd,
-    plot_psd_time_series,
-    plot_spectrogram,
-    plot_spectrogram_grid,
-    plot_band_ratios,
-    plot_paf,
-    plot_paf_time_evolution,
-    plot_raw_preview,
     get_psd_peak_frequencies,
     FREQ_BANDS,
     FrontalThetaResult,
     calculate_frontal_theta,
-    plot_frontal_theta,
     FrontalAsymmetryResult,
     calculate_frontal_asymmetry,
-    plot_frontal_asymmetry,
     SpectralEntropyResult,
     calculate_spectral_entropy,
     calculate_spectral_entropy_time_series,
-    plot_spectral_entropy,
 )
 
 from .segment_analysis import (
     SegmentAnalysisResult,
     calculate_segment_analysis,
-    plot_segment_comparison,
     MEDITATION_SCORE_WEIGHTS,
     calculate_meditation_score,
 )
@@ -92,12 +71,6 @@ __all__ = [
     'estimate_respiratory_rate_welch',
     'estimate_respiratory_rate_fft',
     'analyze_respiratory',
-    # visualization
-    'plot_fnirs',
-    'plot_fnirs_muse_style',
-    'plot_respiratory',
-    'plot_frequency_spectrum',
-    'plot_integrated_dashboard',
     # eeg
     'get_eeg_data',
     'calculate_band_statistics',
@@ -109,31 +82,18 @@ __all__ = [
     'calculate_spectrogram_all_channels',
     'calculate_paf',
     'calculate_paf_time_evolution',
-    'plot_band_power_time_series',
-    'plot_psd',
-    'plot_psd_time_series',
-    'plot_spectrogram',
-    'plot_spectrogram_grid',
-    'plot_band_ratios',
-    'plot_paf',
-    'plot_paf_time_evolution',
-    'plot_raw_preview',
     'get_psd_peak_frequencies',
     'FREQ_BANDS',
     'FrontalThetaResult',
     'calculate_frontal_theta',
-    'plot_frontal_theta',
     'FrontalAsymmetryResult',
     'calculate_frontal_asymmetry',
-    'plot_frontal_asymmetry',
     'SpectralEntropyResult',
     'calculate_spectral_entropy',
     'calculate_spectral_entropy_time_series',
-    'plot_spectral_entropy',
     # high-level eeg utilities
     'SegmentAnalysisResult',
     'calculate_segment_analysis',
-    'plot_segment_comparison',
     'MEDITATION_SCORE_WEIGHTS',
     'calculate_meditation_score',
     # session summary

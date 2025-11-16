@@ -1,5 +1,5 @@
 """
-EEG可視化モジュール
+EEG基本可視化モジュール
 """
 
 import numpy as np
@@ -7,8 +7,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
-from .constants import FREQ_BANDS
-from .frequency import calculate_psd
+from ..constants import FREQ_BANDS
+from ..frequency import calculate_psd
 
 
 DEFAULT_SPECTROGRAM_CMAP = 'magma'

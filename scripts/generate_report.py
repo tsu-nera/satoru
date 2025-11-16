@@ -35,6 +35,20 @@ from lib import (
     calculate_spectrogram_all_channels,
     calculate_paf,
     calculate_paf_time_evolution,
+    get_psd_peak_frequencies,
+    calculate_frontal_theta,
+    calculate_frontal_asymmetry,
+    calculate_spectral_entropy,
+    calculate_spectral_entropy_time_series,
+    calculate_segment_analysis,
+    calculate_meditation_score,
+    get_optics_data,
+    analyze_fnirs,
+    generate_session_summary,
+)
+
+# 可視化関数をインポート
+from lib.sensors.eeg.visualization import (
     plot_band_power_time_series,
     plot_psd,
     plot_psd_time_series,
@@ -44,20 +58,13 @@ from lib import (
     plot_paf,
     plot_paf_time_evolution,
     plot_raw_preview,
-    get_psd_peak_frequencies,
-    calculate_frontal_theta,
     plot_frontal_theta,
-    calculate_frontal_asymmetry,
     plot_frontal_asymmetry,
-    calculate_spectral_entropy,
-    calculate_spectral_entropy_time_series,
-    calculate_segment_analysis,
+)
+
+from lib.visualization import (
     plot_segment_comparison,
-    calculate_meditation_score,
-    get_optics_data,
-    analyze_fnirs,
     plot_fnirs_muse_style,
-    generate_session_summary,
 )
 from lib.statistical_dataframe import create_statistical_dataframe
 
