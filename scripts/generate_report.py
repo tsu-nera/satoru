@@ -238,12 +238,14 @@ def generate_markdown_report(data_path, output_dir, results):
                 fmtheta_value = fmtheta_mean_row['Value'].iloc[0]
                 report += f"- **Fmθ平均 (μV²)**: {fmtheta_value:.3f}\n"
 
-        # IAF平均を追加
-        if 'iaf' in results:
-            iaf_data = results['iaf']
-            iaf_value = iaf_data['value']
-            iaf_std = iaf_data['std']
-            report += f"- **IAF平均 (Hz)**: {iaf_value:.2f} ± {iaf_std:.2f}\n"
+        # IAF平均を追加（Statistical DFから）
+        if 'statistical_df' in results and results['statistical_df'] is not None:
+            stat_df = results['statistical_df']
+            if 'iaf' in stat_df:
+                iaf_series = stat_df['iaf']
+                iaf_value = iaf_series.mean()
+                iaf_std = iaf_series.std()
+                report += f"- **IAF平均 (Hz)**: {iaf_value:.2f} ± {iaf_std:.2f}\n"
 
         report += "\n"
 
@@ -675,20 +677,12 @@ def run_full_analysis(data_path, output_dir):
             print('警告: Statistical DFが生成されていないため、セグメント分析をスキップします。')
             raise ValueError('Statistical DFが必要です')
 
-        # IAF時系列の準備（PAF時間推移から）
-        iaf_series = None
-        if 'paf_time_img' in results and paf_time_dict:
-            # PAF時間推移のタイムスタンプとIAF値をSeriesに変換
-            session_start = df['TimeStamp'].iloc[0]
-            iaf_times = pd.to_datetime(session_start) + pd.to_timedelta(paf_time_dict['times'], unit='s')
-            iaf_series = pd.Series(paf_time_dict['paf_smoothed'], index=iaf_times)
-
+        # IAFはStatistical DFに含まれているため、準備不要
         segment_result = calculate_segment_analysis(
             df_quality,
             fmtheta_result.time_series,
             statistical_df,
             segment_minutes=3,
-            iaf_series=iaf_series,
             warmup_minutes=1.0,  # 最初の1分間を除外（アーティファクト対策）
         )
         print('プロット中: 時間セグメント比較...')
@@ -810,8 +804,15 @@ def run_full_analysis(data_path, output_dir):
 
         iaf_cv_val = None
 
-        # セグメント分析からIAF変動係数を優先的に計算（より安定した評価）
-        if 'segment_table' in results:
+        # Statistical DFから直接IAF変動係数を取得（最も信頼性が高い）
+        if statistical_df is not None and 'statistics' in statistical_df:
+            stats_df = statistical_df['statistics']
+            iaf_cv_row = stats_df[stats_df['Metric'] == 'iaf_CV']
+            if not iaf_cv_row.empty:
+                iaf_cv_val = iaf_cv_row['Value'].iloc[0]
+
+        # フォールバック: セグメント分析から計算
+        if iaf_cv_val is None and 'segment_table' in results:
             segment_df = results['segment_table']
             if 'IAF平均 (Hz)' in segment_df.columns:
                 iaf_values = segment_df['IAF平均 (Hz)'].dropna()
@@ -820,12 +821,6 @@ def run_full_analysis(data_path, output_dir):
                     iaf_std = iaf_values.std()
                     if iaf_mean > 0:
                         iaf_cv_val = iaf_std / iaf_mean
-
-        # セグメント分析で取得できない場合、PAF時間推移から取得
-        if iaf_cv_val is None and 'paf_time_stats' in results:
-            paf_stats = results['paf_time_stats']
-            if '変動係数 (%)' in paf_stats:
-                iaf_cv_val = paf_stats['変動係数 (%)'] / 100.0  # パーセントから0-1に変換
 
         hsi_quality_val = None
         if 'hsi_stats' in results:

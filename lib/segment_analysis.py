@@ -70,7 +70,6 @@ def calculate_segment_analysis(
     fmtheta_series: pd.Series,
     statistical_df: Dict[str, pd.DataFrame],
     segment_minutes: int = 5,
-    iaf_series: Optional[pd.Series] = None,
     warmup_minutes: float = 0.0,
 ) -> SegmentAnalysisResult:
     """
@@ -87,8 +86,6 @@ def calculate_segment_analysis(
         必須キー: 'band_powers', 'band_ratios'
     segment_minutes : int, default 5
         セグメント長（分単位）。
-    iaf_series : pd.Series, optional
-        IAF（Individual Alpha Frequency）の時系列データ（indexはタイムスタンプ）。
     warmup_minutes : float, default 0.0
         セッション開始後の除外期間（分単位）。アーティファクト除去のため。
 
@@ -99,11 +96,11 @@ def calculate_segment_analysis(
 
     Notes
     -----
-    バンドパワーと比率はstatistical_dfから取得されます（MNE Epochsベース）。
+    バンドパワー・比率・IAFはstatistical_dfから自動取得されます（MNE Epochsベース）。
     df_cleanのバンドパワー列は使用されません。
     """
     # Statistical DFのバリデーション
-    required_keys = ['band_powers', 'band_ratios', 'spectral_entropy']
+    required_keys = ['band_powers', 'band_ratios', 'spectral_entropy', 'iaf']
     missing_keys = [k for k in required_keys if k not in statistical_df]
     if missing_keys:
         raise ValueError(f'statistical_dfには{missing_keys}キーが必要です。')
@@ -139,10 +136,9 @@ def calculate_segment_analysis(
     fmtheta_series = fmtheta_series.sort_index()
     fmtheta_series = fmtheta_series[fmtheta_series.index >= session_start]
 
-    # IAF時系列（渡されている場合、ウォームアップ期間を除外）
-    if iaf_series is not None:
-        iaf_series = iaf_series.sort_index()
-        iaf_series = iaf_series[iaf_series.index >= session_start]
+    # IAF時系列をStatistical DFから取得
+    iaf_series = statistical_df['iaf'].sort_index()
+    iaf_series = iaf_series[iaf_series.index >= session_start]
 
     # セグメント開始時刻のリストを取得（band_powersから）
     # band_powersのindexがセグメント開始タイムスタンプ
@@ -184,18 +180,17 @@ def calculate_segment_analysis(
         else:
             fm_mean = fm_clean.mean() if len(fm_clean) > 0 else np.nan
 
-        # IAF平均（渡されている場合）
+        # IAF平均（Statistical DFから自動取得済み）
         iaf_mean = np.nan
         iaf_cv = np.nan
-        if iaf_series is not None:
-            iaf_slice = iaf_series.loc[(iaf_series.index >= start) & (iaf_series.index < end)]
-            iaf_mean = iaf_slice.mean()
-            # IAF変動係数
-            if len(iaf_slice) > 1:
-                iaf_std = iaf_slice.std()
-                iaf_val = iaf_slice.mean()
-                if pd.notna(iaf_val) and iaf_val != 0:
-                    iaf_cv = iaf_std / iaf_val
+        iaf_slice = iaf_series.loc[(iaf_series.index >= start) & (iaf_series.index < end)]
+        iaf_mean = iaf_slice.mean()
+        # IAF変動係数
+        if len(iaf_slice) > 1:
+            iaf_std = iaf_slice.std()
+            iaf_val = iaf_slice.mean()
+            if pd.notna(iaf_val) and iaf_val != 0:
+                iaf_cv = iaf_std / iaf_val
 
         # 総合スコア計算（利用可能な指標のみ）
         segment_score_result = calculate_meditation_score(

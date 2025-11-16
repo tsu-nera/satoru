@@ -2,7 +2,8 @@
 
 **Issue**: #006
 **作成日**: 2025-11-16
-**ステータス**: Planning
+**最終更新**: 2025-11-16
+**ステータス**: In Progress（Phase 1-2完了）
 
 ---
 
@@ -142,99 +143,148 @@
 
 ## 具体的なアクションプラン
 
-### Phase 1: 計算と可視化の完全分離 【優先度: 高】
+### Phase 1: 計算と可視化の完全分離 【優先度: 高】✅ **完了**
 
-**期間**: 1-2日
+**期間**: 1日（2025-11-16完了）
 **目的**: SRP違反を解消し、テスト容易性を向上
 
-#### タスク
+#### 実装した構造
 
-- [ ] **1.1** `lib/visualization/` ディレクトリ作成
-  ```
-  lib/visualization/
-  ├── __init__.py
-  ├── eeg_plots.py        # plot_raw_preview, plot_psd, plot_spectrogram
-  ├── metric_plots.py     # plot_frontal_theta, plot_frontal_asymmetry, plot_se
-  └── segment_plots.py    # plot_segment_comparison
-  ```
+```
+lib/
+├── sensors/eeg/
+│   ├── visualization/              # 🆕 EEG可視化
+│   │   ├── __init__.py
+│   │   ├── eeg_plots.py           # 基本EEG可視化（旧visualization.py）
+│   │   ├── frontal_theta_plot.py  # Fmθ可視化
+│   │   ├── frontal_asymmetry_plot.py # FAA可視化
+│   │   └── spectral_entropy_plot.py  # SE可視化
+│   ├── frontal_theta.py           # 計算のみ
+│   ├── frontal_asymmetry.py       # 計算のみ
+│   └── spectral_entropy.py        # 計算のみ
+│
+└── visualization/                  # 🆕 統合可視化（旧visualization.pyをディレクトリ化）
+    ├── __init__.py
+    ├── segment_plot.py            # セグメント比較
+    ├── fnirs.py                   # fNIRS可視化
+    ├── respiratory.py             # 呼吸可視化
+    └── dashboard.py               # 統合ダッシュボード
+```
 
-- [ ] **1.2** プロット関数の移動
-  - `frontal_theta.plot_frontal_theta()` → `visualization/metric_plots.py`
-  - `frontal_asymmetry.plot_frontal_asymmetry()` → `visualization/metric_plots.py`
-  - `spectral_entropy.plot_spectral_entropy()` → `visualization/metric_plots.py`
-  - `segment_analysis.plot_segment_comparison()` → `visualization/segment_plots.py`
+#### 完了したタスク
+
+- [x] **1.1** `lib/visualization/` ディレクトリ作成
+  - `lib/sensors/eeg/visualization/` を作成
+  - `lib/visualization/` をディレクトリ化（既存ファイルを分割）
+
+- [x] **1.2** プロット関数の移動
+  - `frontal_theta.plot_frontal_theta()` → `visualization/frontal_theta_plot.py`
+  - `frontal_asymmetry.plot_frontal_asymmetry()` → `visualization/frontal_asymmetry_plot.py`
+  - `spectral_entropy.plot_spectral_entropy()` → `visualization/spectral_entropy_plot.py`
+  - `segment_analysis.plot_segment_comparison()` → `visualization/segment_plot.py`
   - `sensors/eeg/visualization.py` の関数群 → `visualization/eeg_plots.py`
+  - `lib/visualization.py` → `fnirs.py`, `respiratory.py`, `dashboard.py` に分割
 
-- [ ] **1.3** import パスの更新
-  - `lib/__init__.py` の import 文を修正
-  - 後方互換性のため、旧パスで deprecation warning を追加（オプション）
+- [x] **1.3** import パスの更新
+  - `lib/__init__.py` から可視化関数のエクスポート削除
+  - `lib/sensors/eeg/__init__.py` から可視化関数のエクスポート削除
+  - `lib/sensors/__init__.py` から可視化関数のエクスポート削除
+  - `scripts/generate_report.py` のimport更新
+  - **Breaking Change**: 後方互換性なし（即座にBreaking Change方式を採用）
 
-- [ ] **1.4** 計算モジュールのクリーンアップ
-  - `frontal_theta.py` から可視化コードを削除
-  - `frontal_asymmetry.py` から可視化コードを削除
-  - `spectral_entropy.py` から可視化コードを削除
-  - `segment_analysis.py` から可視化コードを削除
+- [x] **1.4** 計算モジュールのクリーンアップ
+  - `frontal_theta.py` から `plot_frontal_theta()` 削除
+  - `frontal_asymmetry.py` から `plot_frontal_asymmetry()` 削除
+  - `spectral_entropy.py` から `plot_spectral_entropy()` 削除
+  - `segment_analysis.py` から `plot_segment_comparison()` 削除
+  - `lib/sensors/eeg/visualization.py` ファイル削除
+  - `lib/visualization.py` ファイル削除
 
-#### 期待される効果
-- matplotlib 依存が可視化層のみに限定される
-- 計算ロジックのユニットテストが容易になる
-- 可視化のカスタマイズが独立して可能
+#### 達成された効果
+- ✅ matplotlib 依存が可視化層のみに限定された
+- ✅ 計算ロジックのユニットテストが容易になった
+- ✅ 可視化のカスタマイズが独立して可能になった
+- ✅ 単一責任原則（SRP）の遵守
+- ✅ 全importテストが成功
+
+#### Breaking Changes
+
+**可視化関数の新しいimportパス:**
+```python
+# ❌ 旧（動作しない）
+from lib import plot_frontal_theta, plot_psd, plot_segment_comparison
+
+# ✅ 新（正しい）
+from lib.sensors.eeg.visualization import plot_frontal_theta, plot_psd
+from lib.visualization import plot_segment_comparison
+```
 
 ---
 
-### Phase 2: データ層の統一 【優先度: 高】
+### Phase 2: データ層の統一 【優先度: 高】✅ **完了**
 
-**期間**: 2-3日
-**目的**: バンドパワー計算を `statistical_dataframe.py` に統一
+**期間**: 1日（2025-11-16完了）
+**目的**: IAF計算を `statistical_dataframe.py` に統合し、データ層の一貫性を完成
 
-#### タスク
+#### 完了したタスク
 
-- [ ] **2.1** 全解析で `statistical_dataframe.create_statistical_dataframe()` を使用
-  - 現在の解析フローを確認（`scripts/generate_report.py` など）
-  - Mind Monitor CSV列（`Delta_TP9` など）の直接参照を削除
-  - `frequency.calculate_psd()` の個別呼び出しを統一方式に置き換え
+- [x] **2.1** IAF計算を `statistical_dataframe.py` に統合
+  - ✅ Epochsごとにアルファ帯域（8-13Hz）のピーク周波数を計算
+  - ✅ IAF時系列を`pd.Series`として追加
+  - ✅ IAF統計量（平均・中央値・標準偏差・変動係数）を追加
+  - ✅ 戻り値に `'iaf': Series` を追加
+  - ✅ Z-score外れ値除去を適用
 
-- [ ] **2.2** IAF計算の統合
-  - `paf.py` の Peak Alpha Frequency 計算ロジックを抽出
-  - `statistical_dataframe.create_statistical_dataframe()` に IAF時系列生成を追加
-  - 戻り値に `'iaf': iaf_series` を追加
-  - `segment_analysis.py` の `iaf_series` パラメータを不要に
+- [x] **2.2** `segment_analysis.py` の簡略化
+  - ✅ `calculate_segment_analysis()` の `iaf_series` パラメータを削除
+  - ✅ `statistical_df['iaf']` から自動取得するように変更
+  - ✅ バリデーションに `'iaf'` キーを追加
+  - ✅ docstring更新
 
-- [ ] **2.3** 統一的データ生成フローの確立
-  ```python
-  # 標準的な使い方
-  from lib import load_mind_monitor_csv, prepare_mne_raw, create_statistical_dataframe
+- [x] **2.3** `generate_report.py` の簡略化
+  - ✅ PAF時間推移からのIAF計算ロジックを削除（約30行削減）
+  - ✅ セグメント分析呼び出しから `iaf_series` 引数を削除
+  - ✅ IAF統計を `statistical_df` から直接取得
+  - ✅ 総合スコア計算のIAF変動係数取得を簡略化
 
-  # 1. CSV読み込み
-  df_clean = load_mind_monitor_csv(csv_path, warmup_minutes=1.0)
+- [x] **2.4** テストファイルの作成
+  - ✅ `tests/test_statistical_dataframe_iaf.py` を作成
+  - ✅ IAF統合の包括的なテストケースを実装
+  - ✅ 動作確認完了（実データでテスト成功）
 
-  # 2. MNE RawArray準備
-  mne_result = prepare_mne_raw(df_clean)
+#### 達成された効果
+- ✅ IAF計算箇所: 3箇所 → 1箇所（`statistical_dataframe.py`）
+- ✅ `generate_report.py`: 約30行削減
+- ✅ `segment_analysis.py`: パラメータ1個削減
+- ✅ バンドパワー計算の一貫性が保証される
+- ✅ 外れ値除去・統計処理が全解析で適用される
+- ✅ IAF計算が自動化され、セグメント分析が簡潔に
 
-  # 3. 統一的バンドパワー・比率・IAF生成
-  statistical_df = create_statistical_dataframe(
-      raw=mne_result['raw'],
-      segment_minutes=5,
-      warmup_minutes=1.0
-  )
-  # → statistical_df = {
-  #     'band_powers': DataFrame,
-  #     'band_ratios': DataFrame,
-  #     'spectral_entropy': DataFrame,
-  #     'iaf': Series,  # 新規追加
-  #     'statistics': DataFrame
-  # }
-  ```
+#### 新しいデータ生成フロー
+```python
+# 統一的な使い方
+from lib import load_mind_monitor_csv, prepare_mne_raw, create_statistical_dataframe
 
-- [ ] **2.4** 既存コードの移行
-  - `calculate_frontal_theta()` などで直接PSD計算している箇所を確認
-  - 可能な限り `statistical_df` から値を取得する方式に変更
-  - 互換性のため、旧方式も一時的に残す（deprecation warning）
+# 1. CSV読み込み
+df_clean = load_mind_monitor_csv(csv_path, warmup_minutes=1.0)
 
-#### 期待される効果
-- バンドパワー計算の一貫性が保証される
-- 外れ値除去・統計処理が全解析で適用される
-- IAF計算が自動化され、セグメント分析が簡潔になる
+# 2. MNE RawArray準備
+mne_result = prepare_mne_raw(df_clean)
+
+# 3. 統一的バンドパワー・比率・IAF生成
+statistical_df = create_statistical_dataframe(
+    raw=mne_result['raw'],
+    segment_minutes=5,
+    warmup_minutes=1.0
+)
+# → statistical_df = {
+#     'band_powers': DataFrame,       # Bels単位
+#     'band_ratios': DataFrame,       # Bels差分 + 実数値
+#     'spectral_entropy': DataFrame,  # 正規化済み
+#     'iaf': Series,                  # Hz単位（新規追加）
+#     'statistics': DataFrame         # 全統計量
+# }
+```
 
 ---
 
