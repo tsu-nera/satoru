@@ -103,11 +103,14 @@ def calculate_segment_analysis(
     df_cleanのバンドパワー列は使用されません。
     """
     # Statistical DFのバリデーション
-    if 'band_powers' not in statistical_df or 'band_ratios' not in statistical_df:
-        raise ValueError('statistical_dfには"band_powers"と"band_ratios"キーが必要です。')
+    required_keys = ['band_powers', 'band_ratios', 'spectral_entropy']
+    missing_keys = [k for k in required_keys if k not in statistical_df]
+    if missing_keys:
+        raise ValueError(f'statistical_dfには{missing_keys}キーが必要です。')
 
     band_powers_df = statistical_df['band_powers']
     band_ratios_df = statistical_df['band_ratios']
+    se_df = statistical_df['spectral_entropy']
 
     if 'TimeStamp' not in df_clean.columns:
         raise ValueError('TimeStamp列が存在しません。')
@@ -168,6 +171,9 @@ def calculate_segment_analysis(
         alpha_beta_ratio = band_ratios_df.loc[start, 'alpha_beta'] if start in band_ratios_df.index else np.nan
         beta_theta_ratio = band_ratios_df.loc[start, 'beta_theta'] if start in band_ratios_df.index else np.nan
 
+        # Spectral Entropy
+        se_mean = se_df.loc[start, 'spectral_entropy'] if start in se_df.index else np.nan
+
         # Fmθ平均の計算（外れ値除去）
         fm_slice = fmtheta_series.loc[(fmtheta_series.index >= start) & (fmtheta_series.index < end)]
         fm_clean = fm_slice.dropna()
@@ -194,7 +200,7 @@ def calculate_segment_analysis(
         # 総合スコア計算（利用可能な指標のみ）
         segment_score_result = calculate_meditation_score(
             fmtheta=fm_mean,
-            spectral_entropy=None,  # セグメント単位では未対応
+            spectral_entropy=se_mean,  # Statistical DFから取得
             theta_alpha_ratio=theta_alpha_ratio_bels,  # Bels差分を使用（総合スコア計算用）
             faa=None,  # セグメント単位では未対応
             alpha_beta_ratio=alpha_beta_ratio,  # 実数値を使用
@@ -208,6 +214,7 @@ def calculate_segment_analysis(
             'segment_start': start,
             'segment_end': end,
             'fmtheta_mean': fm_mean,
+            'spectral_entropy': se_mean,
             'iaf_mean': iaf_mean,
             'alpha_mean': alpha_mean,
             'beta_mean': beta_mean,
@@ -255,6 +262,7 @@ def calculate_segment_analysis(
             'No.': int(row['segment_index']),
             '時間帯': row['label'],
             'Fmθ平均 (μV²)': row['fmtheta_mean'],
+            'SE': row['spectral_entropy'],
             'IAF平均 (Hz)': row['iaf_mean'],
             'Alpha (Bels)': row['alpha_mean'],
             'Beta (Bels)': row['beta_mean'],

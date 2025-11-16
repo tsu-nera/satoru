@@ -13,6 +13,9 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+# Spectral Entropy計算関数をインポート
+from .sensors.eeg.spectral_entropy import _calculate_shannon_entropy
+
 if TYPE_CHECKING:
     import mne
 
@@ -52,9 +55,10 @@ def create_statistical_dataframe(
     -------
     dict
         {
-            'band_powers': DataFrame,  # セグメント別バンドパワー時系列（Bels）
-            'band_ratios': DataFrame,  # セグメント別バンド比率時系列
-            'statistics': DataFrame    # 統計サマリー（縦長形式）
+            'band_powers': DataFrame,      # セグメント別バンドパワー時系列（Bels）
+            'band_ratios': DataFrame,      # セグメント別バンド比率時系列
+            'spectral_entropy': DataFrame, # セグメント別Spectral Entropy時系列（正規化済み）
+            'statistics': DataFrame        # 統計サマリー（縦長形式）
         }
 
     Notes
@@ -137,6 +141,29 @@ def create_statistical_dataframe(
     # DataFrameに変換
     band_powers_df = pd.DataFrame(band_powers_dict, index=timestamps)
 
+    # Spectral Entropy計算（全チャネル平均）
+    # 周波数範囲でマスク（1-40Hz）
+    freq_range = (1.0, 40.0)
+    freq_mask = (freqs >= freq_range[0]) & (freqs <= freq_range[1])
+
+    se_values = []
+    for epoch_idx in range(len(epochs)):
+        # このエポックのPSD (n_channels, n_freqs)
+        psd_epoch = psds[epoch_idx]
+
+        # 全チャネルの平均PSD
+        psd_avg = psd_epoch.mean(axis=0)
+
+        # 周波数範囲でマスク
+        psd_masked = psd_avg[freq_mask]
+
+        # Shannon Entropy計算（spectral_entropy.pyの関数を使用）
+        se = _calculate_shannon_entropy(psd_masked, normalize=True)
+        se_values.append(se)
+
+    # DataFrameに変換
+    se_df = pd.DataFrame({'spectral_entropy': se_values}, index=timestamps)
+
     # バンド比率計算
     ratios_dict = {}
 
@@ -203,6 +230,40 @@ def create_statistical_dataframe(
             },
         ])
 
+    # Spectral Entropy統計
+    se_values_clean = se_df['spectral_entropy'].dropna()
+    if len(se_values_clean) > 0:
+        # Z-score外れ値除去（閾値3.0）
+        if len(se_values_clean) > 3:
+            z_scores = np.abs(stats.zscore(se_values_clean))
+            filtered_se = se_values_clean[z_scores < 3.0]
+            if len(filtered_se) > 0:
+                se_values_clean = filtered_se
+
+        statistics_rows.extend([
+            {
+                'Category': 'SpectralEntropy',
+                'Metric': 'spectral_entropy_Mean',
+                'Value': se_values_clean.mean(),
+                'Unit': 'normalized',
+                'DisplayName': 'Spectral Entropy平均 (集中度)',
+            },
+            {
+                'Category': 'SpectralEntropy',
+                'Metric': 'spectral_entropy_Median',
+                'Value': se_values_clean.median(),
+                'Unit': 'normalized',
+                'DisplayName': 'Spectral Entropy中央値 (集中度)',
+            },
+            {
+                'Category': 'SpectralEntropy',
+                'Metric': 'spectral_entropy_Std',
+                'Value': se_values_clean.std(),
+                'Unit': 'normalized',
+                'DisplayName': 'Spectral Entropy標準偏差 (集中度)',
+            },
+        ])
+
     # バンド比率統計
     ratio_configs = [
         ('alpha_beta', 'α/β比', 'ratio', 'リラックス度'),
@@ -256,6 +317,7 @@ def create_statistical_dataframe(
     return {
         'band_powers': band_powers_df,
         'band_ratios': band_ratios_df,
+        'spectral_entropy': se_df,
         'statistics': statistics_df,
     }
 
