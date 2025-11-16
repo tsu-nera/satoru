@@ -127,6 +127,14 @@ def calculate_frontal_theta(
     )
     power_series = power_df.mean(axis=1)
 
+    # 外れ値除去（90パーセンタイルでクリップ）
+    # 256Hzの高サンプリングレートでは極端な値がより顕著に現れるため必須
+    # Z-scoreではなくパーセンタイルベースの方が、装着直後の集中的なスパイクに効果的
+    # 90パーセンタイル: 上位10%の極端な値を除去（装着直後の不安定な信号を積極的に除外）
+    upper_bound = power_series.quantile(0.90)
+    lower_bound = 0.0  # パワーは非負
+    power_series = power_series.clip(lower=lower_bound, upper=upper_bound)
+
     if resample_interval:
         power_series = power_series.resample(resample_interval).median()
 

@@ -10,13 +10,10 @@ from .constants import FREQ_BANDS, DEFAULT_SFREQ
 from .preprocessing import prepare_mne_raw, filter_eeg_quality
 
 # 周波数解析
-from .frequency import calculate_psd, calculate_spectrogram
+from .frequency import calculate_psd, calculate_spectrogram, calculate_spectrogram_all_channels
 
 # 統計
 from .statistics import calculate_band_statistics, calculate_hsi_statistics
-
-# バンド比率
-from .ratios import calculate_band_ratios
 
 # PAF解析
 from .paf import calculate_paf, calculate_paf_time_evolution
@@ -27,9 +24,11 @@ from .visualization import (
     plot_psd,
     plot_psd_time_series,
     plot_spectrogram,
+    plot_spectrogram_grid,
     plot_band_ratios,
     plot_paf,
-    plot_paf_time_evolution
+    plot_paf_time_evolution,
+    plot_raw_preview,
 )
 
 # ユーティリティ
@@ -67,11 +66,10 @@ __all__ = [
     # 周波数解析
     'calculate_psd',
     'calculate_spectrogram',
+    'calculate_spectrogram_all_channels',
     # 統計
     'calculate_band_statistics',
     'calculate_hsi_statistics',
-    # バンド比率
-    'calculate_band_ratios',
     # PAF解析
     'calculate_paf',
     'calculate_paf_time_evolution',
@@ -80,9 +78,11 @@ __all__ = [
     'plot_psd',
     'plot_psd_time_series',
     'plot_spectrogram',
+    'plot_spectrogram_grid',
     'plot_band_ratios',
     'plot_paf',
     'plot_paf_time_evolution',
+    'plot_raw_preview',
     # ユーティリティ
     'get_psd_peak_frequencies',
     # Fmθ解析

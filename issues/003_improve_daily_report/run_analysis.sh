@@ -12,18 +12,18 @@ PROJECT_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # 仮想環境のチェック
-if [ ! -d "$PROJECT_ROOT/titan" ]; then
-    echo "エラー: 仮想環境 'titan' が見つかりません"
+if [ ! -d "$PROJECT_ROOT/venv" ]; then
+    echo "エラー: 仮想環境 'venv' が見つかりません"
     echo "以下のコマンドでセットアップしてください:"
     echo "  cd $PROJECT_ROOT"
-    echo "  python3 -m venv titan"
-    echo "  source titan/bin/activate"
+    echo "  python3 -m venv venv"
+    echo "  source venv/bin/activate"
     echo "  pip install -r requirements.txt"
     exit 1
 fi
 
 # 仮想環境の有効化
-source "$PROJECT_ROOT/titan/bin/activate"
+source "$PROJECT_ROOT/venv/bin/activate"
 
 # CSVファイルパスの取得
 if [ $# -eq 0 ]; then

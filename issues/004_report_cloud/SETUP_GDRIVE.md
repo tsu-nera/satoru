@@ -33,13 +33,13 @@ GitHub ActionsでGoogle Driveのファイルを読み取るために、以下を
 1. 画面上部のプロジェクト選択ドロップダウンをクリック
 2. 「新しいプロジェクト」ボタンをクリック
 3. プロジェクト情報を入力:
-   - **プロジェクト名**: `titan-eeg-analysis` (例)
+   - **プロジェクト名**: `satoru-eeg-analysis` (例)
    - **組織**: なし（個人利用）
    - **場所**: 組織なし
 4. 「作成」ボタンをクリック
 
 **確認事項:**
-- プロジェクトIDが自動生成される（例: `titan-eeg-analysis-123456`）
+- プロジェクトIDが自動生成される（例: `satoru-eeg-analysis-123456`）
 - このIDは後で使わないが、念のためメモ
 
 ---
@@ -97,7 +97,7 @@ GitHub ActionsでGoogle Driveのファイルを読み取るために、以下を
 
 **確認事項:**
 - サービスアカウントが作成され、メールアドレスが表示される
-- 例: `github-actions-drive-reader@titan-eeg-analysis-123456.iam.gserviceaccount.com`
+- 例: `github-actions-drive-reader@satoru-eeg-analysis-123456.iam.gserviceaccount.com`
 - **このメールアドレスをコピーして保存**（後で使用）
 
 ---
@@ -114,7 +114,7 @@ GitHub ActionsでGoogle Driveのファイルを読み取るために、以下を
 
 **結果:**
 - JSONファイルが自動ダウンロードされる
-- ファイル名例: `titan-eeg-analysis-123456-a1b2c3d4e5f6.json`
+- ファイル名例: `satoru-eeg-analysis-123456-a1b2c3d4e5f6.json`
 
 ### 4.2 JSONファイルの内容確認
 
@@ -123,10 +123,10 @@ GitHub ActionsでGoogle Driveのファイルを読み取るために、以下を
 ```json
 {
   "type": "service_account",
-  "project_id": "titan-eeg-analysis-123456",
+  "project_id": "satoru-eeg-analysis-123456",
   "private_key_id": "a1b2c3d4e5f6...",
   "private_key": "-----BEGIN PRIVATE KEY-----\nMIIE...\n-----END PRIVATE KEY-----\n",
-  "client_email": "github-actions-drive-reader@titan-eeg-analysis-123456.iam.gserviceaccount.com",
+  "client_email": "github-actions-drive-reader@satoru-eeg-analysis-123456.iam.gserviceaccount.com",
   "client_id": "123456789012345678901",
   "auth_uri": "https://accounts.google.com/o/oauth2/auth",
   "token_uri": "https://oauth2.googleapis.com/token",
@@ -164,7 +164,7 @@ GitHub ActionsでGoogle Driveのファイルを読み取るために、以下を
 
 1. フォルダを右クリック →「共有」を選択
 2. 「ユーザーやグループを追加」欄に、Step 3.2でコピーした**サービスアカウントのメールアドレス**を貼り付け
-   - 例: `github-actions-drive-reader@titan-eeg-analysis-123456.iam.gserviceaccount.com`
+   - 例: `github-actions-drive-reader@satoru-eeg-analysis-123456.iam.gserviceaccount.com`
 3. 権限を「閲覧者」に設定（編集権限は不要）
 4. 「通知を送信」のチェックを外す（サービスアカウントはメール受信しない）
 5. 「送信」ボタンをクリック
@@ -179,7 +179,7 @@ GitHub ActionsでGoogle Driveのファイルを読み取るために、以下を
 
 ### 6.1 GitHub リポジトリのSettings へ
 
-1. ブラウザで GitHubリポジトリ (`titan2`) にアクセス
+1. ブラウザで GitHubリポジトリ (`satoru`) にアクセス
 2. 上部タブの「Settings」をクリック
 3. 左サイドバーの「Secrets and variables」→「Actions」を選択
 
@@ -219,7 +219,7 @@ GitHub ActionsでGoogle Driveのファイルを読み取るために、以下を
 
 ```bash
 # 仮想環境有効化
-source titan/bin/activate
+source venv/bin/activate
 
 # 依存関係インストール
 pip install google-auth google-api-python-client

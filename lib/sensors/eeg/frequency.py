@@ -5,6 +5,7 @@
 import warnings
 import numpy as np
 import mne
+from mne.time_frequency import AverageTFRArray
 
 # Warningsとログを抑制
 warnings.filterwarnings('ignore')
@@ -121,9 +122,57 @@ def calculate_spectrogram(raw, freqs=None, channel='RAW_TP9', fmax=50.0):
     # V² を μV² へ変換
     power_uv = power[0, 0] * 1e12
 
+    tfr_info = mne.create_info([channel], sfreq, ch_types=['eeg'])
+    tfr_data = power_uv[np.newaxis, :, :]
+    tfr_object = AverageTFRArray(
+        info=tfr_info,
+        data=tfr_data,
+        times=raw.times,
+        freqs=freqs,
+        nave=1,
+        method='morlet'
+    )
+
     return {
         'power': power_uv,
         'freqs': freqs,
         'times': raw.times,
-        'channel': channel
+        'channel': channel,
+        'tfr': tfr_object
     }
+
+
+def calculate_spectrogram_all_channels(raw, freqs=None, fmax=50.0):
+    """
+    全チャネルのスペクトログラムを計算
+
+    Parameters
+    ----------
+    raw : mne.io.RawArray
+        MNE RawArrayオブジェクト
+    freqs : np.ndarray, optional
+        周波数配列（Noneの場合は自動生成）
+    fmax : float
+        最大周波数（Hz）
+
+    Returns
+    -------
+    results : dict
+        {
+            'RAW_TP9': tfr_dict,
+            'RAW_AF7': tfr_dict,
+            'RAW_AF8': tfr_dict,
+            'RAW_TP10': tfr_dict
+        }
+        各チャネルのスペクトログラム結果の辞書
+    """
+    channels = ['RAW_TP9', 'RAW_AF7', 'RAW_AF8', 'RAW_TP10']
+    results = {}
+
+    for channel in channels:
+        if channel in raw.ch_names:
+            tfr_dict = calculate_spectrogram(raw, freqs=freqs, channel=channel, fmax=fmax)
+            if tfr_dict is not None:
+                results[channel] = tfr_dict
+
+    return results

@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Muse脳波データ基本分析 実行スクリプト
+# Muse脳波データ基本分析 実行スクリプト (Issue 005用)
 #
 # Usage: ./run_analysis.sh [CSV_FILE_PATH]
 #
@@ -36,7 +36,7 @@ if [ $# -eq 0 ]; then
         echo "Usage: $0 [CSV_FILE_PATH]"
         echo ""
         echo "例："
-        echo "  $0 data/mindMonitor_2025-10-15--17-08-15.csv"
+        echo "  $0 data/mindMonitor_2025-11-04--16-59-52.csv"
         exit 1
     fi
 
@@ -59,8 +59,8 @@ echo "データファイル: $(basename "$CSV_FILE")"
 echo "出力先: $SCRIPT_DIR"
 echo ""
 
-cd "$SCRIPT_DIR"
-python generate_report.py --data "$CSV_FILE" --output .
+# プロジェクトルートの共通スクリプトを使用
+python "$PROJECT_ROOT/scripts/generate_report.py" --data "$CSV_FILE" --output "$SCRIPT_DIR"
 
 echo ""
 echo "============================================================"
@@ -72,7 +72,7 @@ echo "  - REPORT.md (マークダウンレポート)"
 echo "  - img/*.png (グラフ画像)"
 echo ""
 echo "レポートを確認:"
-echo "  cat REPORT.md"
+echo "  cat $SCRIPT_DIR/REPORT.md"
 echo "  または"
 echo "  マークダウンビューアで REPORT.md を開く"
 echo ""

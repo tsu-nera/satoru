@@ -18,6 +18,7 @@ from .sensors.eeg.frontal_theta import (
     calculate_frontal_theta,
 )
 from .sensors.eeg.preprocessing import filter_eeg_quality
+from .statistical_dataframe import get_band_power_at_time, get_band_ratio_at_time
 
 if TYPE_CHECKING:
     import mne
@@ -67,8 +68,8 @@ def _min_max_normalize(series: pd.Series) -> pd.Series:
 def calculate_segment_analysis(
     df_clean: pd.DataFrame,
     fmtheta_series: pd.Series,
+    statistical_df: Dict[str, pd.DataFrame],
     segment_minutes: int = 5,
-    band_means: Optional[Dict[str, pd.Series]] = None,
     iaf_series: Optional[pd.Series] = None,
     warmup_minutes: float = 0.0,
 ) -> SegmentAnalysisResult:
@@ -81,11 +82,11 @@ def calculate_segment_analysis(
         前処理済みMind Monitor形式のデータフレーム。
     fmtheta_series : pd.Series
         Fmθの時系列データ（indexはタイムスタンプ）。
+    statistical_df : dict
+        create_statistical_dataframe()が返す統計DataFrame辞書。
+        必須キー: 'band_powers', 'band_ratios'
     segment_minutes : int, default 5
         セグメント長（分単位）。
-    band_means : dict of pd.Series, optional
-        事前計算されたバンド平均値の辞書 {'Alpha': series, 'Beta': series, 'Theta': series}。
-        未指定の場合は内部で計算する。
     iaf_series : pd.Series, optional
         IAF（Individual Alpha Frequency）の時系列データ（indexはタイムスタンプ）。
     warmup_minutes : float, default 0.0
@@ -95,7 +96,22 @@ def calculate_segment_analysis(
     -------
     SegmentAnalysisResult
         集計表・正規化値・メタデータを含む時間セグメント分析結果。
+
+    Notes
+    -----
+    バンドパワーと比率はstatistical_dfから取得されます（MNE Epochsベース）。
+    df_cleanのバンドパワー列は使用されません。
     """
+    # Statistical DFのバリデーション
+    required_keys = ['band_powers', 'band_ratios', 'spectral_entropy']
+    missing_keys = [k for k in required_keys if k not in statistical_df]
+    if missing_keys:
+        raise ValueError(f'statistical_dfには{missing_keys}キーが必要です。')
+
+    band_powers_df = statistical_df['band_powers']
+    band_ratios_df = statistical_df['band_ratios']
+    se_df = statistical_df['spectral_entropy']
+
     if 'TimeStamp' not in df_clean.columns:
         raise ValueError('TimeStamp列が存在しません。')
     if segment_minutes <= 0:
@@ -117,7 +133,6 @@ def calculate_segment_analysis(
     if df_clean.empty:
         raise ValueError(f'ウォームアップ期間（{warmup_minutes}分）除外後、有効なデータがありません。')
 
-    freq_str = f'{int(segment_minutes)}T'
     segment_delta = pd.Timedelta(minutes=segment_minutes)
 
     # Fmθ時系列（ウォームアップ期間を除外）
@@ -129,43 +144,40 @@ def calculate_segment_analysis(
         iaf_series = iaf_series.sort_index()
         iaf_series = iaf_series[iaf_series.index >= session_start]
 
-    # バンド別の平均値（外部から渡されない場合は内部で計算）
-    if band_means is None:
-        band_series: Dict[str, pd.Series] = {}
-        for band in ('Alpha', 'Beta', 'Theta'):
-            cols = [c for c in df_clean.columns if c.startswith(f'{band}_')]
-            if not cols:
-                band_series[band] = pd.Series(dtype=float)
-                continue
-            numeric = df_clean[cols].apply(pd.to_numeric, errors='coerce')
-            band_mean = numeric.mean(axis=1)
-            band_mean.index = df_clean['TimeStamp']
-            band_series[band] = band_mean.sort_index()
-    else:
-        band_series = band_means
-
-    # セグメント境界の生成
-    segment_starts = []
-    current = session_start
-    while current < session_end:
-        segment_starts.append(current)
-        current += segment_delta
+    # セグメント開始時刻のリストを取得（band_powersから）
+    # band_powersのindexがセグメント開始タイムスタンプ
+    segment_starts = list(band_powers_df.index)
     if not segment_starts:
-        segment_starts = [session_start]
+        raise ValueError('Statistical DFにセグメントデータがありません。')
 
     records = []
-    comments = []
 
     for idx, start in enumerate(segment_starts, start=1):
-        end = min(start + segment_delta, session_end)
-        clean_mask = (df_clean['TimeStamp'] >= start) & (df_clean['TimeStamp'] < end)
-        clean_slice_exists = clean_mask.any()
+        end = start + segment_delta
 
-        fm_slice = fmtheta_series.loc[(fmtheta_series.index >= start) & (fmtheta_series.index < end)]
+        # Statistical DFから直接値を取得（セグメント化済み）
+        # バンドパワー（Bels）
+        alpha_mean = band_powers_df.loc[start, 'Alpha'] if start in band_powers_df.index else np.nan
+        beta_mean = band_powers_df.loc[start, 'Beta'] if start in band_powers_df.index else np.nan
+        theta_mean = band_powers_df.loc[start, 'Theta'] if start in band_powers_df.index else np.nan
+
+        # バンド比率（対数スケール: Bels差分）
+        theta_alpha_ratio_bels = band_ratios_df.loc[start, 'theta_alpha_bels'] if start in band_ratios_df.index else np.nan
+        alpha_beta_ratio_bels = band_ratios_df.loc[start, 'alpha_beta_bels'] if start in band_ratios_df.index else np.nan
+        beta_theta_ratio_bels = band_ratios_df.loc[start, 'beta_theta_bels'] if start in band_ratios_df.index else np.nan
+
+        # バンド比率（実数値）
+        theta_alpha_ratio = band_ratios_df.loc[start, 'theta_alpha'] if start in band_ratios_df.index else np.nan
+        alpha_beta_ratio = band_ratios_df.loc[start, 'alpha_beta'] if start in band_ratios_df.index else np.nan
+        beta_theta_ratio = band_ratios_df.loc[start, 'beta_theta'] if start in band_ratios_df.index else np.nan
+
+        # Spectral Entropy
+        se_mean = se_df.loc[start, 'spectral_entropy'] if start in se_df.index else np.nan
 
         # Fmθ平均の計算（外れ値除去）
+        fm_slice = fmtheta_series.loc[(fmtheta_series.index >= start) & (fmtheta_series.index < end)]
         fm_clean = fm_slice.dropna()
-        if len(fm_clean) > 3:  # 最低限のサンプル数が必要
+        if len(fm_clean) > 3:
             z_scores = np.abs(stats.zscore(fm_clean))
             fm_filtered = fm_clean[z_scores < 3.0]
             fm_mean = fm_filtered.mean() if len(fm_filtered) > 0 else fm_clean.mean()
@@ -174,73 +186,45 @@ def calculate_segment_analysis(
 
         # IAF平均（渡されている場合）
         iaf_mean = np.nan
+        iaf_cv = np.nan
         if iaf_series is not None:
             iaf_slice = iaf_series.loc[(iaf_series.index >= start) & (iaf_series.index < end)]
             iaf_mean = iaf_slice.mean()
-
-        def _segment_mean(series: pd.Series) -> float:
-            if series.empty:
-                return np.nan
-            window = series.loc[(series.index >= start) & (series.index < end)]
-            return window.mean()
-
-        alpha_mean = _segment_mean(band_series['Alpha'])
-        beta_mean = _segment_mean(band_series['Beta'])
-        theta_mean = _segment_mean(band_series['Theta'])
-
-        # θ/α比: 対数値（Bels）なので引き算でlog(theta/alpha)を計算
-        theta_alpha_ratio = np.nan
-        if pd.notna(alpha_mean) and pd.notna(theta_mean):
-            theta_alpha_ratio = theta_mean - alpha_mean
-
-        # α/β比: 対数値（Bels）なので引き算でlog(alpha/beta)を計算
-        alpha_beta_ratio_log = np.nan
-        if pd.notna(alpha_mean) and pd.notna(beta_mean):
-            alpha_beta_ratio_log = alpha_mean - beta_mean
-            # 実数値に戻す（Belsから線形スケールへ）
-            alpha_beta_ratio = 10 ** alpha_beta_ratio_log
-        else:
-            alpha_beta_ratio = np.nan
-
-        # IAF変動係数
-        iaf_cv = np.nan
-        if iaf_series is not None and len(iaf_slice) > 1:
-            iaf_std = iaf_slice.std()
-            iaf_val = iaf_slice.mean()
-            if pd.notna(iaf_val) and iaf_val != 0:
-                iaf_cv = iaf_std / iaf_val
+            # IAF変動係数
+            if len(iaf_slice) > 1:
+                iaf_std = iaf_slice.std()
+                iaf_val = iaf_slice.mean()
+                if pd.notna(iaf_val) and iaf_val != 0:
+                    iaf_cv = iaf_std / iaf_val
 
         # 総合スコア計算（利用可能な指標のみ）
         segment_score_result = calculate_meditation_score(
             fmtheta=fm_mean,
-            spectral_entropy=None,  # セグメント単位では未対応
-            theta_alpha_ratio=theta_alpha_ratio,
+            spectral_entropy=se_mean,  # Statistical DFから取得
+            theta_alpha_ratio=theta_alpha_ratio_bels,  # Bels差分を使用（総合スコア計算用）
             faa=None,  # セグメント単位では未対応
-            alpha_beta_ratio=alpha_beta_ratio,
+            alpha_beta_ratio=alpha_beta_ratio,  # 実数値を使用
             iaf_cv=iaf_cv,
-            hsi_quality=None,  # セグメント単位では未対応（全体品質を使用するオプション）
+            hsi_quality=None,  # セグメント単位では未対応
         )
         meditation_score = segment_score_result['total_score']
-
-        clean_count = int(clean_mask.sum())
-
-        comment_parts = []
-        if not clean_slice_exists:
-            comment_parts.append('データ不足')
-        if fm_slice.dropna().empty:
-            comment_parts.append('Fmθデータ不足')
-        comments.append(' / '.join(comment_parts) if comment_parts else '')
 
         records.append({
             'segment_index': idx,
             'segment_start': start,
             'segment_end': end,
             'fmtheta_mean': fm_mean,
+            'spectral_entropy': se_mean,
             'iaf_mean': iaf_mean,
             'alpha_mean': alpha_mean,
             'beta_mean': beta_mean,
             'theta_mean': theta_mean,
             'theta_alpha_ratio': theta_alpha_ratio,
+            'theta_alpha_ratio_bels': theta_alpha_ratio_bels,
+            'alpha_beta_ratio': alpha_beta_ratio,
+            'alpha_beta_ratio_bels': alpha_beta_ratio_bels,
+            'beta_theta_ratio': beta_theta_ratio,
+            'beta_theta_ratio_bels': beta_theta_ratio_bels,
             'meditation_score': meditation_score,
         })
 
@@ -271,17 +255,20 @@ def calculate_segment_analysis(
         peak_idx = int(peak_score.idxmax())
 
     # 表形式（日本語ラベル）
+    # 注: バンド比率はBels形式のみ表示（実数値は不安定で解釈困難なため）
     display_rows = []
-    for (idx, row), comment in zip(segment_frame.iterrows(), comments):
+    for idx, row in segment_frame.iterrows():
         display_rows.append({
-            'セグメント': f"セグメント{int(row['segment_index'])}",
+            'No.': int(row['segment_index']),
             '時間帯': row['label'],
             'Fmθ平均 (μV²)': row['fmtheta_mean'],
+            'SE': row['spectral_entropy'],
             'IAF平均 (Hz)': row['iaf_mean'],
-            'Alpha平均 (Bels)': row['alpha_mean'],
-            'Beta平均 (Bels)': row['beta_mean'],
-            'θ/α比 (Bels)': row['theta_alpha_ratio'],
-            '備考': comment,
+            'Alpha (Bels)': row['alpha_mean'],
+            'Beta (Bels)': row['beta_mean'],
+            'θ/α比 (Bels)': row['theta_alpha_ratio_bels'],
+            'α/β比 (Bels)': row['alpha_beta_ratio_bels'],
+            'β/θ比 (Bels)': row['beta_theta_ratio_bels'],
             'ピーク': '★' if (peak_idx is not None and int(row['segment_index']) == peak_idx) else '',
         })
 
@@ -342,7 +329,7 @@ def plot_segment_comparison(
         'fmtheta_mean': 'Fmθ',
         'alpha_mean': 'Alpha',
         'beta_mean': 'Beta',
-        'theta_alpha_ratio': 'θ/α比',
+        'theta_alpha_ratio': 'θ/α',
     }
     colors = {
         'fmtheta_mean': '#1f77b4',
@@ -384,9 +371,9 @@ def plot_segment_comparison(
     ax.set_xticks(x_positions)
     ax.set_xticklabels(xtick_labels, rotation=30, ha='right')
     ax.set_ylim(0.0, 1.05)
-    ax.set_ylabel('正規化スコア (0-1)')
-    ax.set_xlabel('時間セグメント')
-    ax.set_title(title or '時間セグメント別主要指標', fontsize=14, fontweight='bold')
+    ax.set_ylabel('Normalized Score (0-1)')
+    ax.set_xlabel('Time Segment')
+    ax.set_title(title or 'Key Metrics by Time Segment', fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.legend(loc='upper left', bbox_to_anchor=(1.02, 1.0))
     fig.tight_layout()

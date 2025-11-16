@@ -33,7 +33,7 @@ deprecatedなノートブック（`@_deprecated/notes/integrated_physiological_a
 ### 1. 仮想環境を有効化
 
 ```bash
-source titan/bin/activate
+source venv/bin/activate
 ```
 
 ### 2. レポート生成

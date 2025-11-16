@@ -7,9 +7,9 @@
 ## Codex-specific Settings
 
 ### Virtual Environment
-Ensure the `titan` virtual environment is activated:
+Ensure the `venv` virtual environment is activated:
 ```bash
-source titan/bin/activate
+source venv/bin/activate
 ```
 
 ---
@@ -19,7 +19,7 @@ source titan/bin/activate
 ### Common Commands
 ```bash
 # Activate environment
-source titan/bin/activate
+source venv/bin/activate
 
 # Start Jupyter Lab
 jupyter lab

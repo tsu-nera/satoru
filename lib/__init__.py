@@ -37,16 +37,18 @@ from .sensors.eeg import (
     filter_eeg_quality,
     calculate_psd,
     calculate_spectrogram,
-    calculate_band_ratios,
+    calculate_spectrogram_all_channels,
     calculate_paf,
     calculate_paf_time_evolution,
     plot_band_power_time_series,
     plot_psd,
     plot_psd_time_series,
     plot_spectrogram,
+    plot_spectrogram_grid,
     plot_band_ratios,
     plot_paf,
     plot_paf_time_evolution,
+    plot_raw_preview,
     get_psd_peak_frequencies,
     FREQ_BANDS,
     FrontalThetaResult,
@@ -61,12 +63,18 @@ from .sensors.eeg import (
     plot_spectral_entropy,
 )
 
-from .eeg import (
+from .segment_analysis import (
     SegmentAnalysisResult,
     calculate_segment_analysis,
     plot_segment_comparison,
     MEDITATION_SCORE_WEIGHTS,
     calculate_meditation_score,
+)
+
+from .session_summary import (
+    SessionSummaryResult,
+    generate_session_summary,
+    extract_metric_value,
 )
 
 __all__ = [
@@ -98,16 +106,18 @@ __all__ = [
     'filter_eeg_quality',
     'calculate_psd',
     'calculate_spectrogram',
-    'calculate_band_ratios',
+    'calculate_spectrogram_all_channels',
     'calculate_paf',
     'calculate_paf_time_evolution',
     'plot_band_power_time_series',
     'plot_psd',
     'plot_psd_time_series',
     'plot_spectrogram',
+    'plot_spectrogram_grid',
     'plot_band_ratios',
     'plot_paf',
     'plot_paf_time_evolution',
+    'plot_raw_preview',
     'get_psd_peak_frequencies',
     'FREQ_BANDS',
     'FrontalThetaResult',
@@ -126,4 +136,8 @@ __all__ = [
     'plot_segment_comparison',
     'MEDITATION_SCORE_WEIGHTS',
     'calculate_meditation_score',
+    # session summary
+    'SessionSummaryResult',
+    'generate_session_summary',
+    'extract_metric_value',
 ]

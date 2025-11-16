@@ -18,7 +18,7 @@
 
 **現在のファイル構造**:
 ```
-titan2/
+satoru/
 ├── data/
 │   ├── mindMonitor_2025-10-15--17-08-15_*.csv  (97MB)
 │   └── mindMonitor_2025-10-31--16-04-01_*.csv  (197MB)

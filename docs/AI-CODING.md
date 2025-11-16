@@ -13,15 +13,15 @@ Muse Headband（脳波測定デバイス）から取得したデータの解析�
 ## Python 仮想環境
 
 ### 環境名
-- `titan`
+- `venv`
 
 ### セットアップ手順
 ```bash
 # 環境の作成
-python3 -m venv titan
+python3 -m venv venv
 
 # 有効化 (WSL/Linux)
-source titan/bin/activate
+source venv/bin/activate
 
 # パッケージインストール
 pip install -r requirements.txt
@@ -89,13 +89,47 @@ satoru/
 ├── docs/              # ドキュメント
 ├── notebooks/         # Jupyter notebooks
 ├── scripts/           # Python スクリプト
-└── titan/             # Python 仮想環境
+└── venv/              # Python 仮想環境
 ```
 
 ### 命名規則
 - スクリプト名: `snake_case.py`
 - クラス名: `PascalCase`
 - 関数・変数名: `snake_case`
+
+### DataFrameのカラム名規約
+
+**すべての統計情報DataFrameは英語カラム名を使用すること**
+
+#### 基本構造
+統計情報を格納するDataFrameは以下の標準形式を使用：
+```python
+pd.DataFrame([
+    {'Metric': 'Mean', 'Value': float, 'Unit': 'μV²'},
+    {'Metric': 'Median', 'Value': float, 'Unit': 'μV²'},
+    {'Metric': 'Std Dev', 'Value': float, 'Unit': 'μV²'},
+])
+```
+
+#### カラム名
+- **禁止**: `'指標'`, `'値'`, `'単位'`, `'平均値'`, `'中央値'` などの日本語カラム名
+- **推奨**: `'Metric'`, `'Value'`, `'Unit'`, `'Mean'`, `'Median'` などの英語カラム名
+
+#### メトリック名
+| 日本語（旧） | 英語（新） |
+|------------|-----------|
+| '平均' | 'Mean' |
+| '中央値' | 'Median' |
+| '標準偏差' | 'Std Dev' |
+| '前半平均' | 'First Half Mean' |
+| '後半平均' | 'Second Half Mean' |
+| '変化率 (後半/前半)' | 'Change Rate (2nd/1st)' |
+
+#### 理由
+- コードの一貫性向上
+- 国際化対応の容易化
+- Pandas/scikit-learnエコシステムとの親和性
+- 将来的なAPI公開やデータ共有を考慮
 
 ---
 
@@ -133,6 +167,40 @@ satoru/
   - GitHub Actionsなどの環境で日本語フォントが利用できないため
   - matplotlibのデフォルトフォント（英語対応）を使用
 - **理由**: 国際的な再利用性の確保、CI/CD環境での互換性維持
+
+---
+
+## issues/ ディレクトリの取り扱い
+
+### 基本方針
+
+`issues/` ディレクトリは各 issue の作業領域であり、**明示的な指示がない限りリファクタリングや修正を行わない**こと。
+
+### ルール
+
+1. **読み取り専用として扱う**
+   - コード参照、仕様確認、構造理解のための読み取りは可
+   - 修正・リファクタリングは明示的に指示された場合のみ実施
+
+2. **修正が許可される場合**
+   - ユーザーが明示的に「issues/XXX を修正して」と指示した場合
+   - プロジェクト全体に影響する変更（例: 仮想環境名の変更）でユーザーの承認がある場合
+   - セキュリティ上の緊急対応が必要な場合
+
+3. **修正が禁止される例**
+   - コードスタイルの統一
+   - 変数名のリネーム
+   - コメントの追加・修正
+   - ファイル構造の変更
+   - 依存関係の更新
+
+### 理由
+
+- 各 issue は進行中の作業であり、意図しない変更により作業が混乱する可能性がある
+- issue 固有のコンテキストや判断基準が存在する場合がある
+- 過去の issue は歴史的な記録として保持する価値がある
+
+---
 
 ## 参考資料
 

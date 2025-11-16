@@ -110,6 +110,15 @@ def calculate_frontal_asymmetry(
         columns=channels,
     )
 
+    # 外れ値除去（各チャネル独立に90パーセンタイルでクリップ）
+    # 256Hzの高サンプリングレートでは極端な値がより顕著に現れるため必須
+    # Z-scoreではなくパーセンタイルベースの方が、装着直後の集中的なスパイクに効果的
+    # 90パーセンタイル: 上位10%の極端な値を除去（装着直後の不安定な信号を積極的に除外）
+    for ch in channels:
+        upper_bound = power_df[ch].quantile(0.90)
+        lower_bound = 0.0  # パワーは非負
+        power_df[ch] = power_df[ch].clip(lower=lower_bound, upper=upper_bound)
+
     # リサンプリング
     if resample_interval:
         power_df = power_df.resample(resample_interval).median()

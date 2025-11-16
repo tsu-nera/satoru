@@ -106,9 +106,9 @@ def calculate_spectral_entropy(
     # 統計DataFrameを作成
     stats_df = pd.DataFrame(
         [
-            {'指標': '平均SE', '値': mean_entropy, '単位': '正規化' if normalize else 'bits'},
-            {'指標': '中央値', '値': median_entropy, '単位': '正規化' if normalize else 'bits'},
-            {'指標': '標準偏差', '値': std_entropy, '単位': '正規化' if normalize else 'bits'},
+            {'Metric': 'Mean', 'Value': mean_entropy, 'Unit': 'normalized' if normalize else 'bits'},
+            {'Metric': 'Median', 'Value': median_entropy, 'Unit': 'normalized' if normalize else 'bits'},
+            {'Metric': 'Std Dev', 'Value': std_entropy, 'Unit': 'normalized' if normalize else 'bits'},
         ]
     )
 
@@ -200,12 +200,12 @@ def calculate_spectral_entropy_time_series(
     # 統計DataFrameを作成
     stats_df = pd.DataFrame(
         [
-            {'指標': '平均SE', '値': entropy_series.mean(), '単位': '正規化' if normalize else 'bits'},
-            {'指標': '中央値', '値': entropy_series.median(), '単位': '正規化' if normalize else 'bits'},
-            {'指標': '標準偏差', '値': entropy_series.std(), '単位': '正規化' if normalize else 'bits'},
-            {'指標': '前半平均', '値': first_mean, '単位': '正規化' if normalize else 'bits'},
-            {'指標': '後半平均', '値': second_mean, '単位': '正規化' if normalize else 'bits'},
-            {'指標': '変化率 (後半/前半)', '値': change_percent, '単位': '%'},
+            {'Metric': 'Mean', 'Value': entropy_series.mean(), 'Unit': 'normalized' if normalize else 'bits'},
+            {'Metric': 'Median', 'Value': entropy_series.median(), 'Unit': 'normalized' if normalize else 'bits'},
+            {'Metric': 'Std Dev', 'Value': entropy_series.std(), 'Unit': 'normalized' if normalize else 'bits'},
+            {'Metric': 'First Half Mean', 'Value': first_mean, 'Unit': 'normalized' if normalize else 'bits'},
+            {'Metric': 'Second Half Mean', 'Value': second_mean, 'Unit': 'normalized' if normalize else 'bits'},
+            {'Metric': 'Change Rate (2nd/1st)', 'Value': change_percent, 'Unit': '%'},
         ]
     )
 
@@ -254,12 +254,12 @@ def plot_spectral_entropy(
     metadata = result.metadata
 
     # プロットデータの準備
-    labels = stats_df['指標'].tolist()
-    values = stats_df['値'].tolist()
+    labels = stats_df['Metric'].tolist()
+    values = stats_df['Value'].tolist()
 
     # 変化率以外の値でプロット
-    plot_labels = [l for l in labels if '変化率' not in l]
-    plot_values = [v for l, v in zip(labels, values) if '変化率' not in l]
+    plot_labels = [l for l in labels if 'Change Rate' not in l]
+    plot_values = [v for l, v in zip(labels, values) if 'Change Rate' not in l]
 
     default_title = 'Spectral Entropy (SE)'
     plot_title = title or default_title
