@@ -4,7 +4,7 @@ Frontal Midline Theta (Fmθ) 解析モジュール
 AF7/AF8チャネルをMNE-Pythonの処理パイプラインでバンドパス→ヒルベルト包絡へ変換し、
 Fmθパワーの時系列と統計指標を算出する。
 
-パワーは Bels 単位（10*log10(μV²)）で出力される。
+パワーは dB 単位（10*log10(μV²)）で出力される。
 """
 
 from __future__ import annotations
@@ -89,7 +89,7 @@ def calculate_frontal_theta(
     -------
     FrontalThetaResult
         時系列・統計情報・メタデータを含む解析結果。
-        時系列パワーはBels単位（10*log10(μV²)）で出力される。
+        時系列パワーはdB単位（10*log10(μV²)）で出力される。
     """
     if channels is None:
         channels = ('RAW_AF7', 'RAW_AF8')
@@ -125,13 +125,13 @@ def calculate_frontal_theta(
     start_time = pd.to_datetime(df['TimeStamp'].min())
     time_index = start_time + pd.to_timedelta(times, unit='s')
 
-    # パワー計算: エンベロープの二乗をBelsに変換
+    # パワー計算: エンベロープの二乗をdBに変換
     power_uv2 = env_data_uv.T ** 2
     epsilon = 1e-12  # ゼロ除算防止
-    power_bels = 10 * np.log10(power_uv2 + epsilon)
+    power_db = 10 * np.log10(power_uv2 + epsilon)
 
     power_df = pd.DataFrame(
-        power_bels,
+        power_db,
         index=time_index,
         columns=list(channel_list),
     )
@@ -161,9 +161,9 @@ def calculate_frontal_theta(
         raise ValueError('Fmθ time series is empty.')
 
     stats = {
-        'Mean (Bels)': series.mean(),
-        'Median (Bels)': series.median(),
-        'Std Dev (Bels)': series.std(),
+        'Mean (dB)': series.mean(),
+        'Median (dB)': series.median(),
+        'Std Dev (dB)': series.std(),
     }
 
     midpoint = series.index[0] + (series.index[-1] - series.index[0]) / 2
@@ -173,20 +173,20 @@ def calculate_frontal_theta(
     first_mean = first_half.mean() if not first_half.empty else np.nan
     second_mean = second_half.mean() if not second_half.empty else np.nan
 
-    # Belsでの増加量（対数スケールなので差分が意味を持つ）
+    # dBでの増加量（対数スケールなので差分が意味を持つ）
     if pd.notna(first_mean) and pd.notna(second_mean):
-        increase_bels = second_mean - first_mean
+        increase_db = second_mean - first_mean
     else:
-        increase_bels = np.nan
+        increase_db = np.nan
 
     stats_df = pd.DataFrame(
         [
-            {'Metric': 'Mean', 'Value': stats['Mean (Bels)'], 'Unit': 'Bels'},
-            {'Metric': 'Median', 'Value': stats['Median (Bels)'], 'Unit': 'Bels'},
-            {'Metric': 'Std Dev', 'Value': stats['Std Dev (Bels)'], 'Unit': 'Bels'},
-            {'Metric': 'First Half Mean', 'Value': first_mean, 'Unit': 'Bels'},
-            {'Metric': 'Second Half Mean', 'Value': second_mean, 'Unit': 'Bels'},
-            {'Metric': 'Increase (2nd-1st)', 'Value': increase_bels, 'Unit': 'Bels'},
+            {'Metric': 'Mean', 'Value': stats['Mean (dB)'], 'Unit': 'dB'},
+            {'Metric': 'Median', 'Value': stats['Median (dB)'], 'Unit': 'dB'},
+            {'Metric': 'Std Dev', 'Value': stats['Std Dev (dB)'], 'Unit': 'dB'},
+            {'Metric': 'First Half Mean', 'Value': first_mean, 'Unit': 'dB'},
+            {'Metric': 'Second Half Mean', 'Value': second_mean, 'Unit': 'dB'},
+            {'Metric': 'Increase (2nd-1st)', 'Value': increase_db, 'Unit': 'dB'},
         ]
     )
 
@@ -197,9 +197,9 @@ def calculate_frontal_theta(
         'sfreq': float(raw.info['sfreq']),
         'first_half_mean': first_mean,
         'second_half_mean': second_mean,
-        'increase_bels': increase_bels,
-        'unit': 'Bels',
-        'method': 'mne_hilbert_bels',
+        'increase_db': increase_db,
+        'unit': 'dB',
+        'method': 'mne_hilbert_db',
         'filter_settings': {
             'l_freq': band_tuple[0],
             'h_freq': band_tuple[1],

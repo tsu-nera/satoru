@@ -55,7 +55,7 @@ def create_statistical_dataframe(
     -------
     dict
         {
-            'band_powers': DataFrame,      # セグメント別バンドパワー時系列（Bels）
+            'band_powers': DataFrame,      # セグメント別バンドパワー時系列（dB）
             'band_ratios': DataFrame,      # セグメント別バンド比率時系列
             'spectral_entropy': DataFrame, # セグメント別Spectral Entropy時系列（正規化済み）
             'iaf': Series,                 # Individual Alpha Frequency時系列（Hz）
@@ -64,9 +64,9 @@ def create_statistical_dataframe(
 
     Notes
     -----
-    - バンドパワーはBels（10*log10(μV²)）で表現
-    - 比率（対数）はBels差分（log10(A/B) = log10(A) - log10(B)）
-    - 比率（実数）は10^(Bels差分)で計算
+    - バンドパワーはdB（10*log10(μV²)）で表現
+    - 比率（対数）はdB差分（10*log10(A/B) = 10*log10(A) - 10*log10(B)）
+    - 比率（実数）は10^(dB差分/10)で計算
     - 統計量計算時にZ-score外れ値除去（閾値3.0）を適用
     """
     if not MNE_AVAILABLE:
@@ -112,6 +112,10 @@ def create_statistical_dataframe(
     spectrum = epochs.compute_psd(method='welch', fmin=1.0, fmax=fmax, verbose=False)
     psds, freqs = spectrum.get_data(return_freqs=True)
 
+    # V²/Hz → μV²/Hz に変換（MNEはV単位で処理するため）
+    # 1 V² = (10^6 μV)² = 10^12 μV²
+    psds = psds * 1e12
+
     # バンド定義（全バンド）
     bands = {
         'Delta': (1, 4),
@@ -127,17 +131,17 @@ def create_statistical_dataframe(
         for i in range(len(epochs))
     ]
 
-    # バンドパワー計算（全チャネル平均、Bels変換）
+    # バンドパワー計算（全チャネル平均、dB変換）
     band_powers_dict = {}
     for band_name, (fmin_band, fmax_band) in bands.items():
         freq_mask = (freqs >= fmin_band) & (freqs < fmax_band)
         # shape: (n_epochs, n_channels, n_freqs) -> (n_epochs,)
         band_power = psds[:, :, freq_mask].mean(axis=(1, 2))
 
-        # Bels変換（10*log10）
-        band_power_bels = 10 * np.log10(band_power + 1e-12)  # ゼロ除算回避
+        # dB変換（10*log10）
+        band_power_db = 10 * np.log10(band_power + 1e-12)  # ゼロ除算回避
 
-        band_powers_dict[band_name] = band_power_bels
+        band_powers_dict[band_name] = band_power_db
 
     # DataFrameに変換
     band_powers_df = pd.DataFrame(band_powers_dict, index=timestamps)
@@ -193,24 +197,24 @@ def create_statistical_dataframe(
     ratios_dict = {}
 
     # α/β比（リラックス度）
-    ratios_dict['alpha_beta_bels'] = band_powers_df['Alpha'] - band_powers_df['Beta']
-    ratios_dict['alpha_beta'] = 10 ** ratios_dict['alpha_beta_bels']
+    ratios_dict['alpha_beta_db'] = band_powers_df['Alpha'] - band_powers_df['Beta']
+    ratios_dict['alpha_beta'] = 10 ** (ratios_dict['alpha_beta_db'] / 10)
 
     # β/θ比（覚醒度・注意）
-    ratios_dict['beta_theta_bels'] = band_powers_df['Beta'] - band_powers_df['Theta']
-    ratios_dict['beta_theta'] = 10 ** ratios_dict['beta_theta_bels']
+    ratios_dict['beta_theta_db'] = band_powers_df['Beta'] - band_powers_df['Theta']
+    ratios_dict['beta_theta'] = 10 ** (ratios_dict['beta_theta_db'] / 10)
 
     # θ/α比（瞑想深度）
-    ratios_dict['theta_alpha_bels'] = band_powers_df['Theta'] - band_powers_df['Alpha']
-    ratios_dict['theta_alpha'] = 10 ** ratios_dict['theta_alpha_bels']
+    ratios_dict['theta_alpha_db'] = band_powers_df['Theta'] - band_powers_df['Alpha']
+    ratios_dict['theta_alpha'] = 10 ** (ratios_dict['theta_alpha_db'] / 10)
 
     # δ/β比（睡眠傾向）
-    ratios_dict['delta_beta_bels'] = band_powers_df['Delta'] - band_powers_df['Beta']
-    ratios_dict['delta_beta'] = 10 ** ratios_dict['delta_beta_bels']
+    ratios_dict['delta_beta_db'] = band_powers_df['Delta'] - band_powers_df['Beta']
+    ratios_dict['delta_beta'] = 10 ** (ratios_dict['delta_beta_db'] / 10)
 
     # γ/θ比（認知負荷）
-    ratios_dict['gamma_theta_bels'] = band_powers_df['Gamma'] - band_powers_df['Theta']
-    ratios_dict['gamma_theta'] = 10 ** ratios_dict['gamma_theta_bels']
+    ratios_dict['gamma_theta_db'] = band_powers_df['Gamma'] - band_powers_df['Theta']
+    ratios_dict['gamma_theta'] = 10 ** (ratios_dict['gamma_theta_db'] / 10)
 
     # DataFrameに変換
     band_ratios_df = pd.DataFrame(ratios_dict, index=timestamps)
@@ -236,22 +240,22 @@ def create_statistical_dataframe(
                 'Category': 'BandPower',
                 'Metric': f'{band_name}_Mean',
                 'Value': values.mean(),
-                'Unit': 'Bels',
-                'DisplayName': f'{band_name}平均 (Bels)',
+                'Unit': 'dB',
+                'DisplayName': f'{band_name}平均 (dB)',
             },
             {
                 'Category': 'BandPower',
                 'Metric': f'{band_name}_Median',
                 'Value': values.median(),
-                'Unit': 'Bels',
-                'DisplayName': f'{band_name}中央値 (Bels)',
+                'Unit': 'dB',
+                'DisplayName': f'{band_name}中央値 (dB)',
             },
             {
                 'Category': 'BandPower',
                 'Metric': f'{band_name}_Std',
                 'Value': values.std(),
-                'Unit': 'Bels',
-                'DisplayName': f'{band_name}標準偏差 (Bels)',
+                'Unit': 'dB',
+                'DisplayName': f'{band_name}標準偏差 (dB)',
             },
         ])
 
@@ -337,9 +341,9 @@ def create_statistical_dataframe(
         ('theta_alpha', 'θ/α比', 'ratio', '瞑想深度'),
         ('delta_beta', 'δ/β比', 'ratio', '睡眠傾向'),
         ('gamma_theta', 'γ/θ比', 'ratio', '認知負荷'),
-        ('alpha_beta_bels', 'α/β比', 'Bels', 'リラックス度（対数）'),
-        ('beta_theta_bels', 'β/θ比', 'Bels', '覚醒度（対数）'),
-        ('theta_alpha_bels', 'θ/α比', 'Bels', '瞑想深度（対数）'),
+        ('alpha_beta_db', 'α/β比', 'dB', 'リラックス度（対数）'),
+        ('beta_theta_db', 'β/θ比', 'dB', '覚醒度（対数）'),
+        ('theta_alpha_db', 'θ/α比', 'dB', '瞑想深度（対数）'),
     ]
 
     for metric_key, ratio_name, unit, description in ratio_configs:
@@ -412,7 +416,7 @@ def get_band_power_at_time(
     Returns
     -------
     float
-        指定範囲の平均値（Bels）、データがない場合はnp.nan
+        指定範囲の平均値（dB）、データがない場合はnp.nan
     """
     if band not in band_powers_df.columns:
         return np.nan

@@ -775,94 +775,83 @@ def plot_spectrogram_grid(
 
 
 def plot_band_ratios(
-    ratios_dict,
-    resample_interval='10S',
+    segment_table,
     img_path=None,
-    clip_percentile=95.0,
-    smooth_window=5
 ):
     """
-    バンド比率の時系列をプロット
+    セグメント別バンド比率の棒グラフをプロット
 
     Parameters
     ----------
-    ratios_dict : dict
-        calculate_band_ratios()の戻り値
-    resample_interval : str
-        リサンプリング間隔
+    segment_table : pd.DataFrame
+        セグメント分析のテーブル（θ/α, α/β, β/θ列を含む）
     img_path : str or Path, optional
         保存先パス
-    clip_percentile : float, optional
-        外れ値抑制のための上側パーセンタイル（Noneで無効）
-    smooth_window : int, optional
-        移動平均の窓サイズ（1で無効）
 
     Returns
     -------
     fig : matplotlib.figure.Figure
         生成された図オブジェクト
     """
-    ratio_df = ratios_dict['ratios'].copy()
+    import numpy as np
 
+    # 比率の設定
     ratio_configs = [
-        ('Alpha/Beta', 'リラックス度 (α/β)'),
-        ('Beta/Theta', '集中度 (β/θ)'),
-        ('Theta/Alpha', '瞑想深度 (θ/α)'),
+        ('θ/α', 'Theta/Alpha', '#9467bd'),  # purple
+        ('α/β', 'Alpha/Beta', '#2ca02c'),   # green
+        ('β/θ', 'Beta/Theta', '#ff7f0e'),   # orange
     ]
 
-    # 外れ値のクリッピング
-    if clip_percentile is not None:
-        for ratio_key, _ in ratio_configs:
-            if ratio_key in ratio_df.columns:
-                upper_bound = ratio_df[ratio_key].quantile(clip_percentile / 100.0)
-                ratio_df[ratio_key] = ratio_df[ratio_key].clip(upper=upper_bound)
+    # データ準備
+    if '時間帯' in segment_table.columns:
+        segments = segment_table['時間帯'].tolist()
+    elif 'No.' in segment_table.columns:
+        segments = [f'Seg {i}' for i in segment_table['No.'].tolist()]
+    else:
+        segments = [f'Seg {i+1}' for i in range(len(segment_table))]
+    n_segments = len(segments)
+    n_ratios = len(ratio_configs)
 
-    # 移動平均による平滑化
-    if smooth_window and smooth_window > 1:
-        for ratio_key, _ in ratio_configs:
-            if ratio_key in ratio_df.columns:
-                ratio_df[ratio_key] = ratio_df[ratio_key].rolling(
-                    window=int(smooth_window),
-                    min_periods=1,
-                    center=True
-                ).median()
+    # 棒グラフの位置計算
+    x = np.arange(n_segments)
+    width = 0.25  # 棒の幅
 
-    fig, axes = plt.subplots(3, 1, figsize=(14, 10), sharex=True)
-    colors = ['green', 'orange', 'purple']
+    fig, ax = plt.subplots(figsize=(12, 6))
 
-    for i, (ratio_key, display_name) in enumerate(ratio_configs):
-        if ratio_key in ratio_df.columns:
-            # Raw data (light color)
-            raw_data = ratios_dict['ratios'][ratio_key]
-            axes[i].plot(ratios_dict['ratios']['TimeStamp'], raw_data,
-                        color=colors[i], linewidth=1, alpha=0.2, label='Raw Data')
+    # 各比率の棒グラフを描画
+    for i, (col_name, display_name, color) in enumerate(ratio_configs):
+        if col_name in segment_table.columns:
+            values = segment_table[col_name].tolist()
+            offset = (i - n_ratios / 2 + 0.5) * width
+            bars = ax.bar(x + offset, values, width, label=display_name, color=color, alpha=0.8)
 
-            # Smoothed data (dark color)
-            axes[i].plot(ratio_df['TimeStamp'], ratio_df[ratio_key],
-                        color=colors[i], linewidth=2.5, alpha=0.9, label='Rolling Median')
+            # 値をラベル表示
+            for bar, val in zip(bars, values):
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width() / 2, height,
+                       f'{val:.2f}', ha='center', va='bottom', fontsize=8)
 
-            axes[i].axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, linewidth=1.5,
-                           label='Baseline (1.0)')
-            axes[i].set_ylabel(display_name, fontsize=11, fontweight='bold')
-            axes[i].grid(True, alpha=0.3)
+    # ベースライン（1.0）
+    ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, linewidth=1.5)
 
-            data_values = ratio_df[ratio_key].dropna()
-            if len(data_values) > 0:
-                y_min = max(0, data_values.quantile(0.05) * 0.9)
-                y_max = data_values.quantile(0.95) * 1.1
-                axes[i].set_ylim(y_min, y_max)
+    # 軸設定
+    ax.set_xlabel('Time Segment', fontsize=12)
+    ax.set_ylabel('Ratio', fontsize=12)
+    ax.set_title('Band Power Ratios by Segment', fontsize=14, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels(segments, rotation=45, ha='right')
+    ax.legend(loc='upper right', fontsize=10)
+    ax.grid(True, alpha=0.3, axis='y')
 
-                mean_val = data_values.mean()
-                axes[i].axhline(y=mean_val, color=colors[i], linestyle=':',
-                              alpha=0.4, linewidth=1.5, label=f'Mean ({mean_val:.2f})')
+    # Y軸の範囲を調整
+    all_values = []
+    for col_name, _, _ in ratio_configs:
+        if col_name in segment_table.columns:
+            all_values.extend(segment_table[col_name].tolist())
+    if all_values:
+        y_max = max(all_values) * 1.2
+        ax.set_ylim(0, y_max)
 
-            axes[i].legend(loc='upper right', fontsize=9)
-
-    axes[0].set_title(f'EEG Metrics Time Series (averaged every {resample_interval})',
-                     fontsize=14, fontweight='bold')
-    axes[-1].set_xlabel('Time', fontsize=12)
-    axes[-1].xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-    fig.autofmt_xdate()
     plt.tight_layout()
 
     if img_path:

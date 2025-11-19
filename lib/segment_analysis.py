@@ -152,15 +152,15 @@ def calculate_segment_analysis(
         end = start + segment_delta
 
         # Statistical DFから直接値を取得（セグメント化済み）
-        # バンドパワー（Bels）
+        # バンドパワー（dB）
         alpha_mean = band_powers_df.loc[start, 'Alpha'] if start in band_powers_df.index else np.nan
         beta_mean = band_powers_df.loc[start, 'Beta'] if start in band_powers_df.index else np.nan
         theta_mean = band_powers_df.loc[start, 'Theta'] if start in band_powers_df.index else np.nan
 
-        # バンド比率（対数スケール: Bels差分）
-        theta_alpha_ratio_bels = band_ratios_df.loc[start, 'theta_alpha_bels'] if start in band_ratios_df.index else np.nan
-        alpha_beta_ratio_bels = band_ratios_df.loc[start, 'alpha_beta_bels'] if start in band_ratios_df.index else np.nan
-        beta_theta_ratio_bels = band_ratios_df.loc[start, 'beta_theta_bels'] if start in band_ratios_df.index else np.nan
+        # バンド比率（対数スケール: dB差分）
+        theta_alpha_ratio_db = band_ratios_df.loc[start, 'theta_alpha_db'] if start in band_ratios_df.index else np.nan
+        alpha_beta_ratio_db = band_ratios_df.loc[start, 'alpha_beta_db'] if start in band_ratios_df.index else np.nan
+        beta_theta_ratio_db = band_ratios_df.loc[start, 'beta_theta_db'] if start in band_ratios_df.index else np.nan
 
         # バンド比率（実数値）
         theta_alpha_ratio = band_ratios_df.loc[start, 'theta_alpha'] if start in band_ratios_df.index else np.nan
@@ -196,7 +196,7 @@ def calculate_segment_analysis(
         segment_score_result = calculate_meditation_score(
             fmtheta=fm_mean,
             spectral_entropy=se_mean,  # Statistical DFから取得
-            theta_alpha_ratio=theta_alpha_ratio_bels,  # Bels差分を使用（総合スコア計算用）
+            theta_alpha_ratio=theta_alpha_ratio,  # 実数比率を使用
             faa=None,  # セグメント単位では未対応
             alpha_beta_ratio=alpha_beta_ratio,  # 実数値を使用
             iaf_cv=iaf_cv,
@@ -215,11 +215,11 @@ def calculate_segment_analysis(
             'beta_mean': beta_mean,
             'theta_mean': theta_mean,
             'theta_alpha_ratio': theta_alpha_ratio,
-            'theta_alpha_ratio_bels': theta_alpha_ratio_bels,
+            'theta_alpha_ratio_db': theta_alpha_ratio_db,
             'alpha_beta_ratio': alpha_beta_ratio,
-            'alpha_beta_ratio_bels': alpha_beta_ratio_bels,
+            'alpha_beta_ratio_db': alpha_beta_ratio_db,
             'beta_theta_ratio': beta_theta_ratio,
-            'beta_theta_ratio_bels': beta_theta_ratio_bels,
+            'beta_theta_ratio_db': beta_theta_ratio_db,
             'meditation_score': meditation_score,
         })
 
@@ -250,20 +250,21 @@ def calculate_segment_analysis(
         peak_idx = int(peak_score.idxmax())
 
     # 表形式（日本語ラベル）
-    # 注: バンド比率はBels形式のみ表示（実数値は不安定で解釈困難なため）
+    # 注: バンド比率はdB形式のみ表示（実数値は不安定で解釈困難なため）
     display_rows = []
     for idx, row in segment_frame.iterrows():
         display_rows.append({
             'No.': int(row['segment_index']),
             '時間帯': row['label'],
-            'Fmθ平均 (Bels)': row['fmtheta_mean'],
+            'Theta (dB)': row['theta_mean'],
+            'Alpha (dB)': row['alpha_mean'],
+            'Beta (dB)': row['beta_mean'],
+            'θ/α': row['theta_alpha_ratio'],
+            'α/β': row['alpha_beta_ratio'],
+            'β/θ': row['beta_theta_ratio'],
+            'Fmθ (dB)': row['fmtheta_mean'],
             'SE': row['spectral_entropy'],
-            'IAF平均 (Hz)': row['iaf_mean'],
-            'Alpha (Bels)': row['alpha_mean'],
-            'Beta (Bels)': row['beta_mean'],
-            'θ/α比 (Bels)': row['theta_alpha_ratio_bels'],
-            'α/β比 (Bels)': row['alpha_beta_ratio_bels'],
-            'β/θ比 (Bels)': row['beta_theta_ratio_bels'],
+            'IAF (Hz)': row['iaf_mean'],
             'ピーク': '★' if (peak_idx is not None and int(row['segment_index']) == peak_idx) else '',
         })
 
@@ -353,13 +354,13 @@ def calculate_meditation_score(
     Parameters
     ----------
     fmtheta : float, optional
-        Frontal Midline Thetaパワー（Bels）
+        Frontal Midline Thetaパワー（dB）
     spectral_entropy : float, optional
         Spectral Entropy（0-1正規化済み）
     theta_alpha_ratio : float, optional
-        θ/α比（Bels差）
+        θ/α比（dB差）
     faa : float, optional
-        Frontal Alpha Asymmetry（Bels差）
+        Frontal Alpha Asymmetry（dB差）
     alpha_beta_ratio : float, optional
         α/β比（無次元）
     iaf_cv : float, optional
@@ -385,7 +386,7 @@ def calculate_meditation_score(
     scores = {}
 
     # Fmθスコア（高いほど良い）
-    # 旧: 50-200 μV² → 新: 17-23 Bels (10*log10(50) ≈ 17, 10*log10(200) ≈ 23)
+    # 旧: 50-200 μV² → 新: 17-23 dB (10*log10(50) ≈ 17, 10*log10(200) ≈ 23)
     if fmtheta is not None:
         scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=17.0, max_val=23.0)
     else:
@@ -401,17 +402,18 @@ def calculate_meditation_score(
         scores['spectral_entropy'] = 0.5
 
     # θ/α比スコア（高いほど良い）
+    # 実数比率: 典型的な範囲は0.1〜1.0（1.0以上は稀）
     if theta_alpha_ratio is not None:
         scores['theta_alpha_ratio'] = _normalize_indicator(
-            theta_alpha_ratio, min_val=-1.0, max_val=1.0
+            theta_alpha_ratio, min_val=0.1, max_val=1.0
         )
     else:
         scores['theta_alpha_ratio'] = 0.5
 
     # FAAスコア（正値ほど良い、中心化）
-    # 旧: -0.5 ~ 0.5 (ln) → 新: -2.0 ~ 2.0 (Bels差分)
+    # 旧: -0.5 ~ 0.5 (ln) → 新: -20.0 ~ 20.0 (dB差分)
     if faa is not None:
-        scores['faa'] = _normalize_indicator(faa, min_val=-2.0, max_val=2.0)
+        scores['faa'] = _normalize_indicator(faa, min_val=-20.0, max_val=20.0)
     else:
         scores['faa'] = 0.5
 

@@ -230,22 +230,22 @@ def generate_markdown_report(data_path, output_dir, results):
                 avg_value = row.get('平均値', row.get('Value', 0.0))
                 report += f"- **{ratio_name}**: {avg_value:.3f}\n"
 
-        # Fmθ平均を追加
+        # Fmθを追加
         if 'frontal_theta_stats' in results:
             fmtheta_df = results['frontal_theta_stats']
             fmtheta_mean_row = fmtheta_df[fmtheta_df['Metric'] == 'Mean']
             if not fmtheta_mean_row.empty:
                 fmtheta_value = fmtheta_mean_row['Value'].iloc[0]
-                report += f"- **Fmθ平均 (μV²)**: {fmtheta_value:.3f}\n"
+                report += f"- **Fmθ (μV²)**: {fmtheta_value:.3f}\n"
 
-        # IAF平均を追加（Statistical DFから）
+        # IAFを追加（Statistical DFから）
         if 'statistical_df' in results and results['statistical_df'] is not None:
             stat_df = results['statistical_df']
             if 'iaf' in stat_df:
                 iaf_series = stat_df['iaf']
                 iaf_value = iaf_series.mean()
                 iaf_std = iaf_series.std()
-                report += f"- **IAF平均 (Hz)**: {iaf_value:.2f} ± {iaf_std:.2f}\n"
+                report += f"- **IAF (Hz)**: {iaf_value:.2f} ± {iaf_std:.2f}\n"
 
         report += "\n"
 
@@ -703,31 +703,17 @@ def run_full_analysis(data_path, output_dir):
         print('バンド比率統計をStatistical DFから取得...')
         results['band_ratios_stats'] = statistical_df['statistics']
 
-        # プロット用にStatistical DFからデータを準備
+        # セグメントテーブルからバンド比率をプロット
         try:
             print('プロット中: バンド比率...')
-            # plot_band_ratios関数が期待する形式に変換
-            band_ratios_df = statistical_df['band_ratios'].copy()
-            band_ratios_df = band_ratios_df.reset_index()
-            band_ratios_df = band_ratios_df.rename(columns={'index': 'TimeStamp'})
-
-            # カラム名を旧形式に合わせる（plot_band_ratios関数との互換性のため）
-            band_ratios_df = band_ratios_df.rename(columns={
-                'alpha_beta': 'Alpha/Beta',
-                'beta_theta': 'Beta/Theta',
-                'theta_alpha': 'Theta/Alpha',
-            })
-
-            plot_band_ratios(
-                {
-                    'ratios': band_ratios_df,
-                    'statistics': statistical_df['statistics'],
-                },
-                img_path=img_dir / 'band_ratios.png',
-                clip_percentile=95.0,
-                smooth_window=5
-            )
-            results['band_ratios_img'] = 'band_ratios.png'
+            if 'segment_table' in results:
+                plot_band_ratios(
+                    results['segment_table'],
+                    img_path=img_dir / 'band_ratios.png',
+                )
+                results['band_ratios_img'] = 'band_ratios.png'
+            else:
+                print('警告: セグメントテーブルがないため、バンド比率プロットをスキップします。')
         except Exception as exc:
             print(f'警告: バンド比率プロットに失敗しました ({exc})')
             import traceback
@@ -763,21 +749,21 @@ def run_full_analysis(data_path, output_dir):
         if 'segment_table' in results:
             segment_df = results['segment_table']
 
-            # θ/α比（Bels差分）: 総合スコア計算用
-            if 'θ/α比 (Bels)' in segment_df.columns:
-                theta_alpha_values = segment_df['θ/α比 (Bels)'].dropna()
+            # θ/α比（実数比率）: 総合スコア計算用
+            if 'θ/α' in segment_df.columns:
+                theta_alpha_values = segment_df['θ/α'].dropna()
                 if len(theta_alpha_values) > 0:
                     theta_alpha_val = theta_alpha_values.mean()
 
-            # α/β比（実数値）
-            if 'α/β比' in segment_df.columns:
-                alpha_beta_values = segment_df['α/β比'].dropna()
+            # α/β比（実数比率）
+            if 'α/β' in segment_df.columns:
+                alpha_beta_values = segment_df['α/β'].dropna()
                 if len(alpha_beta_values) > 0:
                     alpha_beta_val = alpha_beta_values.mean()
 
-            # β/θ比（実数値）- 新規追加
-            if 'β/θ比' in segment_df.columns:
-                beta_theta_values = segment_df['β/θ比'].dropna()
+            # β/θ比（実数比率）
+            if 'β/θ' in segment_df.columns:
+                beta_theta_values = segment_df['β/θ'].dropna()
                 if len(beta_theta_values) > 0:
                     beta_theta_val = beta_theta_values.mean()
                     results['beta_theta_ratio'] = beta_theta_val  # レポート用に保存
@@ -785,7 +771,7 @@ def run_full_analysis(data_path, output_dir):
         # フォールバック: Statistical DFから直接取得
         if theta_alpha_val is None and statistical_df is not None:
             stats_df = statistical_df['statistics']
-            theta_alpha_row = stats_df[stats_df['Metric'] == 'theta_alpha_bels_Mean']
+            theta_alpha_row = stats_df[stats_df['Metric'] == 'theta_alpha_db_Mean']
             if not theta_alpha_row.empty:
                 theta_alpha_val = theta_alpha_row['Value'].iloc[0]
 
@@ -814,8 +800,8 @@ def run_full_analysis(data_path, output_dir):
         # フォールバック: セグメント分析から計算
         if iaf_cv_val is None and 'segment_table' in results:
             segment_df = results['segment_table']
-            if 'IAF平均 (Hz)' in segment_df.columns:
-                iaf_values = segment_df['IAF平均 (Hz)'].dropna()
+            if 'IAF (Hz)' in segment_df.columns:
+                iaf_values = segment_df['IAF (Hz)'].dropna()
                 if len(iaf_values) > 1:
                     iaf_mean = iaf_values.mean()
                     iaf_std = iaf_values.std()

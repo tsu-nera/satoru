@@ -2,7 +2,7 @@
 Frontal Alpha Asymmetry (FAA) 解析モジュール
 
 AF7 (左前頭部) とAF8 (右前頭部) のアルファ波パワーを比較し、
-左右の非対称性を定量化する。FAA = 10*log10(右) - 10*log10(左) で算出（Bels差分）。
+左右の非対称性を定量化する。FAA = 10*log10(右) - 10*log10(左) で算出（dB差分）。
 
 正のFAA: 左半球優位 (接近動機、ポジティブ感情)
 負のFAA: 右半球優位 (回避動機、ネガティブ感情)
@@ -24,9 +24,9 @@ from .preprocessing import prepare_mne_raw
 class FrontalAsymmetryResult:
     """FAA解析結果を保持するデータクラス。"""
 
-    time_series: pd.Series  # FAA時系列 (Bels差分: 10*log10(右) - 10*log10(左))
-    left_power: pd.Series  # 左前頭部アルファパワー (Bels)
-    right_power: pd.Series  # 右前頭部アルファパワー (Bels)
+    time_series: pd.Series  # FAA時系列 (dB差分: 10*log10(右) - 10*log10(左))
+    left_power: pd.Series  # 左前頭部アルファパワー (dB)
+    right_power: pd.Series  # 右前頭部アルファパワー (dB)
     statistics: pd.DataFrame
     metadata: dict
 
@@ -66,7 +66,7 @@ def calculate_frontal_asymmetry(
     Returns
     -------
     FrontalAsymmetryResult
-        FAA時系列（Bels差分）、左右パワー（Bels）、統計情報を含む解析結果。
+        FAA時系列（dB差分）、左右パワー（dB）、統計情報を含む解析結果。
     """
     channels = [left_channel, right_channel]
 
@@ -103,13 +103,13 @@ def calculate_frontal_asymmetry(
     start_time = pd.to_datetime(df['TimeStamp'].min())
     time_index = start_time + pd.to_timedelta(times, unit='s')
 
-    # パワー計算: エンベロープの二乗をBelsに変換
+    # パワー計算: エンベロープの二乗をdBに変換
     power_uv2 = env_data_uv.T ** 2
     epsilon = 1e-12  # ゼロ除算防止
-    power_bels = 10 * np.log10(power_uv2 + epsilon)
+    power_db = 10 * np.log10(power_uv2 + epsilon)
 
     power_df = pd.DataFrame(
-        power_bels,
+        power_db,
         index=time_index,
         columns=channels,
     )
@@ -120,7 +120,7 @@ def calculate_frontal_asymmetry(
     # 90パーセンタイル: 上位10%の極端な値を除去（装着直後の不安定な信号を積極的に除外）
     for ch in channels:
         upper_bound = power_df[ch].quantile(0.90)
-        # Belsの場合、下限はlog10(epsilon)の値
+        # dBの場合、下限はlog10(epsilon)の値
         lower_bound = 10 * np.log10(epsilon)
         power_df[ch] = power_df[ch].clip(lower=lower_bound, upper=upper_bound)
 
@@ -138,15 +138,15 @@ def calculate_frontal_asymmetry(
         window = f'{max(int(rolling_window_seconds), 1)}S'
         power_df = power_df.rolling(window=window, min_periods=1).median()
 
-    # 左右パワーを抽出（既にBels単位）
+    # 左右パワーを抽出（既にdB単位）
     left_power = power_df[left_channel].dropna()
     right_power = power_df[right_channel].dropna()
 
     if left_power.empty or right_power.empty:
         raise ValueError('Failed to calculate left and right alpha power.')
 
-    # FAA計算: Bels差分 = 10*log10(右) - 10*log10(左)
-    # 既にBelsに変換済みなので、単純に差分を取る
+    # FAA計算: dB差分 = 10*log10(右) - 10*log10(左)
+    # 既にdBに変換済みなので、単純に差分を取る
     faa_series = right_power - left_power
 
     faa_series = faa_series.dropna()
@@ -166,22 +166,22 @@ def calculate_frontal_asymmetry(
     first_mean = first_half.mean() if not first_half.empty else np.nan
     second_mean = second_half.mean() if not second_half.empty else np.nan
 
-    # FAA解釈（Bels差分）
-    # 0.2 Bels ≈ ln(1.05) ≈ 5%の差に相当
-    if faa_mean > 0.2:
+    # FAA解釈（dB差分）
+    # 2 dB ≈ ln(1.05) ≈ 5%の差に相当
+    if faa_mean > 2.0:
         interpretation = 'Left hemisphere dominant (Approach motivation/Positive)'
-    elif faa_mean < -0.2:
+    elif faa_mean < -2.0:
         interpretation = 'Right hemisphere dominant (Avoidance motivation/Negative)'
     else:
         interpretation = 'Balanced'
 
     stats_df = pd.DataFrame(
         [
-            {'Metric': 'Mean FAA', 'Value': faa_mean, 'Unit': 'Bels'},
-            {'Metric': 'Median', 'Value': faa_median, 'Unit': 'Bels'},
-            {'Metric': 'Std Dev', 'Value': faa_std, 'Unit': 'Bels'},
-            {'Metric': 'First Half Mean', 'Value': first_mean, 'Unit': 'Bels'},
-            {'Metric': 'Second Half Mean', 'Value': second_mean, 'Unit': 'Bels'},
+            {'Metric': 'Mean FAA', 'Value': faa_mean, 'Unit': 'dB'},
+            {'Metric': 'Median', 'Value': faa_median, 'Unit': 'dB'},
+            {'Metric': 'Std Dev', 'Value': faa_std, 'Unit': 'dB'},
+            {'Metric': 'First Half Mean', 'Value': first_mean, 'Unit': 'dB'},
+            {'Metric': 'Second Half Mean', 'Value': second_mean, 'Unit': 'dB'},
             {'Metric': 'Interpretation', 'Value': interpretation, 'Unit': ''},
         ]
     )
@@ -194,8 +194,8 @@ def calculate_frontal_asymmetry(
         'first_half_mean': first_mean,
         'second_half_mean': second_mean,
         'interpretation': interpretation,
-        'unit': 'Bels',
-        'method': 'mne_hilbert_bels',
+        'unit': 'dB',
+        'method': 'mne_hilbert_db',
         'processing': {
             'resample_interval': resample_interval,
             'smoothing_seconds': smoothing_seconds,
