@@ -9,6 +9,7 @@ import matplotlib.dates as mdates
 
 from ..constants import FREQ_BANDS
 from ..frequency import calculate_psd
+from ....visualization.utils import format_time_axis
 
 
 DEFAULT_SPECTROGRAM_CMAP = 'magma'
@@ -193,11 +194,11 @@ def plot_band_power_time_series(
     # Muse-style visual settings
     fig, ax = plt.subplots(figsize=(14, 8))
 
-    # Convert time axis to minutes (elapsed time from start)
+    # Convert time axis to seconds (elapsed time from start)
     if len(band_data.index) == 0:
         raise ValueError('Band data time axis is empty.')
 
-    elapsed_minutes = (band_data.index - band_data.index[0]).total_seconds() / 60.0
+    elapsed_seconds = (band_data.index - band_data.index[0]).total_seconds()
 
     plot_bands = [band for band in bands if band in band_data.columns]
     color_cycle = plt.get_cmap('tab10')
@@ -206,7 +207,7 @@ def plot_band_power_time_series(
         default_color = color_cycle(idx % 10)
         color = FREQ_BANDS.get(band, (None, None, default_color))[2] if band in FREQ_BANDS else default_color
         ax.plot(
-            elapsed_minutes,
+            elapsed_seconds,
             band_data[band],
             label=band,
             color=color,
@@ -214,20 +215,7 @@ def plot_band_power_time_series(
             alpha=0.9
         )
 
-    ax.set_xlabel('Time (min)', fontsize=12)
-
-    # Set minute-based tick intervals
-    max_minutes = elapsed_minutes.max() if len(elapsed_minutes) else 0
-    if max_minutes <= 5:
-        tick_interval = 1  # <= 5 min: 1-min intervals
-    elif max_minutes <= 15:
-        tick_interval = 2  # <= 15 min: 2-min intervals
-    else:
-        tick_interval = 5  # > 15 min: 5-min intervals
-
-    ticks = np.arange(0, max_minutes + tick_interval, tick_interval) if max_minutes else np.array([0])
-    ax.set_xticks(ticks)
-    ax.set_xlim(0, max_minutes if max_minutes else 1)
+    format_time_axis(ax, elapsed_seconds, unit='minutes')
 
     ax.set_title('Brainwave Powerbands', fontsize=16, fontweight='bold', pad=20)
     ax.set_ylabel('Power (μV²)', fontsize=12)
@@ -461,9 +449,9 @@ def plot_psd_time_series(
         raise ValueError('PSDの計算に失敗しました。周波数範囲や窓長を確認してください。')
 
     psd_array = np.vstack(psd_records)
-    elapsed_minutes = np.array(time_points) / 60.0
+    elapsed_seconds = np.array(time_points)
 
-    psd_df = pd.DataFrame(psd_array, columns=channels, index=elapsed_minutes)
+    psd_df = pd.DataFrame(psd_array, columns=channels, index=elapsed_seconds)
 
     if clip_percentile is not None:
         upper_bounds = psd_df.quantile(clip_percentile / 100.0)
@@ -473,7 +461,7 @@ def plot_psd_time_series(
         psd_df = psd_df.rolling(window=int(smooth_window), min_periods=1, center=True).median()
 
     psd_processed = psd_df.to_numpy()
-    elapsed_minutes = psd_df.index.to_numpy()
+    elapsed_seconds = psd_df.index.to_numpy()
 
     fig, ax = plt.subplots(figsize=(14, 8))
 
@@ -482,7 +470,7 @@ def plot_psd_time_series(
 
     for idx, channel in enumerate(channel_labels):
         ax.plot(
-            elapsed_minutes,
+            elapsed_seconds,
             psd_processed[:, idx],
             label=channel,
             color=color_cycle(idx % 10),
@@ -490,23 +478,12 @@ def plot_psd_time_series(
             alpha=0.9
         )
 
-    ax.set_xlabel('Time (min)', fontsize=12)
     ax.set_ylabel('PSD (μV²/Hz)', fontsize=12)
     ax.set_title('PSD Time Series', fontsize=16, fontweight='bold', pad=20)
     ax.legend(loc='upper right', fontsize=11, framealpha=0.8)
     ax.grid(True, alpha=0.3, linestyle='-', linewidth=0.5)
 
-    max_minutes = elapsed_minutes.max()
-    if max_minutes <= 5:
-        tick_interval = 1
-    elif max_minutes <= 15:
-        tick_interval = 2
-    else:
-        tick_interval = 5
-
-    ticks = np.arange(0, max_minutes + tick_interval, tick_interval)
-    ax.set_xticks(ticks)
-    ax.set_xlim(0, max_minutes)
+    format_time_axis(ax, elapsed_seconds, unit='minutes')
 
     plt.tight_layout()
 
@@ -515,37 +492,6 @@ def plot_psd_time_series(
         plt.close()
 
     return fig
-
-
-def _format_time_axis(ax, times, unit='seconds'):
-    if times is None or len(times) == 0:
-        return
-
-    start = float(times[0])
-    end = float(times[-1])
-    duration = max(end - start, np.finfo(float).eps)
-
-    if unit == 'minutes':
-        total_minutes = duration / 60.0
-        if total_minutes <= 5:
-            step = 1
-        elif total_minutes <= 15:
-            step = 2
-        else:
-            step = 5
-        ticks_min = np.arange(0, total_minutes + step, step)
-        ticks_sec = start + ticks_min * 60.0
-        if len(ticks_sec) == 0:
-            ticks_sec = np.array([start])
-            ticks_min = np.array([0.0])
-        ax.set_xticks(ticks_sec)
-        tick_labels = [f'{tick:.0f}' if step >= 1 else f'{tick:.1f}' for tick in ticks_min]
-        ax.set_xticklabels(tick_labels)
-        ax.set_xlabel('Time (min)', fontsize=12)
-    else:
-        ax.set_xlabel('Time (seconds)', fontsize=12)
-
-    ax.set_xlim(start, end)
 
 
 def _annotate_freq_bands(ax, bands, freq_max):
@@ -629,7 +575,7 @@ def _draw_spectrogram_on_axis(
             cbar = fig.colorbar(im, ax=ax)
             cbar.set_label('Power (dB, μV²)', fontsize=11)
 
-    _format_time_axis(ax, times, time_unit)
+    format_time_axis(ax, times, time_unit)
     ax.set_ylabel('Frequency (Hz)', fontsize=12)
     ax.set_ylim(0, freqs.max())
     _annotate_freq_bands(ax, bands, freqs.max())
@@ -960,20 +906,16 @@ def plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=None):
     iaf = paf_dict['iaf']
     alpha_low, alpha_high = paf_dict['alpha_range']
 
-    # 時間軸をタイムスタンプに変換
-    start_time = df['TimeStamp'].min()
-    time_stamps = [start_time + pd.Timedelta(seconds=t) for t in times]
-
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(14, 8), sharex=True)
 
     # 上図: PAFの時間変化
-    ax1.plot(time_stamps, paf_over_time, color='lightblue',
+    ax1.plot(times, paf_over_time, color='lightblue',
             alpha=0.3, linewidth=1, label='Raw Data')
-    ax1.plot(time_stamps, paf_smoothed, color='blue',
+    ax1.plot(times, paf_smoothed, color='blue',
             linewidth=2, label=f'Rolling Average')
     ax1.axhline(y=iaf, color='red', linestyle='--', linewidth=2,
                label=f'IAF = {iaf:.2f} Hz')
-    ax1.fill_between(time_stamps, alpha_low, alpha_high,
+    ax1.fill_between(times, alpha_low, alpha_high,
                      alpha=0.1, color='green', label='Alpha Band (8-13 Hz)')
     ax1.set_ylabel('PAF (Hz)', fontsize=12)
     ax1.set_title('Peak Alpha Frequency Time Evolution',
@@ -984,7 +926,7 @@ def plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=None):
 
     # 下図: PAFの変動性（スペクトログラム）
     im = ax2.pcolormesh(
-        time_stamps,
+        times,
         alpha_freqs,
         alpha_power,
         shading='auto',
@@ -992,9 +934,8 @@ def plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=None):
         vmin=np.percentile(alpha_power, 5),
         vmax=np.percentile(alpha_power, 95)
     )
-    ax2.plot(time_stamps, paf_smoothed, color='red',
+    ax2.plot(times, paf_smoothed, color='red',
             linewidth=2, linestyle='--', label='PAF Evolution')
-    ax2.set_xlabel('Time', fontsize=12)
     ax2.set_ylabel('Frequency (Hz)', fontsize=12)
     ax2.set_title('Alpha Band Spectrogram and PAF', fontsize=13, fontweight='bold')
     ax2.legend(loc='upper right', fontsize=10)
@@ -1002,8 +943,7 @@ def plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=None):
     cbar = fig.colorbar(im, ax=ax2)
     cbar.set_label('Power (μV²)', fontsize=11)
 
-    ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M:%S'))
-    fig.autofmt_xdate()
+    format_time_axis(ax2, times, unit='minutes')
 
     plt.tight_layout()
 

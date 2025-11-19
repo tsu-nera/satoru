@@ -5,6 +5,8 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .utils import format_time_axis
+
 
 def plot_respiratory(hr_data, respiratory_results, figsize=(15, 12)):
     """
@@ -35,27 +37,27 @@ def plot_respiratory(hr_data, respiratory_results, figsize=(15, 12)):
 
     # プロット1: 心拍数
     axes[0].plot(time, heart_rate, 'b-', alpha=0.7, linewidth=0.5)
-    axes[0].set_xlabel('Time (seconds)')
     axes[0].set_ylabel('Heart Rate (BPM)')
     axes[0].set_title('Heart Rate Over Time')
     axes[0].grid(True, alpha=0.3)
+    format_time_axis(axes[0], time, unit='minutes')
 
     # プロット2: RRインターバル（心拍変動）
     axes[1].plot(time, rr_intervals, 'g-', alpha=0.7, linewidth=0.5)
-    axes[1].set_xlabel('Time (seconds)')
     axes[1].set_ylabel('RR Interval (ms)')
     axes[1].set_title('Heart Rate Variability (RR Intervals)')
     axes[1].grid(True, alpha=0.3)
+    format_time_axis(axes[1], time, unit='minutes')
 
     # プロット3: 推定呼吸数
     if len(resp_rates) > 0:
         resp_time = time[resp_timestamps]
         axes[2].plot(resp_time, resp_rates, 'r-', marker='o', markersize=3, linewidth=1.5)
-        axes[2].set_xlabel('Time (seconds)')
         axes[2].set_ylabel('Respiratory Rate (breaths/min)')
         axes[2].set_title(f'Estimated Respiratory Rate (Mean: {np.mean(resp_rates):.1f} ± {np.std(resp_rates):.1f} breaths/min)')
         axes[2].grid(True, alpha=0.3)
         axes[2].set_ylim([0, 30])
+        format_time_axis(axes[2], time, unit='minutes')
 
     plt.tight_layout()
     return fig, axes

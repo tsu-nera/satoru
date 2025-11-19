@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from ..frontal_theta import FrontalThetaResult
+from ....visualization.utils import format_time_axis
 
 
 def plot_frontal_theta(
@@ -37,7 +38,7 @@ def plot_frontal_theta(
     if series.empty:
         raise ValueError('Fmθ time series for plotting is empty.')
 
-    elapsed_minutes = (series.index - series.index[0]).total_seconds() / 60.0
+    elapsed_seconds = (series.index - series.index[0]).total_seconds()
 
     metadata = result.metadata
     band_key = metadata.get('band_key', '')
@@ -48,13 +49,13 @@ def plot_frontal_theta(
 
     fig, ax = plt.subplots(figsize=(12, 6))
     ax.plot(
-        elapsed_minutes,
+        elapsed_seconds,
         series.values,
         color='#1f77b4',
         linewidth=2.2,
         label=label,
     )
-    midpoint = elapsed_minutes[len(elapsed_minutes) // 2] if len(elapsed_minutes) else 0
+    midpoint = elapsed_seconds[len(elapsed_seconds) // 2] if len(elapsed_seconds) else 0
     if midpoint:
         ax.axvline(midpoint, color='gray', linestyle='--', alpha=0.5, label='Session midpoint')
 
@@ -68,7 +69,7 @@ def plot_frontal_theta(
             fontsize=11,
             bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7),
         )
-    ax.set_xlabel('Elapsed Time (min)', fontsize=12)
+    format_time_axis(ax, elapsed_seconds, unit='minutes')
     ax.set_ylabel('Fmθ Power (μV²)', fontsize=12)
     ax.set_title(plot_title, fontsize=14, fontweight='bold')
     ax.grid(True, alpha=0.3, linestyle='--')

@@ -45,6 +45,8 @@ from lib import (
     get_optics_data,
     analyze_fnirs,
     generate_session_summary,
+    get_heart_rate_data,
+    analyze_respiratory,
 )
 
 # 可視化関数をインポート
@@ -65,6 +67,7 @@ from lib.sensors.eeg.visualization import (
 from lib.visualization import (
     plot_segment_comparison,
     plot_fnirs_muse_style,
+    plot_respiratory,
 )
 from lib.statistical_dataframe import create_statistical_dataframe
 
@@ -378,6 +381,21 @@ def generate_markdown_report(data_path, output_dir, results):
             report += "\n\n"
 
     # ========================================
+    # 心拍変動と呼吸数推定
+    # ========================================
+    if "hr_stats" in results or "hr_img" in results:
+        report += "## 💓 心拍変動と呼吸数推定\n\n"
+
+        if "hr_stats" in results:
+            report += "### 統計サマリー\n\n"
+            report += results["hr_stats"].to_markdown(index=False, floatfmt=".2f")
+            report += "\n\n"
+
+        if "hr_img" in results:
+            report += "### 心拍 & 呼吸数の時系列\n\n"
+            report += f"![心拍・呼吸数時系列](img/{results['hr_img']})\n\n"
+
+    # ========================================
     # 時間経過分析
     # ========================================
     if any(key in results for key in segment_keys):
@@ -472,6 +490,39 @@ def run_full_analysis(data_path, output_dir):
             results['fnirs_img'] = fnirs_img_name
     except KeyError as exc:
         print(f'警告: fNIRSデータを処理できませんでした ({exc})')
+
+    # 心拍変動と呼吸数推定
+    try:
+        hr_data = get_heart_rate_data(df)
+        if hr_data and len(hr_data['heart_rate']) > 0:
+            print('計算中: 心拍変動と呼吸数推定...')
+            respiratory_results = analyze_respiratory(hr_data)
+
+            # 統計情報をDataFrame化
+            stats = respiratory_results['stats']
+            hr_stats_data = {
+                'Metric': ['RR平均 (ms)', 'RR標準偏差 (ms)', 'RR最小 (ms)', 'RR最大 (ms)',
+                          'FFT呼吸数平均 (回/分)', 'FFT呼吸数標準偏差 (回/分)'],
+                'Value': [
+                    stats['rr_mean'],
+                    stats['rr_std'],
+                    stats['rr_min'],
+                    stats['rr_max'],
+                    stats['respiratory_rate_fft_mean'],
+                    stats['respiratory_rate_fft_std']
+                ]
+            }
+            results['hr_stats'] = pd.DataFrame(hr_stats_data)
+
+            # 時系列プロット
+            print('プロット中: 心拍 & 呼吸数時系列...')
+            hr_img_name = 'heart_rate_respiratory.png'
+            fig_hr, _ = plot_respiratory(hr_data, respiratory_results)
+            fig_hr.savefig(img_dir / hr_img_name, dpi=150, bbox_inches='tight')
+            plt.close(fig_hr)
+            results['hr_img'] = hr_img_name
+    except Exception as exc:
+        print(f'警告: 心拍データを処理できませんでした ({exc})')
 
     # バンドパワー時系列（Museアプリ風）
     print('プロット中: バンドパワー時系列...')

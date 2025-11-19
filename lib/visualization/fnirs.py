@@ -5,6 +5,8 @@ fNIRS可視化モジュール
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .utils import format_time_axis
+
 
 def plot_fnirs(fnirs_results, figsize=(14, 10)):
     """
@@ -34,34 +36,34 @@ def plot_fnirs(fnirs_results, figsize=(14, 10)):
     # Left HbO
     axes[0, 0].plot(time, left_hbo, color='red', linewidth=1.5)
     axes[0, 0].set_title('Left Hemisphere - HbO (Oxygenated)', fontsize=12, fontweight='bold')
-    axes[0, 0].set_xlabel('Time (seconds)')
     axes[0, 0].set_ylabel('Δ[HbO] (µM)')
     axes[0, 0].grid(True, alpha=0.3)
     axes[0, 0].axhline(y=0, color='black', linestyle='--', linewidth=0.8, alpha=0.5)
+    format_time_axis(axes[0, 0], time, unit='minutes')
 
     # Left HbR
     axes[1, 0].plot(time, left_hbr, color='blue', linewidth=1.5)
     axes[1, 0].set_title('Left Hemisphere - HbR (Deoxygenated)', fontsize=12, fontweight='bold')
-    axes[1, 0].set_xlabel('Time (seconds)')
     axes[1, 0].set_ylabel('Δ[HbR] (µM)')
     axes[1, 0].grid(True, alpha=0.3)
     axes[1, 0].axhline(y=0, color='black', linestyle='--', linewidth=0.8, alpha=0.5)
+    format_time_axis(axes[1, 0], time, unit='minutes')
 
     # Right HbO
     axes[0, 1].plot(time, right_hbo, color='red', linewidth=1.5)
     axes[0, 1].set_title('Right Hemisphere - HbO (Oxygenated)', fontsize=12, fontweight='bold')
-    axes[0, 1].set_xlabel('Time (seconds)')
     axes[0, 1].set_ylabel('Δ[HbO] (µM)')
     axes[0, 1].grid(True, alpha=0.3)
     axes[0, 1].axhline(y=0, color='black', linestyle='--', linewidth=0.8, alpha=0.5)
+    format_time_axis(axes[0, 1], time, unit='minutes')
 
     # Right HbR
     axes[1, 1].plot(time, right_hbr, color='blue', linewidth=1.5)
     axes[1, 1].set_title('Right Hemisphere - HbR (Deoxygenated)', fontsize=12, fontweight='bold')
-    axes[1, 1].set_xlabel('Time (seconds)')
     axes[1, 1].set_ylabel('Δ[HbR] (µM)')
     axes[1, 1].grid(True, alpha=0.3)
     axes[1, 1].axhline(y=0, color='black', linestyle='--', linewidth=0.8, alpha=0.5)
+    format_time_axis(axes[1, 1], time, unit='minutes')
 
     plt.tight_layout()
     return fig, axes
@@ -86,8 +88,7 @@ def plot_fnirs_muse_style(fnirs_results, figsize=(14, 8)):
     """
     fig, ax = plt.subplots(figsize=figsize)
 
-    # 時間を分単位に変換
-    time_min = fnirs_results['time'] / 60.0
+    time = fnirs_results['time']
 
     left_hbo = fnirs_results['left_hbo']
     left_hbr = fnirs_results['left_hbr']
@@ -96,10 +97,10 @@ def plot_fnirs_muse_style(fnirs_results, figsize=(14, 8)):
 
     # Muse App風のカラー設定
     # HbO: 赤/オレンジ系、HbR: 青系
-    ax.plot(time_min, left_hbr, color='#3B82F6', linewidth=1.2, label='Left HbR', alpha=0.9)
-    ax.plot(time_min, right_hbr, color='#60A5FA', linewidth=1.2, label='Right HbR', alpha=0.9)
-    ax.plot(time_min, left_hbo, color='#EF4444', linewidth=1.2, label='Left HbO', alpha=0.9)
-    ax.plot(time_min, right_hbo, color='#F97316', linewidth=1.2, label='Right HbO', alpha=0.9)
+    ax.plot(time, left_hbr, color='#3B82F6', linewidth=1.2, label='Left HbR', alpha=0.9)
+    ax.plot(time, right_hbr, color='#60A5FA', linewidth=1.2, label='Right HbR', alpha=0.9)
+    ax.plot(time, left_hbo, color='#EF4444', linewidth=1.2, label='Left HbO', alpha=0.9)
+    ax.plot(time, right_hbo, color='#F97316', linewidth=1.2, label='Right HbO', alpha=0.9)
 
     # 0ラインを追加
     ax.axhline(y=0, color='gray', linestyle='--', linewidth=1.0, alpha=0.5)
@@ -108,7 +109,7 @@ def plot_fnirs_muse_style(fnirs_results, figsize=(14, 8)):
     ax.grid(True, alpha=0.2, linestyle='-', linewidth=0.5)
 
     # ラベルとタイトル
-    ax.set_xlabel('Time (minutes)', fontsize=12)
+    format_time_axis(ax, time, unit='minutes')
     ax.set_ylabel('Concentration Change (µM)', fontsize=12)
     ax.set_title('Brain Oxygenation (Muse App Style)', fontsize=14, fontweight='bold')
 

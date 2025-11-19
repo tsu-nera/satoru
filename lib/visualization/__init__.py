@@ -17,6 +17,9 @@ from .respiratory import plot_respiratory, plot_frequency_spectrum
 # 統合ダッシュボード
 from .dashboard import plot_integrated_dashboard
 
+# 共通ユーティリティ
+from .utils import format_time_axis
+
 __all__ = [
     # セグメント分析
     'plot_segment_comparison',
@@ -28,4 +31,6 @@ __all__ = [
     'plot_frequency_spectrum',
     # 統合ダッシュボード
     'plot_integrated_dashboard',
+    # 共通ユーティリティ
+    'format_time_axis',
 ]
