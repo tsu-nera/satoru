@@ -475,6 +475,7 @@ def run_full_analysis(data_path, output_dir):
     results['band_statistics'] = band_stats['statistics']
 
     # fNIRS解析
+    fnirs_results = None
     try:
         optics_data = get_optics_data(df)
         if optics_data and len(optics_data['time']) > 0:
@@ -492,6 +493,7 @@ def run_full_analysis(data_path, output_dir):
         print(f'警告: fNIRSデータを処理できませんでした ({exc})')
 
     # 心拍変動と呼吸数推定
+    hr_data = None
     try:
         hr_data = get_heart_rate_data(df)
         if hr_data and len(hr_data['heart_rate']) > 0:
@@ -713,6 +715,9 @@ def run_full_analysis(data_path, output_dir):
                 segment_minutes=3,
                 warmup_minutes=1.0,
                 session_start=session_start,
+                fnirs_results=fnirs_results,
+                hr_data=hr_data,
+                df_timestamps=df['TimeStamp'],
             )
             results['statistical_df'] = statistical_df
             print(f'  バンドパワー: {len(statistical_df["band_powers"])} セグメント')

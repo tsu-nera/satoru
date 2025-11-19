@@ -32,6 +32,9 @@ def create_statistical_dataframe(
     segment_minutes: int = 3,
     warmup_minutes: float = 0.0,
     session_start: Optional[pd.Timestamp] = None,
+    fnirs_results: Optional[Dict] = None,
+    hr_data: Optional[Dict] = None,
+    df_timestamps: Optional[pd.Series] = None,
 ) -> Dict[str, pd.DataFrame]:
     """
     統一的なStatistical DataFrameを生成する。
@@ -50,6 +53,12 @@ def create_statistical_dataframe(
         ウォームアップ期間（分単位）
     session_start : pd.Timestamp, optional
         セッション開始時刻（Noneの場合は現在時刻を使用）
+    fnirs_results : dict, optional
+        analyze_fnirs()の戻り値（fNIRSデータ）
+    hr_data : dict, optional
+        get_heart_rate_data()の戻り値（心拍データ）
+    df_timestamps : pd.Series, optional
+        元データのTimeStamp列（fNIRS/HR計算に必要）
 
     Returns
     -------
@@ -59,6 +68,8 @@ def create_statistical_dataframe(
             'band_ratios': DataFrame,      # セグメント別バンド比率時系列
             'spectral_entropy': DataFrame, # セグメント別Spectral Entropy時系列（正規化済み）
             'iaf': Series,                 # Individual Alpha Frequency時系列（Hz）
+            'fnirs': DataFrame,            # セグメント別fNIRS時系列（HbO/HbR平均）
+            'hr': DataFrame,               # セグメント別心拍数時系列
             'statistics': DataFrame        # 統計サマリー（縦長形式）
         }
 
@@ -218,6 +229,72 @@ def create_statistical_dataframe(
 
     # DataFrameに変換
     band_ratios_df = pd.DataFrame(ratios_dict, index=timestamps)
+
+    # fNIRSセグメント計算（オプション）
+    fnirs_df = None
+    if fnirs_results is not None and df_timestamps is not None:
+        fnirs_records = []
+        segment_delta = pd.Timedelta(seconds=duration_sec)
+
+        # fNIRS時系列データを取得
+        left_hbo = fnirs_results['left_hbo']
+        left_hbr = fnirs_results['left_hbr']
+        right_hbo = fnirs_results['right_hbo']
+        right_hbr = fnirs_results['right_hbr']
+        fnirs_time = fnirs_results['time']
+
+        # 左右の平均を計算
+        avg_hbo = (np.array(left_hbo) + np.array(right_hbo)) / 2.0
+        avg_hbr = (np.array(left_hbr) + np.array(right_hbr)) / 2.0
+
+        # fNIRS時系列にタイムスタンプを付与
+        df_timestamps_dt = pd.to_datetime(df_timestamps)
+        fnirs_session_start = df_timestamps_dt.iloc[0]
+        fnirs_timestamps = fnirs_session_start + pd.to_timedelta(fnirs_time, unit='s')
+
+        for ts in timestamps:
+            end_ts = ts + segment_delta
+
+            # 該当セグメントのfNIRSデータを取得
+            mask = (fnirs_timestamps >= ts) & (fnirs_timestamps < end_ts)
+            hbo_segment = avg_hbo[mask]
+            hbr_segment = avg_hbr[mask]
+
+            # NaN以外の値で平均を計算
+            hbo_mean = np.nanmean(hbo_segment) if len(hbo_segment) > 0 else np.nan
+            hbr_mean = np.nanmean(hbr_segment) if len(hbr_segment) > 0 else np.nan
+
+            fnirs_records.append({
+                'hbo_mean': hbo_mean,
+                'hbr_mean': hbr_mean,
+            })
+
+        fnirs_df = pd.DataFrame(fnirs_records, index=timestamps)
+
+    # HRセグメント計算（オプション）
+    hr_df = None
+    if hr_data is not None:
+        hr_records = []
+        segment_delta = pd.Timedelta(seconds=duration_sec)
+
+        heart_rate = hr_data['heart_rate']
+        hr_timestamps = pd.to_datetime(hr_data['timestamps'])
+
+        for ts in timestamps:
+            end_ts = ts + segment_delta
+
+            # 該当セグメントの心拍データを取得
+            mask = (hr_timestamps >= ts) & (hr_timestamps < end_ts)
+            hr_segment = heart_rate[mask]
+
+            # 平均を計算
+            hr_mean = np.nanmean(hr_segment) if len(hr_segment) > 0 else np.nan
+
+            hr_records.append({
+                'hr_mean': hr_mean,
+            })
+
+        hr_df = pd.DataFrame(hr_records, index=timestamps)
 
     # 統計量計算（縦長形式）
     statistics_rows = []
@@ -382,6 +459,87 @@ def create_statistical_dataframe(
             },
         ])
 
+    # fNIRS統計（オプション）
+    if fnirs_df is not None:
+        # HbO統計
+        hbo_values = fnirs_df['hbo_mean'].dropna()
+        if len(hbo_values) > 0:
+            if len(hbo_values) > 3:
+                z_scores = np.abs(stats.zscore(hbo_values))
+                filtered_hbo = hbo_values[z_scores < 3.0]
+                if len(filtered_hbo) > 0:
+                    hbo_values = filtered_hbo
+
+            statistics_rows.extend([
+                {
+                    'Category': 'fNIRS',
+                    'Metric': 'hbo_Mean',
+                    'Value': hbo_values.mean(),
+                    'Unit': 'µM',
+                    'DisplayName': 'HbO平均 (µM)',
+                },
+                {
+                    'Category': 'fNIRS',
+                    'Metric': 'hbo_Std',
+                    'Value': hbo_values.std(),
+                    'Unit': 'µM',
+                    'DisplayName': 'HbO標準偏差 (µM)',
+                },
+            ])
+
+        # HbR統計
+        hbr_values = fnirs_df['hbr_mean'].dropna()
+        if len(hbr_values) > 0:
+            if len(hbr_values) > 3:
+                z_scores = np.abs(stats.zscore(hbr_values))
+                filtered_hbr = hbr_values[z_scores < 3.0]
+                if len(filtered_hbr) > 0:
+                    hbr_values = filtered_hbr
+
+            statistics_rows.extend([
+                {
+                    'Category': 'fNIRS',
+                    'Metric': 'hbr_Mean',
+                    'Value': hbr_values.mean(),
+                    'Unit': 'µM',
+                    'DisplayName': 'HbR平均 (µM)',
+                },
+                {
+                    'Category': 'fNIRS',
+                    'Metric': 'hbr_Std',
+                    'Value': hbr_values.std(),
+                    'Unit': 'µM',
+                    'DisplayName': 'HbR標準偏差 (µM)',
+                },
+            ])
+
+    # HR統計（オプション）
+    if hr_df is not None:
+        hr_values = hr_df['hr_mean'].dropna()
+        if len(hr_values) > 0:
+            if len(hr_values) > 3:
+                z_scores = np.abs(stats.zscore(hr_values))
+                filtered_hr = hr_values[z_scores < 3.0]
+                if len(filtered_hr) > 0:
+                    hr_values = filtered_hr
+
+            statistics_rows.extend([
+                {
+                    'Category': 'HR',
+                    'Metric': 'hr_Mean',
+                    'Value': hr_values.mean(),
+                    'Unit': 'bpm',
+                    'DisplayName': 'HR平均 (bpm)',
+                },
+                {
+                    'Category': 'HR',
+                    'Metric': 'hr_Std',
+                    'Value': hr_values.std(),
+                    'Unit': 'bpm',
+                    'DisplayName': 'HR標準偏差 (bpm)',
+                },
+            ])
+
     statistics_df = pd.DataFrame(statistics_rows)
 
     return {
@@ -389,6 +547,8 @@ def create_statistical_dataframe(
         'band_ratios': band_ratios_df,
         'spectral_entropy': se_df,
         'iaf': iaf_series,
+        'fnirs': fnirs_df,
+        'hr': hr_df,
         'statistics': statistics_df,
     }
 

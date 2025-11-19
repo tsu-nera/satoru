@@ -108,6 +108,8 @@ def calculate_segment_analysis(
     band_powers_df = statistical_df['band_powers']
     band_ratios_df = statistical_df['band_ratios']
     se_df = statistical_df['spectral_entropy']
+    fnirs_df = statistical_df.get('fnirs')
+    hr_df = statistical_df.get('hr')
 
     if 'TimeStamp' not in df_clean.columns:
         raise ValueError('TimeStamp列が存在しません。')
@@ -192,6 +194,18 @@ def calculate_segment_analysis(
             if pd.notna(iaf_val) and iaf_val != 0:
                 iaf_cv = iaf_std / iaf_val
 
+        # fNIRS値を取得（オプション）
+        hbo_mean = np.nan
+        hbr_mean = np.nan
+        if fnirs_df is not None and start in fnirs_df.index:
+            hbo_mean = fnirs_df.loc[start, 'hbo_mean']
+            hbr_mean = fnirs_df.loc[start, 'hbr_mean']
+
+        # HR値を取得（オプション）
+        hr_mean = np.nan
+        if hr_df is not None and start in hr_df.index:
+            hr_mean = hr_df.loc[start, 'hr_mean']
+
         # 総合スコア計算（利用可能な指標のみ）
         segment_score_result = calculate_meditation_score(
             fmtheta=fm_mean,
@@ -220,6 +234,9 @@ def calculate_segment_analysis(
             'alpha_beta_ratio_db': alpha_beta_ratio_db,
             'beta_theta_ratio': beta_theta_ratio,
             'beta_theta_ratio_db': beta_theta_ratio_db,
+            'hbo_mean': hbo_mean,
+            'hbr_mean': hbr_mean,
+            'hr_mean': hr_mean,
             'meditation_score': meditation_score,
         })
 
@@ -253,7 +270,7 @@ def calculate_segment_analysis(
     # 注: バンド比率はdB形式のみ表示（実数値は不安定で解釈困難なため）
     display_rows = []
     for idx, row in segment_frame.iterrows():
-        display_rows.append({
+        display_row = {
             'No.': int(row['segment_index']),
             '時間帯': row['label'],
             'Theta (dB)': row['theta_mean'],
@@ -265,8 +282,12 @@ def calculate_segment_analysis(
             'Fmθ (dB)': row['fmtheta_mean'],
             'SE': row['spectral_entropy'],
             'IAF (Hz)': row['iaf_mean'],
+            'HbO': row['hbo_mean'],
+            'HbR': row['hbr_mean'],
+            'HR': row['hr_mean'],
             'ピーク': '★' if (peak_idx is not None and int(row['segment_index']) == peak_idx) else '',
-        })
+        }
+        display_rows.append(display_row)
 
     table = pd.DataFrame(display_rows)
 
