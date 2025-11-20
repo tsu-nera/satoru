@@ -180,7 +180,8 @@ def write_to_google_sheets(
     credentials_path : Path, optional
         サービスアカウントJSONファイルのパス。
         指定しない場合は 'private/gdrive-creds.json' を使用。
-    sheet_name : str, default='Sheet1'
+        環境変数 GDRIVE_CREDS_JSON が設定されている場合はそちらを優先。
+    sheet_name : str, default='シート1'
         書き込み先のシート名
 
     Notes
@@ -188,24 +189,35 @@ def write_to_google_sheets(
     - スプレッドシートは事前にサービスアカウントと共有されている必要があります
     - データは既存データの末尾に追記されます
     - 最初の行がヘッダー行として扱われます
+    - GitHub Actionsでは環境変数 GDRIVE_CREDS_JSON から認証情報を読み込みます
     """
-    # 認証情報のパス
-    if credentials_path is None:
-        lib_dir = Path(__file__).parent
-        project_root = lib_dir.parent
-        credentials_path = project_root / 'private' / 'gdrive-creds.json'
-
-    if not credentials_path.exists():
-        raise FileNotFoundError(f'認証情報ファイルが見つかりません: {credentials_path}')
+    import json
 
     # Sheets APIスコープ
     SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
 
-    # サービスアカウント認証
-    credentials = service_account.Credentials.from_service_account_file(
-        str(credentials_path),
-        scopes=SCOPES,
-    )
+    # 環境変数から認証情報を取得（GitHub Actions用）
+    creds_json = os.environ.get('GDRIVE_CREDS_JSON')
+    if creds_json:
+        # JSON文字列から認証情報を作成
+        credentials_info = json.loads(creds_json)
+        credentials = service_account.Credentials.from_service_account_info(
+            credentials_info, scopes=SCOPES
+        )
+    else:
+        # ローカル実行用：ファイルから認証情報を取得
+        if credentials_path is None:
+            lib_dir = Path(__file__).parent
+            project_root = lib_dir.parent
+            credentials_path = project_root / 'private' / 'gdrive-creds.json'
+
+        if not credentials_path.exists():
+            raise FileNotFoundError(f'認証情報ファイルが見つかりません: {credentials_path}')
+
+        credentials = service_account.Credentials.from_service_account_file(
+            str(credentials_path),
+            scopes=SCOPES,
+        )
 
     # Sheets APIサービス構築
     service = build('sheets', 'v4', credentials=credentials)

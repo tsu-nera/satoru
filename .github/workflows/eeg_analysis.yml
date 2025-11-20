@@ -71,6 +71,7 @@ jobs:
       - name: 脳波分析を実行
         env:
           GSHEET_SESSION_LOG_ID: ${{ secrets.GSHEET_SESSION_LOG_ID }}
+          GDRIVE_CREDS_JSON: ${{ secrets.GDRIVE_CREDENTIALS }}
         run: |
           # タイムスタンプ生成
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
