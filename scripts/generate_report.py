@@ -8,6 +8,7 @@ Usage:
     python generate_report.py --data <CSV_PATH> [--output <REPORT_PATH>]
 """
 
+import os
 import sys
 from pathlib import Path
 import argparse
@@ -48,8 +49,8 @@ from lib import (
     generate_session_summary,
     get_heart_rate_data,
     analyze_respiratory,
-    log_session_metrics,
 )
+from lib.session_log import write_to_csv, write_to_google_sheets
 
 # 可視化関数をインポート
 from lib.sensors.eeg.visualization import (
@@ -411,7 +412,7 @@ def generate_markdown_report(data_path, output_dir, results):
     print(f'✓ レポート生成完了: {report_path}')
 
 
-def run_full_analysis(data_path, output_dir):
+def run_full_analysis(data_path, output_dir, save_to='none'):
     """
     完全な分析を実行
 
@@ -421,6 +422,11 @@ def run_full_analysis(data_path, output_dir):
         入力CSVファイルパス
     output_dir : Path
         出力ディレクトリ
+    save_to : str, default='none'
+        セッションログの保存先
+        - 'none': 保存しない（デフォルト）
+        - 'csv': ローカルCSVに保存（開発用）
+        - 'sheets': Google Sheetsに保存（本番用）
     """
     print('='*60)
     print('Muse脳波データ基本分析')
@@ -908,13 +914,30 @@ def run_full_analysis(data_path, output_dir):
     summary_result.summary.to_csv(summary_csv_path, index=False, encoding='utf-8')
     print(f'✓ サマリーCSV生成完了: {summary_csv_path}')
 
-    # セッションログCSVに追記
-    print('更新中: セッションログCSV...')
-    try:
-        csv_path = log_session_metrics(results)
-        print(f'✓ セッションログCSV更新: {csv_path}')
-    except Exception as exc:
-        print(f'警告: セッションログCSV更新に失敗しました ({exc})')
+    # セッションログ保存（開発用CSV または 本番用Google Sheets）
+    if save_to == 'csv':
+        print('更新中: セッションログ（CSV）...')
+        try:
+            csv_path = write_to_csv(results=results)
+            print(f'✓ セッションログCSV更新: {csv_path}')
+        except Exception as exc:
+            print(f'警告: セッションログCSV更新に失敗しました ({exc})')
+    elif save_to == 'sheets':
+        print('更新中: セッションログ（Google Sheets）...')
+        try:
+            spreadsheet_id = os.environ.get('GSHEET_SESSION_LOG_ID')
+            if not spreadsheet_id:
+                print('警告: 環境変数 GSHEET_SESSION_LOG_ID が設定されていません')
+            else:
+                write_to_google_sheets(
+                    results=results,
+                    spreadsheet_id=spreadsheet_id,
+                )
+                print(f'✓ Google Sheets更新: {spreadsheet_id}')
+        except Exception as exc:
+            print(f'警告: Google Sheets更新に失敗しました ({exc})')
+    else:
+        print('セッションログへの保存はスキップされました（--save-to オプションで指定）')
 
     print()
     print('='*60)
@@ -942,6 +965,13 @@ def main():
         default=Path(__file__).parent,
         help='出力ディレクトリ（デフォルト: スクリプトと同じディレクトリ）'
     )
+    parser.add_argument(
+        '--save-to',
+        type=str,
+        choices=['none', 'csv', 'sheets'],
+        default='none',
+        help='セッションログの保存先: none=保存しない（デフォルト）, csv=ローカルCSV（開発用）, sheets=Google Sheets（本番用）'
+    )
 
     args = parser.parse_args()
 
@@ -953,7 +983,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
 
     # 分析実行
-    run_full_analysis(args.data, args.output)
+    run_full_analysis(args.data, args.output, save_to=args.save_to)
 
     return 0
 

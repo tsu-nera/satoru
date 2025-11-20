@@ -6,14 +6,97 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 
 import numpy as np
 import pandas as pd
+from google.oauth2 import service_account
+from googleapiclient.discovery import build
 
 
-def log_session_metrics(
+def _get_column_headers() -> List[str]:
+    """
+    セッションログのカラムヘッダーを取得。
+
+    Returns
+    -------
+    list of str
+        12個のカラム名のリスト
+    """
+    return [
+        'timestamp',
+        'duration_min',
+        'fm_theta_mean',
+        'fm_theta_best',
+        'iaf_mean',
+        'iaf_best',
+        'alpha_mean',
+        'alpha_best',
+        'beta_mean',
+        'beta_best',
+        'theta_alpha_mean',
+        'theta_alpha_best',
+    ]
+
+
+def _extract_session_data(results: Dict) -> Dict:
+    """
+    分析結果からセッションログ用のデータを抽出する。
+
+    Parameters
+    ----------
+    results : dict
+        分析結果を格納した辞書
+
+    Returns
+    -------
+    dict
+        セッションデータの辞書。以下のキーを含む：
+        - timestamp: セッション開始時刻文字列 (YYYY-MM-DD HH:MM:SS)
+        - duration_min: 計測時間（分）
+        - fm_theta_mean, fm_theta_best, ...（全12カラム分）
+
+    Raises
+    ------
+    ValueError
+        start_timeが見つからない場合
+    """
+    # データ抽出
+    info = results.get('data_info', {})
+    mean_metrics = results.get('mean_metrics', {})
+    best_metrics = results.get('best_metrics', {})
+
+    # タイムスタンプ（記録開始時刻）
+    start_time = info.get('start_time')
+    if start_time is None:
+        raise ValueError('results["data_info"]["start_time"]が見つかりません')
+
+    timestamp_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
+
+    # 計測時間（分）
+    duration_sec = info.get('duration_sec')
+    duration_min = duration_sec / 60.0 if duration_sec is not None else np.nan
+
+    # セッションデータ
+    return {
+        'timestamp': timestamp_str,
+        'duration_min': duration_min,
+        'fm_theta_mean': mean_metrics.get('fm_theta_mean', np.nan),
+        'fm_theta_best': best_metrics.get('fm_theta_best', np.nan),
+        'iaf_mean': mean_metrics.get('iaf_mean', np.nan),
+        'iaf_best': best_metrics.get('iaf_best', np.nan),
+        'alpha_mean': mean_metrics.get('alpha_mean', np.nan),
+        'alpha_best': best_metrics.get('alpha_best', np.nan),
+        'beta_mean': mean_metrics.get('beta_mean', np.nan),
+        'beta_best': best_metrics.get('beta_best', np.nan),
+        'theta_alpha_mean': mean_metrics.get('theta_alpha_mean', np.nan),
+        'theta_alpha_best': best_metrics.get('theta_alpha_best', np.nan),
+    }
+
+
+def write_to_csv(
     results: Dict,
     csv_path: Optional[Path] = None,
 ) -> Path:
@@ -39,7 +122,7 @@ def log_session_metrics(
     Notes
     -----
     CSVスキーマ（12カラム）:
-    - date: 日付 (YYYY-MM-DD)
+    - timestamp: セッション開始時刻 (YYYY-MM-DD HH:MM:SS)
     - duration_min: 計測時間（分）
     - fm_theta_mean: Fmθ平均 (dB)
     - fm_theta_best: Fmθ最良値 (dB)
@@ -54,7 +137,6 @@ def log_session_metrics(
     """
     # デフォルトのCSVパス
     if csv_path is None:
-        # プロジェクトルートを取得
         lib_dir = Path(__file__).parent
         project_root = lib_dir.parent
         log_dir = project_root / 'issues' / '007_daily_dashboard'
@@ -62,36 +144,7 @@ def log_session_metrics(
         csv_path = log_dir / 'session_log.csv'
 
     # データ抽出
-    info = results.get('data_info', {})
-    mean_metrics = results.get('mean_metrics', {})
-    best_metrics = results.get('best_metrics', {})
-
-    # 日付（記録開始時刻から）
-    start_time = info.get('start_time')
-    if start_time is None:
-        raise ValueError('results["data_info"]["start_time"]が見つかりません')
-
-    date_str = start_time.strftime('%Y-%m-%d')
-
-    # 計測時間（分）
-    duration_sec = info.get('duration_sec')
-    duration_min = duration_sec / 60.0 if duration_sec is not None else np.nan
-
-    # 新しいレコード
-    new_record = {
-        'date': date_str,
-        'duration_min': duration_min,
-        'fm_theta_mean': mean_metrics.get('fm_theta_mean', np.nan),
-        'fm_theta_best': best_metrics.get('fm_theta_best', np.nan),
-        'iaf_mean': mean_metrics.get('iaf_mean', np.nan),
-        'iaf_best': best_metrics.get('iaf_best', np.nan),
-        'alpha_mean': mean_metrics.get('alpha_mean', np.nan),
-        'alpha_best': best_metrics.get('alpha_best', np.nan),
-        'beta_mean': mean_metrics.get('beta_mean', np.nan),
-        'beta_best': best_metrics.get('beta_best', np.nan),
-        'theta_alpha_mean': mean_metrics.get('theta_alpha_mean', np.nan),
-        'theta_alpha_best': best_metrics.get('theta_alpha_best', np.nan),
-    }
+    new_record = _extract_session_data(results)
 
     # CSVの存在確認
     if csv_path.exists():
@@ -107,3 +160,102 @@ def log_session_metrics(
     df.to_csv(csv_path, index=False, float_format='%.3f')
 
     return csv_path
+
+
+def write_to_google_sheets(
+    results: Dict,
+    spreadsheet_id: str,
+    credentials_path: Optional[Path] = None,
+    sheet_name: str = 'シート1',
+) -> None:
+    """
+    セッションデータをGoogle Spreadsheetsに書き込む。
+
+    Parameters
+    ----------
+    results : dict
+        分析結果を格納した辞書。log_session_metrics()と同じ形式。
+    spreadsheet_id : str
+        書き込み先のGoogle SpreadsheetのID
+    credentials_path : Path, optional
+        サービスアカウントJSONファイルのパス。
+        指定しない場合は 'private/gdrive-creds.json' を使用。
+    sheet_name : str, default='Sheet1'
+        書き込み先のシート名
+
+    Notes
+    -----
+    - スプレッドシートは事前にサービスアカウントと共有されている必要があります
+    - データは既存データの末尾に追記されます
+    - 最初の行がヘッダー行として扱われます
+    """
+    # 認証情報のパス
+    if credentials_path is None:
+        lib_dir = Path(__file__).parent
+        project_root = lib_dir.parent
+        credentials_path = project_root / 'private' / 'gdrive-creds.json'
+
+    if not credentials_path.exists():
+        raise FileNotFoundError(f'認証情報ファイルが見つかりません: {credentials_path}')
+
+    # Sheets APIスコープ
+    SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+
+    # サービスアカウント認証
+    credentials = service_account.Credentials.from_service_account_file(
+        str(credentials_path),
+        scopes=SCOPES,
+    )
+
+    # Sheets APIサービス構築
+    service = build('sheets', 'v4', credentials=credentials)
+
+    # データ抽出
+    session_data = _extract_session_data(results)
+
+    # 新しい行のデータ（文字列にフォーマット）
+    new_row = []
+    for key in _get_column_headers():
+        value = session_data[key]
+        if key == 'timestamp':
+            new_row.append(value)
+        elif np.isnan(value):
+            new_row.append('')
+        else:
+            new_row.append(f'{value:.3f}')
+
+    # スプレッドシートの既存データを取得
+    try:
+        result = service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=f'{sheet_name}!A:L',
+        ).execute()
+        values = result.get('values', [])
+    except Exception as e:
+        # シートが存在しない場合はヘッダーを作成
+        values = []
+
+    # ヘッダーが存在しない場合は作成
+    if not values:
+        # ヘッダーを最初の行に書き込み
+        header_body = {'values': [_get_column_headers()]}
+        service.spreadsheets().values().update(
+            spreadsheetId=spreadsheet_id,
+            range=f'{sheet_name}!A1:L1',
+            valueInputOption='RAW',
+            body=header_body,
+        ).execute()
+        values = [_get_column_headers()]
+
+    # 新しい行を追加
+    next_row = len(values) + 1
+    range_name = f'{sheet_name}!A{next_row}:L{next_row}'
+
+    # データを書き込み
+    body = {'values': [new_row]}
+    service.spreadsheets().values().update(
+        spreadsheetId=spreadsheet_id,
+        range=range_name,
+        valueInputOption='RAW',
+        body=body,
+    ).execute()

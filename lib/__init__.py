@@ -57,9 +57,6 @@ from .session_summary import (
     extract_metric_value,
 )
 
-from .session_log import (
-    log_session_metrics,
-)
 
 __all__ = [
     # loaders
@@ -106,6 +103,4 @@ __all__ = [
     'SessionSummaryResult',
     'generate_session_summary',
     'extract_metric_value',
-    # session log
-    'log_session_metrics',
 ]
