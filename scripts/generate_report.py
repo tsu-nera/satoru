@@ -42,11 +42,13 @@ from lib import (
     calculate_spectral_entropy_time_series,
     calculate_segment_analysis,
     calculate_meditation_score,
+    calculate_best_metrics,
     get_optics_data,
     analyze_fnirs,
     generate_session_summary,
     get_heart_rate_data,
     analyze_respiratory,
+    log_session_metrics,
 )
 
 # 可視化関数をインポート
@@ -213,42 +215,34 @@ def generate_markdown_report(data_path, output_dir, results):
                     report += f"- {label}: {score_100:.1f}/100\n"
         report += "\n"
 
-    # セッション総合評価
-    if 'band_ratios_stats' in results:
-        report += "### セッション総合評価\n\n"
-        ratios_df = results['band_ratios_stats']
+    # 主要指標サマリー（Mean / Best テーブル）
+    if 'mean_metrics' in results and 'best_metrics' in results:
+        report += "### 主要指標サマリー\n\n"
 
-        # 新形式（縦長）か旧形式（横長）かを判定
-        if 'DisplayName' in ratios_df.columns:
-            # 新形式：Mean行のみを表示
-            mean_rows = ratios_df[ratios_df['Metric'].str.contains('Mean', na=False)]
-            for _, row in mean_rows.iterrows():
-                ratio_name = row['DisplayName']
-                avg_value = row['Value']
-                report += f"- **{ratio_name}**: {avg_value:.3f}\n"
-        else:
-            # 旧形式（後方互換）
-            for _, row in ratios_df.iterrows():
-                ratio_name = row.get('指標', row.get('Metric', '不明'))
-                avg_value = row.get('平均値', row.get('Value', 0.0))
-                report += f"- **{ratio_name}**: {avg_value:.3f}\n"
+        mean_m = results['mean_metrics']
+        best_m = results['best_metrics']
 
-        # Fmθを追加
-        if 'frontal_theta_stats' in results:
-            fmtheta_df = results['frontal_theta_stats']
-            fmtheta_mean_row = fmtheta_df[fmtheta_df['Metric'] == 'Mean']
-            if not fmtheta_mean_row.empty:
-                fmtheta_value = fmtheta_mean_row['Value'].iloc[0]
-                report += f"- **Fmθ (μV²)**: {fmtheta_value:.3f}\n"
+        # テーブルヘッダー
+        report += "| 指標 | Mean | Best | 単位 |\n"
+        report += "|:-----|-----:|-----:|:-----|\n"
 
-        # IAFを追加（Statistical DFから）
-        if 'statistical_df' in results and results['statistical_df'] is not None:
-            stat_df = results['statistical_df']
-            if 'iaf' in stat_df:
-                iaf_series = stat_df['iaf']
-                iaf_value = iaf_series.mean()
-                iaf_std = iaf_series.std()
-                report += f"- **IAF (Hz)**: {iaf_value:.2f} ± {iaf_std:.2f}\n"
+        # 各指標の行を追加
+        metrics_config = [
+            ('Fmθ', 'fm_theta_mean', 'fm_theta_best', 'dB'),
+            ('IAF', 'iaf_mean', 'iaf_best', 'Hz'),
+            ('Alpha', 'alpha_mean', 'alpha_best', 'dB'),
+            ('Beta', 'beta_mean', 'beta_best', 'dB'),
+            ('θ/α', 'theta_alpha_mean', 'theta_alpha_best', 'ratio'),
+        ]
+
+        for label, mean_key, best_key, unit in metrics_config:
+            mean_val = mean_m.get(mean_key)
+            best_val = best_m.get(best_key)
+
+            mean_str = f"{mean_val:.3f}" if mean_val is not None and not np.isnan(mean_val) else "N/A"
+            best_str = f"{best_val:.3f}" if best_val is not None and not np.isnan(best_val) else "N/A"
+
+            report += f"| {label} | {mean_str} | {best_str} | {unit} |\n"
 
         report += "\n"
 
@@ -751,6 +745,22 @@ def run_full_analysis(data_path, output_dir):
         results['segment_plot'] = segment_plot_name
         results['segment_peak_range'] = segment_result.metadata.get('peak_time_range')
         results['segment_peak_score'] = segment_result.metadata.get('peak_score')
+
+        # best値を計算
+        best_metrics = calculate_best_metrics(segment_result)
+        results['best_metrics'] = best_metrics
+
+        # mean値を計算（セグメントの平均）
+        segments = segment_result.segments
+        mean_metrics = {
+            'fm_theta_mean': segments['fmtheta_mean'].mean() if 'fmtheta_mean' in segments else None,
+            'iaf_mean': segments['iaf_mean'].mean() if 'iaf_mean' in segments else None,
+            'alpha_mean': segments['alpha_mean'].mean() if 'alpha_mean' in segments else None,
+            'beta_mean': segments['beta_mean'].mean() if 'beta_mean' in segments else None,
+            'theta_alpha_mean': segments['theta_alpha_ratio'].mean() if 'theta_alpha_ratio' in segments else None,
+        }
+        results['mean_metrics'] = mean_metrics
+
     except Exception as exc:
         print(f'警告: 時間セグメント分析に失敗しました ({exc})')
 
@@ -897,6 +907,14 @@ def run_full_analysis(data_path, output_dir):
     summary_csv_path = output_dir / 'summary.csv'
     summary_result.summary.to_csv(summary_csv_path, index=False, encoding='utf-8')
     print(f'✓ サマリーCSV生成完了: {summary_csv_path}')
+
+    # セッションログCSVに追記
+    print('更新中: セッションログCSV...')
+    try:
+        csv_path = log_session_metrics(results)
+        print(f'✓ セッションログCSV更新: {csv_path}')
+    except Exception as exc:
+        print(f'警告: セッションログCSV更新に失敗しました ({exc})')
 
     print()
     print('='*60)

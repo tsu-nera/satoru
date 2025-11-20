@@ -85,7 +85,7 @@ def calculate_segment_analysis(
         create_statistical_dataframe()が返す統計DataFrame辞書。
         必須キー: 'band_powers', 'band_ratios'
     segment_minutes : int, default 5
-        セグメント長（分単位）。
+        セグメント長（分単位）。1
     warmup_minutes : float, default 0.0
         セッション開始後の除外期間（分単位）。アーティファクト除去のため。
 
@@ -482,3 +482,44 @@ def calculate_meditation_score(
         'scores': scores,
         'weights': weights,
     }
+
+
+def calculate_best_metrics(segment_result: SegmentAnalysisResult) -> Dict[str, float]:
+    """
+    セグメント分析結果から集中瞑想に最適なbest値を抽出する。
+
+    Parameters
+    ----------
+    segment_result : SegmentAnalysisResult
+        calculate_segment_analysis()の戻り値
+
+    Returns
+    -------
+    dict
+        各指標のbest値を含む辞書:
+        - fm_theta_best: Fmθ最大値（高いほど瞑想深度が深い）
+        - iaf_best: IAF最大値（高いほど安定したアルファ波）
+        - alpha_best: Alpha最大値（高いほどリラックス）
+        - beta_best: Beta最小値（低いほど覚醒/ストレスが低い）
+        - theta_alpha_best: θ/α比最大値（高いほど瞑想深度が深い）
+
+    Notes
+    -----
+    集中瞑想の観点から各指標の選定基準を決定:
+    - fm_theta, iaf, alpha, theta_alpha: 最大値（高いほど良い）
+    - beta: 最小値（低いほど良い）
+    """
+    segments = segment_result.segments
+
+    # 集中瞑想に最適なbest値を計算
+    best_metrics = {
+        # 高いほど良い指標 → 最大値
+        'fm_theta_best': segments['fmtheta_mean'].max() if 'fmtheta_mean' in segments else np.nan,
+        'iaf_best': segments['iaf_mean'].max() if 'iaf_mean' in segments else np.nan,
+        'alpha_best': segments['alpha_mean'].max() if 'alpha_mean' in segments else np.nan,
+        'theta_alpha_best': segments['theta_alpha_ratio'].max() if 'theta_alpha_ratio' in segments else np.nan,
+        # 低いほど良い指標 → 最小値
+        'beta_best': segments['beta_mean'].min() if 'beta_mean' in segments else np.nan,
+    }
+
+    return best_metrics
