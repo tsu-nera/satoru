@@ -69,6 +69,8 @@ jobs:
           echo "ダウンロード完了: $CSV_FILE"
 
       - name: 脳波分析を実行
+        env:
+          GSHEET_SESSION_LOG_ID: ${{ secrets.GSHEET_SESSION_LOG_ID }}
         run: |
           # タイムスタンプ生成
           TIMESTAMP=$(date +%Y%m%d_%H%M%S)
@@ -81,7 +83,8 @@ jobs:
           # レポート生成
           python scripts/generate_report.py \
             --data "$CSV_PATH" \
-            --output "$OUTPUT_DIR"
+            --output "$OUTPUT_DIR" \
+            --save-to sheets
 
           # 環境変数に保存
           CSV_NAME=$(basename "$CSV_PATH")

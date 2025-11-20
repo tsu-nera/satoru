@@ -48,6 +48,7 @@ from .segment_analysis import (
     calculate_segment_analysis,
     MEDITATION_SCORE_WEIGHTS,
     calculate_meditation_score,
+    calculate_best_metrics,
 )
 
 from .session_summary import (
@@ -55,6 +56,7 @@ from .session_summary import (
     generate_session_summary,
     extract_metric_value,
 )
+
 
 __all__ = [
     # loaders
@@ -96,6 +98,7 @@ __all__ = [
     'calculate_segment_analysis',
     'MEDITATION_SCORE_WEIGHTS',
     'calculate_meditation_score',
+    'calculate_best_metrics',
     # session summary
     'SessionSummaryResult',
     'generate_session_summary',
