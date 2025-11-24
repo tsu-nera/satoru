@@ -166,7 +166,7 @@ def write_to_google_sheets(
     results: Dict,
     spreadsheet_id: str,
     credentials_path: Optional[Path] = None,
-    sheet_name: str = 'シート1',
+    sheet_name: str = 'Muse',
 ) -> None:
     """
     セッションデータをGoogle Spreadsheetsに書き込む。
