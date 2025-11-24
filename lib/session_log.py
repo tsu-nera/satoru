@@ -254,7 +254,7 @@ def write_to_google_sheets(
         service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
             range=f'{sheet_name}!A1:L1',
-            valueInputOption='RAW',
+            valueInputOption='USER_ENTERED',
             body=header_body,
         ).execute()
         values = [_get_column_headers()]
@@ -268,6 +268,6 @@ def write_to_google_sheets(
     service.spreadsheets().values().update(
         spreadsheetId=spreadsheet_id,
         range=range_name,
-        valueInputOption='RAW',
+        valueInputOption='USER_ENTERED',
         body=body,
     ).execute()
