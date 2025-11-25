@@ -12,7 +12,7 @@ warnings.filterwarnings('ignore')
 mne.set_log_level('ERROR')
 
 
-def calculate_psd(raw, fmin=0.5, fmax=50.0, n_fft=512):
+def calculate_psd(raw, fmin=0.5, fmax=50.0, n_fft=2048):
     """
     パワースペクトル密度（PSD）を計算
 
@@ -25,7 +25,7 @@ def calculate_psd(raw, fmin=0.5, fmax=50.0, n_fft=512):
     fmax : float
         最大周波数（Hz）
     n_fft : int
-        FFT window size
+        FFT window size。大きいほど周波数解像度が向上（デフォルト2048で約0.125Hz解像度）
 
     Returns
     -------

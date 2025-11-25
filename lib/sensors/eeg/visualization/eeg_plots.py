@@ -809,7 +809,8 @@ def plot_band_ratios(
 
 def plot_paf(paf_dict, img_path=None):
     """
-    Peak Alpha Frequency（PAF）をプロット
+    Individual Alpha Frequency（IAF）をプロット
+    Peak方式とCoG方式の両方を表示
 
     Parameters
     ----------
@@ -824,49 +825,73 @@ def plot_paf(paf_dict, img_path=None):
         生成された図オブジェクト
     """
     paf_results = paf_dict['paf_by_channel']
-    iaf = paf_dict['iaf']
+    iaf_peak = paf_dict.get('iaf_peak', paf_dict.get('iaf'))
+    iaf_cog = paf_dict.get('iaf_cog', iaf_peak)
     alpha_low, alpha_high = paf_dict['alpha_range']
     alpha_freqs = paf_dict['alpha_freqs']
 
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-    channel_colors = ['blue', 'green', 'red', 'purple']
 
-    # 左図: Alpha帯域のPSDとPAF
+    # カラーパレット
+    colors = {'Left': '#2196F3', 'Right': '#F44336',
+              'TP9': '#2196F3', 'AF7': '#4CAF50', 'AF8': '#FF9800', 'TP10': '#F44336'}
+
+    # 左図: Alpha帯域のPSDとPeak/CoGマーカー
     for ch_label, result in paf_results.items():
-        color = channel_colors[list(paf_results.keys()).index(ch_label)]
+        color = colors.get(ch_label, '#666666')
         ax1.plot(alpha_freqs, result['PSD'], label=ch_label,
-                linewidth=2, color=color, alpha=0.8)
+                linewidth=2.5, color=color, alpha=0.8)
+        # Peakマーカー (●)
         ax1.scatter(result['PAF'], result['Power'],
-                   s=100, color=color, marker='o', zorder=5)
+                   s=120, color=color, marker='o', zorder=5, edgecolors='white', linewidths=2)
+        # CoGマーカー (▼)
+        cog_power_idx = np.abs(alpha_freqs - result['CoG']).argmin()
+        cog_power = result['PSD'][cog_power_idx]
+        ax1.scatter(result['CoG'], cog_power,
+                   s=100, color=color, marker='v', zorder=5, edgecolors='white', linewidths=1.5)
 
-    ax1.axvline(x=iaf, color='black', linestyle='--', linewidth=2,
-               label=f'IAF = {iaf:.2f} Hz')
-    ax1.set_xlabel('Frequency (Hz)', fontsize=12)
-    ax1.set_ylabel('Power Spectral Density (μV²/Hz)', fontsize=12)
-    ax1.set_title('Alpha Band PSD and PAF', fontsize=13, fontweight='bold')
-    ax1.legend(fontsize=10)
+    ax1.axvline(x=iaf_peak, color='#1976D2', linestyle='--', linewidth=2, alpha=0.7,
+               label=f'Peak: {iaf_peak:.2f} Hz')
+    ax1.axvline(x=iaf_cog, color='#D32F2F', linestyle=':', linewidth=2, alpha=0.7,
+               label=f'CoG: {iaf_cog:.2f} Hz')
+    ax1.set_xlabel('Frequency (Hz)', fontsize=11)
+    ax1.set_ylabel('PSD (μV²/Hz)', fontsize=11)
+    ax1.set_title('Alpha Band PSD', fontsize=12, fontweight='bold')
+    ax1.legend(fontsize=9, loc='upper right')
     ax1.grid(True, alpha=0.3)
 
-    # 右図: チャネル別PAFの棒グラフ
+    # 中央図: Peak vs CoG 比較棒グラフ
     channels = list(paf_results.keys())
-    pafs = [paf_results[ch]['PAF'] for ch in channels]
-    colors_bar = [channel_colors[i] for i in range(len(channels))]
+    x = np.arange(len(channels))
+    width = 0.35
 
-    bars = ax2.bar(channels, pafs, color=colors_bar, alpha=0.7, edgecolor='black')
-    ax2.axhline(y=iaf, color='black', linestyle='--', linewidth=2,
-               label=f'IAF = {iaf:.2f} Hz')
-    ax2.set_ylabel('PAF (Hz)', fontsize=12)
-    ax2.set_xlabel('Channel', fontsize=12)
-    ax2.set_title('Peak Alpha Frequency by Channel', fontsize=13, fontweight='bold')
-    ax2.set_ylim(alpha_low, alpha_high)
+    peaks = [paf_results[ch]['PAF'] for ch in channels]
+    cogs = [paf_results[ch]['CoG'] for ch in channels]
+
+    bars1 = ax2.bar(x - width/2, peaks, width, label='Peak', color='#1976D2', alpha=0.8, edgecolor='white')
+    bars2 = ax2.bar(x + width/2, cogs, width, label='CoG', color='#D32F2F', alpha=0.8, edgecolor='white')
+
+    ax2.axhline(y=iaf_peak, color='#1976D2', linestyle='--', linewidth=1.5, alpha=0.5)
+    ax2.axhline(y=iaf_cog, color='#D32F2F', linestyle=':', linewidth=1.5, alpha=0.5)
+
+    ax2.set_ylabel('Frequency (Hz)', fontsize=11)
+    ax2.set_xlabel('Channel', fontsize=11)
+    ax2.set_title('Peak vs CoG by Channel', fontsize=12, fontweight='bold')
+    ax2.set_xticks(x)
+    ax2.set_xticklabels(channels)
+    ax2.set_ylim(alpha_low - 0.5, alpha_high + 0.5)
     ax2.legend(fontsize=10)
     ax2.grid(True, alpha=0.3, axis='y')
 
-    for bar, paf in zip(bars, pafs):
+    # 棒グラフに値を表示
+    for bar in bars1:
         height = bar.get_height()
-        ax2.text(bar.get_x() + bar.get_width()/2., height,
-                f'{paf:.2f}',
-                ha='center', va='bottom', fontsize=10, fontweight='bold')
+        ax2.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                f'{height:.1f}', ha='center', va='bottom', fontsize=9, color='#1976D2')
+    for bar in bars2:
+        height = bar.get_height()
+        ax2.text(bar.get_x() + bar.get_width()/2., height + 0.1,
+                f'{height:.1f}', ha='center', va='bottom', fontsize=9, color='#D32F2F')
 
     plt.tight_layout()
 

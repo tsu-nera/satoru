@@ -310,16 +310,16 @@ def generate_markdown_report(data_path, output_dir, results):
                 if pd.notna(inc):
                     report += f"セッション後半の平均Fmθは前半比で **{inc:+.1f}%** 変化しました。\n\n"
 
-        # Peak Alpha Frequency
+        # Individual Alpha Frequency
         if any(key in results for key in paf_keys):
-            report += "### Peak Alpha Frequency (PAF)\n\n"
+            report += "### Individual Alpha Frequency (IAF)\n\n"
 
             if 'paf_img' in results:
                 report += f"![PAF](img/{results['paf_img']})\n\n"
 
             if 'iaf' in results:
                 iaf_data = results['iaf']
-                report += f"**Individual Alpha Frequency (IAF)**: {iaf_data['value']:.2f} ± {iaf_data['std']:.2f} Hz\n\n"
+                report += f"**IAF (Peak)**: {iaf_data['peak']:.2f} Hz / **IAF (CoG)**: {iaf_data['cog']:.2f} Hz\n\n"
 
             if 'paf_summary' in results:
                 report += "**チャネル別詳細**\n\n"
@@ -640,16 +640,22 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
         plot_paf(paf_dict, img_path=img_dir / 'paf.png')
         results['paf_img'] = 'paf.png'
 
-        # PAFサマリー
-        paf_summary = []
+        # IAFサマリー
+        iaf_summary = []
         for ch_label, paf_result in paf_dict['paf_by_channel'].items():
-            paf_summary.append({
+            iaf_summary.append({
                 'チャネル': ch_label,
-                'PAF (Hz)': paf_result['PAF'],
+                'Peak (Hz)': paf_result['PAF'],
+                'CoG (Hz)': paf_result['CoG'],
                 'Power (μV²/Hz)': paf_result['Power']
             })
-        results['paf_summary'] = pd.DataFrame(paf_summary)
-        results['iaf'] = {'value': paf_dict['iaf'], 'std': paf_dict['iaf_std']}
+        results['paf_summary'] = pd.DataFrame(iaf_summary)
+        results['iaf'] = {
+            'value': paf_dict['iaf'],
+            'std': paf_dict['iaf_std'],
+            'peak': paf_dict['iaf_peak'],
+            'cog': paf_dict['iaf_cog']
+        }
 
         # PAF時間推移（優先チャネルを使用）
         if tfr_primary:
