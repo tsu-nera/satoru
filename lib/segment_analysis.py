@@ -31,7 +31,7 @@ MEDITATION_SCORE_WEIGHTS = {
     'fmtheta': 0.3125,          # Frontal Midline Theta（瞑想深度）
     'spectral_entropy': 0.25,   # Spectral Entropy（集中度）
     'theta_alpha_ratio': 0.1875, # θ/α比（瞑想深度）
-    'alpha_beta_ratio': 0.125,  # α/β比（リラックス度）
+    'beta_alpha_ratio': 0.125,  # β/α比（覚醒度、低いほどリラックス）
     'iaf_stability': 0.125,     # IAF安定性（周波数特性）
 }
 
@@ -161,12 +161,12 @@ def calculate_segment_analysis(
 
         # バンド比率（対数スケール: dB差分）
         theta_alpha_ratio_db = band_ratios_df.loc[start, 'theta_alpha_db'] if start in band_ratios_df.index else np.nan
-        alpha_beta_ratio_db = band_ratios_df.loc[start, 'alpha_beta_db'] if start in band_ratios_df.index else np.nan
+        beta_alpha_ratio_db = band_ratios_df.loc[start, 'beta_alpha_db'] if start in band_ratios_df.index else np.nan
         beta_theta_ratio_db = band_ratios_df.loc[start, 'beta_theta_db'] if start in band_ratios_df.index else np.nan
 
         # バンド比率（実数値）
         theta_alpha_ratio = band_ratios_df.loc[start, 'theta_alpha'] if start in band_ratios_df.index else np.nan
-        alpha_beta_ratio = band_ratios_df.loc[start, 'alpha_beta'] if start in band_ratios_df.index else np.nan
+        beta_alpha_ratio = band_ratios_df.loc[start, 'beta_alpha'] if start in band_ratios_df.index else np.nan
         beta_theta_ratio = band_ratios_df.loc[start, 'beta_theta'] if start in band_ratios_df.index else np.nan
 
         # Spectral Entropy
@@ -212,7 +212,7 @@ def calculate_segment_analysis(
             spectral_entropy=se_mean,  # Statistical DFから取得
             theta_alpha_ratio=theta_alpha_ratio,  # 実数比率を使用
             faa=None,  # セグメント単位では未対応
-            alpha_beta_ratio=alpha_beta_ratio,  # 実数値を使用
+            beta_alpha_ratio=beta_alpha_ratio,  # 実数値を使用
             iaf_cv=iaf_cv,
             hsi_quality=None,  # セグメント単位では未対応
         )
@@ -230,8 +230,8 @@ def calculate_segment_analysis(
             'theta_mean': theta_mean,
             'theta_alpha_ratio': theta_alpha_ratio,
             'theta_alpha_ratio_db': theta_alpha_ratio_db,
-            'alpha_beta_ratio': alpha_beta_ratio,
-            'alpha_beta_ratio_db': alpha_beta_ratio_db,
+            'beta_alpha_ratio': beta_alpha_ratio,
+            'beta_alpha_ratio_db': beta_alpha_ratio_db,
             'beta_theta_ratio': beta_theta_ratio,
             'beta_theta_ratio_db': beta_theta_ratio_db,
             'hbo_mean': hbo_mean,
@@ -277,7 +277,7 @@ def calculate_segment_analysis(
             'Alpha (dB)': row['alpha_mean'],
             'Beta (dB)': row['beta_mean'],
             'θ/α': row['theta_alpha_ratio'],
-            'α/β': row['alpha_beta_ratio'],
+            'β/α': row['beta_alpha_ratio'],
             'β/θ': row['beta_theta_ratio'],
             'Fmθ (dB)': row['fmtheta_mean'],
             'SE': row['spectral_entropy'],
@@ -364,7 +364,7 @@ def calculate_meditation_score(
     spectral_entropy: Optional[float] = None,
     theta_alpha_ratio: Optional[float] = None,
     faa: Optional[float] = None,
-    alpha_beta_ratio: Optional[float] = None,
+    beta_alpha_ratio: Optional[float] = None,
     iaf_cv: Optional[float] = None,
     hsi_quality: Optional[float] = None,
     weights: Optional[Dict[str, float]] = None,
@@ -382,8 +382,8 @@ def calculate_meditation_score(
         θ/α比（dB差）
     faa : float, optional
         Frontal Alpha Asymmetry（dB差）
-    alpha_beta_ratio : float, optional
-        α/β比（無次元）
+    beta_alpha_ratio : float, optional
+        β/α比（無次元、低いほどリラックス）
     iaf_cv : float, optional
         IAF変動係数（0-1、低いほど安定）
     hsi_quality : float, optional
@@ -438,13 +438,14 @@ def calculate_meditation_score(
     else:
         scores['faa'] = 0.5
 
-    # α/β比スコア（高いほど良い）
-    if alpha_beta_ratio is not None:
-        scores['alpha_beta_ratio'] = _normalize_indicator(
-            alpha_beta_ratio, min_val=1.0, max_val=10.0
+    # β/α比スコア（低いほど良い、逆転）
+    # β/α < 1 はリラックス状態（Alpha優位）、β/α > 1 は覚醒状態（Beta優位）
+    if beta_alpha_ratio is not None:
+        scores['beta_alpha_ratio'] = _normalize_indicator(
+            beta_alpha_ratio, min_val=0.1, max_val=1.0, reverse=True
         )
     else:
-        scores['alpha_beta_ratio'] = 0.5
+        scores['beta_alpha_ratio'] = 0.5
 
     # IAF安定性スコア（変動係数が低いほど良い、逆転）
     if iaf_cv is not None:

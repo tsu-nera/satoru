@@ -131,15 +131,15 @@ def generate_session_summary(
     if 'band_ratios_stats' in results:
         ratios_df = results['band_ratios_stats']
 
-        # Alpha/Beta（リラックス度）
-        alpha_beta_mean = extract_metric_value(ratios_df, 'Alpha/Beta Mean')
-        if alpha_beta_mean is None:
+        # Beta/Alpha（覚醒度）
+        beta_alpha_mean = extract_metric_value(ratios_df, 'beta_alpha_Mean')
+        if beta_alpha_mean is None:
             # 旧形式（横長）への後方互換
-            old_row = ratios_df[ratios_df.get('Metric', ratios_df.get('指標', pd.Series())) == 'Alpha/Beta']
+            old_row = ratios_df[ratios_df.get('Metric', ratios_df.get('指標', pd.Series())) == 'Beta/Alpha']
             if not old_row.empty:
-                alpha_beta_mean = old_row.get('Value', old_row.get('平均値', pd.Series())).iloc[0]
+                beta_alpha_mean = old_row.get('Value', old_row.get('平均値', pd.Series())).iloc[0]
 
-        summary['alpha_beta_ratio_mean'] = alpha_beta_mean
+        summary['beta_alpha_ratio_mean'] = beta_alpha_mean
 
         # Beta/Theta（集中度）
         beta_theta_mean = extract_metric_value(ratios_df, 'Beta/Theta Mean')

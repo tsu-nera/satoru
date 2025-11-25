@@ -207,9 +207,9 @@ def create_statistical_dataframe(
     # バンド比率計算
     ratios_dict = {}
 
-    # α/β比（リラックス度）
-    ratios_dict['alpha_beta_db'] = band_powers_df['Alpha'] - band_powers_df['Beta']
-    ratios_dict['alpha_beta'] = 10 ** (ratios_dict['alpha_beta_db'] / 10)
+    # β/α比（覚醒度）
+    ratios_dict['beta_alpha_db'] = band_powers_df['Beta'] - band_powers_df['Alpha']
+    ratios_dict['beta_alpha'] = 10 ** (ratios_dict['beta_alpha_db'] / 10)
 
     # β/θ比（覚醒度・注意）
     ratios_dict['beta_theta_db'] = band_powers_df['Beta'] - band_powers_df['Theta']
@@ -413,13 +413,13 @@ def create_statistical_dataframe(
 
     # バンド比率統計
     ratio_configs = [
-        ('alpha_beta', 'α/β比', 'ratio', 'リラックス度'),
-        ('beta_theta', 'β/θ比', 'ratio', '覚醒度'),
+        ('beta_alpha', 'β/α比', 'ratio', '覚醒度'),
+        ('beta_theta', 'β/θ比', 'ratio', '覚醒度・注意'),
         ('theta_alpha', 'θ/α比', 'ratio', '瞑想深度'),
         ('delta_beta', 'δ/β比', 'ratio', '睡眠傾向'),
         ('gamma_theta', 'γ/θ比', 'ratio', '認知負荷'),
-        ('alpha_beta_db', 'α/β比', 'dB', 'リラックス度（対数）'),
-        ('beta_theta_db', 'β/θ比', 'dB', '覚醒度（対数）'),
+        ('beta_alpha_db', 'β/α比', 'dB', '覚醒度（対数）'),
+        ('beta_theta_db', 'β/θ比', 'dB', '覚醒度・注意（対数）'),
         ('theta_alpha_db', 'θ/α比', 'dB', '瞑想深度（対数）'),
     ]
 
@@ -608,8 +608,8 @@ def get_band_ratio_at_time(
     end_time : pd.Timestamp
         終了時刻
     ratio : str
-        比率名（'alpha_beta', 'beta_theta', 'theta_alpha', etc.）
-        対数スケールの場合は'alpha_beta_bels'など
+        比率名（'beta_alpha', 'beta_theta', 'theta_alpha', etc.）
+        対数スケールの場合は'beta_alpha_db'など
 
     Returns
     -------

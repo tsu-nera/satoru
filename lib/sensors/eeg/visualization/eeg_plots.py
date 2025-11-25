@@ -730,7 +730,7 @@ def plot_band_ratios(
     Parameters
     ----------
     segment_table : pd.DataFrame
-        セグメント分析のテーブル（θ/α, α/β, β/θ列を含む）
+        セグメント分析のテーブル（θ/α, β/α, β/θ列を含む）
     img_path : str or Path, optional
         保存先パス
 
@@ -744,7 +744,7 @@ def plot_band_ratios(
     # 比率の設定
     ratio_configs = [
         ('θ/α', 'Theta/Alpha', '#9467bd'),  # purple
-        ('α/β', 'Alpha/Beta', '#2ca02c'),   # green
+        ('β/α', 'Beta/Alpha', '#2ca02c'),   # green
         ('β/θ', 'Beta/Theta', '#ff7f0e'),   # orange
     ]
 

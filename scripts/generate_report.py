@@ -207,7 +207,7 @@ def generate_markdown_report(data_path, output_dir, results):
                 'fmtheta': '瞑想深度 (Fmθ)',
                 'spectral_entropy': '集中度 (SE)',
                 'theta_alpha_ratio': '瞑想深度 (θ/α)',
-                'alpha_beta_ratio': 'リラックス度 (α/β)',
+                'beta_alpha_ratio': '覚醒度 (β/α)',
                 'iaf_stability': '周波数安定性 (IAF)',
             }
             for key, label in score_labels.items():
@@ -359,6 +359,13 @@ def generate_markdown_report(data_path, output_dir, results):
 
             if 'band_ratios_img' in results:
                 report += f"![バンド比率](img/{results['band_ratios_img']})\n\n"
+
+            report += """> **指標の解釈**:
+> - **θ/α (Theta/Alpha)**: 瞑想深度。値が高いほど深い瞑想状態（内的集中）を示唆
+> - **β/α (Beta/Alpha)**: 覚醒度。値が低いほどリラックス状態、高いほど覚醒・緊張状態
+> - **β/θ (Beta/Theta)**: 注意・集中度。値が高いほど外的タスクへの集中を示唆
+
+"""
 
     # ========================================
     # 血流動態分析 (fNIRS)
@@ -814,7 +821,7 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
                 se_val = se_row['Value'].iloc[0]
 
         theta_alpha_val = None
-        alpha_beta_val = None
+        beta_alpha_val = None
         beta_theta_val = None
 
         # バンド比率: セグメント分析から取得（Statistical DFベース、最も信頼性が高い）
@@ -827,11 +834,11 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
                 if len(theta_alpha_values) > 0:
                     theta_alpha_val = theta_alpha_values.mean()
 
-            # α/β比（実数比率）
-            if 'α/β' in segment_df.columns:
-                alpha_beta_values = segment_df['α/β'].dropna()
-                if len(alpha_beta_values) > 0:
-                    alpha_beta_val = alpha_beta_values.mean()
+            # β/α比（実数比率）
+            if 'β/α' in segment_df.columns:
+                beta_alpha_values = segment_df['β/α'].dropna()
+                if len(beta_alpha_values) > 0:
+                    beta_alpha_val = beta_alpha_values.mean()
 
             # β/θ比（実数比率）
             if 'β/θ' in segment_df.columns:
@@ -847,11 +854,11 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
             if not theta_alpha_row.empty:
                 theta_alpha_val = theta_alpha_row['Value'].iloc[0]
 
-        if alpha_beta_val is None and statistical_df is not None:
+        if beta_alpha_val is None and statistical_df is not None:
             stats_df = statistical_df['statistics']
-            alpha_beta_row = stats_df[stats_df['Metric'] == 'alpha_beta_Mean']
-            if not alpha_beta_row.empty:
-                alpha_beta_val = alpha_beta_row['Value'].iloc[0]
+            beta_alpha_row = stats_df[stats_df['Metric'] == 'beta_alpha_Mean']
+            if not beta_alpha_row.empty:
+                beta_alpha_val = beta_alpha_row['Value'].iloc[0]
 
         faa_val = None
         if 'faa_stats' in results:
@@ -892,7 +899,7 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
             spectral_entropy=se_val,
             theta_alpha_ratio=theta_alpha_val,
             faa=faa_val,
-            alpha_beta_ratio=alpha_beta_val,
+            beta_alpha_ratio=beta_alpha_val,
             iaf_cv=iaf_cv_val,
             hsi_quality=hsi_quality_val,
         )
