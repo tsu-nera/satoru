@@ -6,6 +6,17 @@ AF7 (左前頭部) とAF8 (右前頭部) のアルファ波パワーを比較し
 
 正のFAA: 左半球優位 (接近動機、ポジティブ感情)
 負のFAA: 右半球優位 (回避動機、ネガティブ感情)
+
+参考文献:
+Cannard, C., Wahbeh, H., & Delorme, A. (2021).
+"Validating the wearable MUSE headset for EEG spectral analysis and Frontal Alpha Asymmetry"
+IEEE International Conference on Bioinformatics and Biomedicine (BIBM).
+https://doi.org/10.1109/BIBM52615.2021.9669778
+
+論文の推奨事項:
+- MUSEのデフォルトリファレンス(Fpz)は前頭チャネルに近すぎるため、
+  TP9/TP10をlinked mastoid referenceとして使用することを推奨
+- 8-13Hz全帯域での従来法がIAFベースの方法と同等以上の信頼性
 """
 
 from __future__ import annotations
@@ -40,6 +51,9 @@ def calculate_frontal_asymmetry(
     smoothing_seconds: float = 6.0,
     rolling_window_seconds: float = 8.0,
     raw: Optional[mne.io.BaseRaw] = None,
+    use_mastoid_reference: bool = True,
+    left_mastoid: str = 'RAW_TP9',
+    right_mastoid: str = 'RAW_TP10',
 ) -> FrontalAsymmetryResult:
     """
     Frontal Alpha Asymmetry (FAA) を計算する。
@@ -62,13 +76,27 @@ def calculate_frontal_asymmetry(
         ローリングウィンドウ（秒）。
     raw : mne.io.BaseRaw, optional
         既存のRawオブジェクト。Noneの場合は新規作成。
+    use_mastoid_reference : bool
+        Trueの場合、TP9/TP10をlinked mastoid referenceとして使用。
+        Cannard et al. (2021) の推奨に基づく。デフォルトはTrue。
+    left_mastoid : str
+        左側マストイドチャネル (デフォルト: RAW_TP9)。
+    right_mastoid : str
+        右側マストイドチャネル (デフォルト: RAW_TP10)。
 
     Returns
     -------
     FrontalAsymmetryResult
         FAA時系列（dB差分）、左右パワー（dB）、統計情報を含む解析結果。
+
+    Notes
+    -----
+    Mastoid referenceについて:
+    MUSEのデフォルトリファレンス(Fpz)は前頭チャネル(AF7/AF8)に近いため、
+    信号振幅が低くなる。TP9/TP10へのre-referenceにより、
+    研究グレードEEGシステムとの相関が向上する (r=.67, Cannard et al., 2021)。
     """
-    channels = [left_channel, right_channel]
+    frontal_channels = [left_channel, right_channel]
 
     # RAWデータ準備
     if raw is None:
@@ -79,11 +107,49 @@ def calculate_frontal_asymmetry(
 
     raw = raw.copy()
     available = set(raw.ch_names)
-    missing = [ch for ch in channels if ch not in available]
-    if missing:
-        raise ValueError(f'Specified channels not found: {missing}')
 
-    raw.pick_channels(channels)
+    # Mastoid referenceを使用する場合、4チャネル全て必要
+    if use_mastoid_reference:
+        all_channels = frontal_channels + [left_mastoid, right_mastoid]
+        missing = [ch for ch in all_channels if ch not in available]
+        if missing:
+            raise ValueError(
+                f'Mastoid reference requires channels {all_channels}, '
+                f'but missing: {missing}'
+            )
+        raw.pick_channels(all_channels)
+
+        # Linked mastoid reference: (TP9 + TP10) / 2
+        # AF7_reref = AF7 - mastoid_ref
+        # AF8_reref = AF8 - mastoid_ref
+        data = raw.get_data()
+        ch_names = raw.ch_names
+
+        left_idx = ch_names.index(left_channel)
+        right_idx = ch_names.index(right_channel)
+        left_mast_idx = ch_names.index(left_mastoid)
+        right_mast_idx = ch_names.index(right_mastoid)
+
+        mastoid_ref = (data[left_mast_idx] + data[right_mast_idx]) / 2
+        data[left_idx] = data[left_idx] - mastoid_ref
+        data[right_idx] = data[right_idx] - mastoid_ref
+
+        # Re-referenced dataで新しいRawオブジェクトを作成
+        info = mne.create_info(
+            ch_names=[left_channel, right_channel],
+            sfreq=raw.info['sfreq'],
+            ch_types='eeg',
+        )
+        raw = mne.io.RawArray(data[[left_idx, right_idx]], info, verbose=False)
+        reference_method = 'linked_mastoid'
+    else:
+        missing = [ch for ch in frontal_channels if ch not in available]
+        if missing:
+            raise ValueError(f'Specified channels not found: {missing}')
+        raw.pick_channels(frontal_channels)
+        reference_method = 'default_fpz'
+
+    channels = [left_channel, right_channel]
 
     # アルファ帯域フィルタリング
     raw_filtered = raw.copy().filter(
@@ -196,6 +262,7 @@ def calculate_frontal_asymmetry(
         'interpretation': interpretation,
         'unit': 'dB',
         'method': 'mne_hilbert_db',
+        'reference_method': reference_method,
         'processing': {
             'resample_interval': resample_interval,
             'smoothing_seconds': smoothing_seconds,

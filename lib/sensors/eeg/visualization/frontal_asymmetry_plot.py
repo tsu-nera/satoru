@@ -50,23 +50,25 @@ def plot_frontal_asymmetry(
 
     ax1.plot(left_elapsed, left_power.values, color='#d62728', linewidth=2, label='Left Frontal (AF7)', alpha=0.8)
     ax1.plot(right_elapsed, right_power.values, color='#2ca02c', linewidth=2, label='Right Frontal (AF8)', alpha=0.8)
-    ax1.set_ylabel('Alpha Power (μV²)', fontsize=12)
+    ax1.set_ylabel('Alpha Power (dB)', fontsize=12)
     ax1.set_title('Left and Right Frontal Alpha Power', fontsize=13, fontweight='bold')
     ax1.legend(loc='upper right')
     ax1.grid(True, alpha=0.3, linestyle='--')
 
-    # 下段: FAA (ln(右) - ln(左))
+    # 下段: FAA (dB差分)
     ax2 = axes[1]
     ax2.plot(elapsed_seconds, faa_series.values, color='#1f77b4', linewidth=2.2, label='FAA')
     ax2.axhline(0, color='gray', linestyle='--', alpha=0.5, label='Center (Balanced)')
 
     # FAA解釈表示
     interpretation = result.metadata.get('interpretation', '')
-    mean_faa = result.metadata.get('first_half_mean', faa_series.mean())
+    mean_faa = faa_series.mean()
+    reference_method = result.metadata.get('reference_method', 'unknown')
+    ref_label = 'Mastoid Ref' if reference_method == 'linked_mastoid' else 'Default Ref'
     ax2.text(
         0.02,
         0.95,
-        f'{interpretation}\nMean FAA: {mean_faa:.3f}',
+        f'{interpretation}\nMean FAA: {mean_faa:.2f} dB\nRef: {ref_label}',
         transform=ax2.transAxes,
         fontsize=11,
         bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8),
@@ -74,7 +76,7 @@ def plot_frontal_asymmetry(
     )
 
     format_time_axis(ax2, elapsed_seconds, unit='minutes')
-    ax2.set_ylabel('FAA [ln(Right) - ln(Left)]', fontsize=12)
+    ax2.set_ylabel('FAA (dB)', fontsize=12)
     ax2.set_title('Frontal Alpha Asymmetry', fontsize=13, fontweight='bold')
     ax2.legend(loc='upper right')
     ax2.grid(True, alpha=0.3, linestyle='--')
