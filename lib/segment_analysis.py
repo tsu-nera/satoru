@@ -71,6 +71,8 @@ def calculate_segment_analysis(
     statistical_df: Dict[str, pd.DataFrame],
     segment_minutes: int = 5,
     warmup_minutes: float = 0.0,
+    exclude_first_segment: bool = False,
+    exclude_last_segment: bool = False,
 ) -> SegmentAnalysisResult:
     """
     セッションを一定時間のセグメントに分割し、主要指標を算出する。
@@ -88,6 +90,10 @@ def calculate_segment_analysis(
         セグメント長（分単位）。1
     warmup_minutes : float, default 0.0
         セッション開始後の除外期間（分単位）。アーティファクト除去のため。
+    exclude_first_segment : bool, default False
+        最初のセグメントをスコア計算・ピーク判定から除外（relaxing phase）。
+    exclude_last_segment : bool, default False
+        最後のセグメントをスコア計算・ピーク判定から除外（post meditation stage）。
 
     Returns
     -------
@@ -98,6 +104,8 @@ def calculate_segment_analysis(
     -----
     バンドパワー・比率・IAFはstatistical_dfから自動取得されます（MNE Epochsベース）。
     df_cleanのバンドパワー列は使用されません。
+    exclude_first/last_segmentはピーク判定・best値計算のみに影響し、
+    レポートのテーブルには全セグメントが表示されます。
     """
     # Statistical DFのバリデーション
     required_keys = ['band_powers', 'band_ratios', 'spectral_entropy', 'iaf']
@@ -257,21 +265,45 @@ def calculate_segment_analysis(
     )
     normalized = normalized.reindex(metrics_df.index)
 
-    # ピーク判定（総合スコアベース）
+    # スコア計算・ピーク判定対象のセグメントインデックスを決定
+    all_indices = segment_frame['segment_index'].tolist()
+    excluded_indices = set()
+    if exclude_first_segment and len(all_indices) > 0:
+        excluded_indices.add(all_indices[0])
+    if exclude_last_segment and len(all_indices) > 0:
+        excluded_indices.add(all_indices[-1])
+    scoring_indices = [idx for idx in all_indices if idx not in excluded_indices]
+
+    # ピーク判定（総合スコアベース、除外セグメントを除く）
     meditation_scores = segment_frame.set_index('segment_index')['meditation_score']
-    if meditation_scores.dropna().empty:
+    scoring_scores = meditation_scores.loc[meditation_scores.index.isin(scoring_indices)]
+    if scoring_scores.dropna().empty:
         peak_idx = None
         peak_score = pd.Series(dtype=float)
     else:
-        peak_score = meditation_scores
-        peak_idx = int(peak_score.idxmax())
+        peak_score = meditation_scores  # 全体を保持（表示用）
+        peak_idx = int(scoring_scores.idxmax())
 
     # 表形式（日本語ラベル）
     # 注: バンド比率はdB形式のみ表示（実数値は不安定で解釈困難なため）
     display_rows = []
+    first_idx = all_indices[0] if all_indices else None
+    last_idx = all_indices[-1] if all_indices else None
+
     for idx, row in segment_frame.iterrows():
+        seg_idx = int(row['segment_index'])
+
+        # 備考列: 最初/最後/ピークを表示
+        note = ''
+        if exclude_first_segment and seg_idx == first_idx:
+            note = 'relaxing'
+        elif exclude_last_segment and seg_idx == last_idx:
+            note = 'post meditation'
+        elif peak_idx is not None and seg_idx == peak_idx:
+            note = 'peak'
+
         display_row = {
-            'No.': int(row['segment_index']),
+            'No.': seg_idx,
             '時間帯': row['label'],
             'Theta (dB)': row['theta_mean'],
             'Alpha (dB)': row['alpha_mean'],
@@ -285,7 +317,7 @@ def calculate_segment_analysis(
             'HbO': row['hbo_mean'],
             'HbR': row['hbr_mean'],
             'HR': row['hr_mean'],
-            'ピーク': '★' if (peak_idx is not None and int(row['segment_index']) == peak_idx) else '',
+            '備考': note,
         }
         display_rows.append(display_row)
 
@@ -302,6 +334,8 @@ def calculate_segment_analysis(
             else None
         ),
         'peak_score': float(peak_score.loc[peak_idx]) if peak_idx is not None else None,
+        'excluded_indices': list(excluded_indices),
+        'scoring_indices': scoring_indices,
     }
 
     segments = segment_frame.set_index('segment_index')
@@ -509,18 +543,23 @@ def calculate_best_metrics(segment_result: SegmentAnalysisResult) -> Dict[str, f
     集中瞑想の観点から各指標の選定基準を決定:
     - fm_theta, iaf, alpha, theta_alpha: 最大値（高いほど良い）
     - beta: 最小値（低いほど良い）
+    除外セグメント（relaxing/post meditation）はbest値計算から除外されます。
     """
     segments = segment_result.segments
+
+    # 除外セグメントを除いたデータを使用
+    scoring_indices = segment_result.metadata.get('scoring_indices', list(segments.index))
+    scoring_segments = segments.loc[segments.index.isin(scoring_indices)]
 
     # 集中瞑想に最適なbest値を計算
     best_metrics = {
         # 高いほど良い指標 → 最大値
-        'fm_theta_best': segments['fmtheta_mean'].max() if 'fmtheta_mean' in segments else np.nan,
-        'iaf_best': segments['iaf_mean'].max() if 'iaf_mean' in segments else np.nan,
-        'alpha_best': segments['alpha_mean'].max() if 'alpha_mean' in segments else np.nan,
-        'theta_alpha_best': segments['theta_alpha_ratio'].max() if 'theta_alpha_ratio' in segments else np.nan,
+        'fm_theta_best': scoring_segments['fmtheta_mean'].max() if 'fmtheta_mean' in scoring_segments else np.nan,
+        'iaf_best': scoring_segments['iaf_mean'].max() if 'iaf_mean' in scoring_segments else np.nan,
+        'alpha_best': scoring_segments['alpha_mean'].max() if 'alpha_mean' in scoring_segments else np.nan,
+        'theta_alpha_best': scoring_segments['theta_alpha_ratio'].max() if 'theta_alpha_ratio' in scoring_segments else np.nan,
         # 低いほど良い指標 → 最小値
-        'beta_best': segments['beta_mean'].min() if 'beta_mean' in segments else np.nan,
+        'beta_best': scoring_segments['beta_mean'].min() if 'beta_mean' in scoring_segments else np.nan,
     }
 
     return best_metrics

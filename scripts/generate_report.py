@@ -787,6 +787,8 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
             statistical_df,
             segment_minutes=3,
             warmup_minutes=1.0,  # 最初の1分間を除外（アーティファクト対策）
+            exclude_first_segment=True,  # relaxing phase
+            exclude_last_segment=True,   # post meditation stage
         )
         print('プロット中: 時間セグメント比較...')
         segment_plot_name = 'time_segment_metrics.png'
