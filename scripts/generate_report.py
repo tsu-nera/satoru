@@ -39,6 +39,7 @@ from lib import (
     get_psd_peak_frequencies,
     calculate_frontal_theta,
     calculate_frontal_asymmetry,
+    calculate_alpha_power,
     calculate_spectral_entropy,
     calculate_spectral_entropy_time_series,
     calculate_segment_analysis,
@@ -302,8 +303,12 @@ def generate_markdown_report(data_path, output_dir, results):
                 report += f"![Frontal Midline Theta](img/{results['frontal_theta_img']})\n\n"
 
             if 'frontal_theta_stats' in results:
-                report += results['frontal_theta_stats'].to_markdown(index=False, floatfmt='.3f')
+                stats_df = results['frontal_theta_stats']
+                if 'Unit' in stats_df.columns:
+                    stats_df = stats_df.drop(columns=['Unit'])
+                report += stats_df.to_markdown(index=False, floatfmt='.3f')
                 report += "\n\n"
+                report += "> 単位: dB (10×log₁₀(μV²))\n\n"
 
             if 'frontal_theta_increase' in results:
                 inc = results['frontal_theta_increase']
@@ -325,6 +330,24 @@ def generate_markdown_report(data_path, output_dir, results):
                 report += "**チャネル別詳細**\n\n"
                 report += results['paf_summary'].to_markdown(index=False, floatfmt='.2f')
                 report += "\n\n"
+
+        # Alpha Power (Brain Recharge Score)
+        if 'alpha_power_score' in results:
+            report += "### Alpha Power (Brain Recharge Score)\n\n"
+            score = results['alpha_power_score']
+            alpha_db = results['alpha_power_db']
+            report += f"**Brain Recharge Score**: {score:.1f} dBx\n\n"
+            report += f"**Alpha Power**: {alpha_db:.2f} dB\n\n"
+
+            if 'alpha_power_stats' in results:
+                stats_df = results['alpha_power_stats']
+                if 'Unit' in stats_df.columns:
+                    stats_df = stats_df.drop(columns=['Unit'])
+                report += stats_df.to_markdown(index=False, floatfmt='.2f')
+                report += "\n\n"
+
+            report += "> **解釈**: Brain Recharge ScoreはAlpha波パワーに基づく精神的回復度の指標です。高い値はリラックス・回復状態を示唆します。\n"
+            report += "> 単位: Score=dBx, Alpha Power=dB\n\n"
 
         # Frontal Alpha Asymmetry
         if any(key in results for key in faa_keys):
@@ -666,6 +689,17 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
             plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=img_dir / 'paf_time_evolution.png')
             results['paf_time_img'] = 'paf_time_evolution.png'
             results['paf_time_stats'] = paf_time_dict['stats']
+
+        # Alpha Power (Brain Recharge Score) 解析
+        try:
+            print('計算中: Alpha Power (Brain Recharge Score)...')
+            alpha_power_result = calculate_alpha_power(df)
+            results['alpha_power_score'] = alpha_power_result.score
+            results['alpha_power_db'] = alpha_power_result.alpha_db
+            results['alpha_power_stats'] = alpha_power_result.statistics
+            results['alpha_power_metadata'] = alpha_power_result.metadata
+        except Exception as exc:
+            print(f'警告: Alpha Power解析に失敗しました ({exc})')
 
         # FAA解析
         try:

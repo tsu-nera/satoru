@@ -40,6 +40,14 @@ from .spectral_entropy import (
     calculate_spectral_entropy_time_series,
 )
 
+# Alpha Power解析
+from .alpha_power import (
+    AlphaPowerResult,
+    AlphaPowerMethod,
+    calculate_alpha_power,
+    calculate_alpha_power_from_raw,
+)
+
 __all__ = [
     # 定数
     'FREQ_BANDS',
@@ -69,4 +77,9 @@ __all__ = [
     'SpectralEntropyResult',
     'calculate_spectral_entropy',
     'calculate_spectral_entropy_time_series',
+    # Alpha Power解析
+    'AlphaPowerResult',
+    'AlphaPowerMethod',
+    'calculate_alpha_power',
+    'calculate_alpha_power_from_raw',
 ]

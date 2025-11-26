@@ -181,12 +181,12 @@ def calculate_frontal_theta(
 
     stats_df = pd.DataFrame(
         [
-            {'Metric': 'Mean', 'Value': stats['Mean (dB)'], 'Unit': 'dB'},
-            {'Metric': 'Median', 'Value': stats['Median (dB)'], 'Unit': 'dB'},
-            {'Metric': 'Std Dev', 'Value': stats['Std Dev (dB)'], 'Unit': 'dB'},
-            {'Metric': 'First Half Mean', 'Value': first_mean, 'Unit': 'dB'},
-            {'Metric': 'Second Half Mean', 'Value': second_mean, 'Unit': 'dB'},
-            {'Metric': 'Increase (2nd-1st)', 'Value': increase_db, 'Unit': 'dB'},
+            {'Metric': 'Mean', 'Value': stats['Mean (dB)']},
+            {'Metric': 'Median', 'Value': stats['Median (dB)']},
+            {'Metric': 'Std Dev', 'Value': stats['Std Dev (dB)']},
+            {'Metric': 'First Half Mean', 'Value': first_mean},
+            {'Metric': 'Second Half Mean', 'Value': second_mean},
+            {'Metric': 'Increase (2nd-1st)', 'Value': increase_db},
         ]
     )
 
