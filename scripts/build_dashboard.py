@@ -157,6 +157,9 @@ def generate_html(data: list[dict]) -> str:
     <div class="controls controls-trend">
         <button id="btnWeekly" class="active" onclick="setAggregation('weekly')">Weekly</button>
         <button id="btnMonthly" onclick="setAggregation('monthly')">Monthly</button>
+        <span style="margin: 0 10px; color: #999;">|</span>
+        <button id="btnMinutes" class="active" onclick="setUnit('minutes')">Minutes</button>
+        <button id="btnChu" onclick="setUnit('chu')">炷</button>
     </div>
     <div class="chart-container">
         <h2>Trend View</h2>
@@ -208,6 +211,8 @@ def generate_html(data: list[dict]) -> str:
         let currentMetricGroup = 'duration';
         let currentPeriod = 'all';
         let currentAggregation = 'weekly';
+        let currentUnit = 'minutes';  // 'minutes' or 'chu' (1炷 = 40min)
+        const CHU_MINUTES = 40;
         let dailyChart, trendChart;
 
         // Filter data by period
@@ -309,9 +314,14 @@ def generate_html(data: list[dict]) -> str:
             const ctx = document.getElementById('trendChart').getContext('2d');
             const config = metricGroups[group];
 
+            // Determine if using chu (炷) unit for duration
+            const useChu = group === 'duration' && currentUnit === 'chu';
+            const unitLabel = useChu ? '炷' : 'min';
+            const convertValue = (v) => useChu ? Math.round(v / CHU_MINUTES * 10) / 10 : v;
+
             const datasets = config.metrics.map((metric, i) => ({{
-                label: config.labels[i],
-                data: aggregated[metric],
+                label: useChu ? 'Duration (炷)' : config.labels[i],
+                data: aggregated[metric].map(convertValue),
                 backgroundColor: config.colors[i].replace('rgb', 'rgba').replace(')', ', 0.6)'),
                 borderColor: config.colors[i],
                 borderWidth: 1,
@@ -324,11 +334,15 @@ def generate_html(data: list[dict]) -> str:
                 let cumSum = 0;
                 const cumulativeData = aggregated['duration_min'].map(v => {{
                     cumSum += v;
+                    // For chu: floor for cumulative, round for others
+                    if (useChu) {{
+                        return Math.floor(cumSum / CHU_MINUTES);
+                    }}
                     return Math.round(cumSum * 10) / 10;
                 }});
 
                 datasets.push({{
-                    label: 'Cumulative (min)',
+                    label: useChu ? 'Cumulative (炷)' : 'Cumulative (min)',
                     data: cumulativeData,
                     borderColor: 'rgb(255, 159, 64)',
                     backgroundColor: 'rgba(255, 159, 64, 0.2)',
@@ -339,12 +353,15 @@ def generate_html(data: list[dict]) -> str:
                 }});
             }}
 
+            const yLabel = useChu ? 'Total (炷)' : config.trendLabel;
+            const y1Label = useChu ? 'Cumulative (炷)' : config.trendLabelRight;
+
             const scales = {{
                 y: {{
                     type: 'linear',
                     position: 'left',
                     beginAtZero: true,
-                    title: {{ display: true, text: config.trendLabel }}
+                    title: {{ display: true, text: yLabel }}
                 }},
                 x: {{
                     title: {{ display: true, text: currentAggregation === 'weekly' ? 'Week' : 'Month' }}
@@ -357,7 +374,7 @@ def generate_html(data: list[dict]) -> str:
                     type: 'linear',
                     position: 'right',
                     beginAtZero: true,
-                    title: {{ display: true, text: config.trendLabelRight }},
+                    title: {{ display: true, text: y1Label }},
                     grid: {{ drawOnChartArea: false }}
                 }};
             }}
@@ -404,6 +421,13 @@ def generate_html(data: list[dict]) -> str:
             currentAggregation = mode;
             document.getElementById('btnWeekly').classList.toggle('active', mode === 'weekly');
             document.getElementById('btnMonthly').classList.toggle('active', mode === 'monthly');
+            updateCharts();
+        }}
+
+        function setUnit(unit) {{
+            currentUnit = unit;
+            document.getElementById('btnMinutes').classList.toggle('active', unit === 'minutes');
+            document.getElementById('btnChu').classList.toggle('active', unit === 'chu');
             updateCharts();
         }}
 
