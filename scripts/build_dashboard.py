@@ -235,10 +235,13 @@ def generate_html(data: list[dict]) -> str:
                 let key;
 
                 if (mode === 'weekly') {{
-                    const day = date.getDay();
-                    const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-                    const weekStart = new Date(date.setDate(diff));
-                    key = weekStart.toISOString().split('T')[0];
+                    // Calculate ISO week number
+                    const tempDate = new Date(date.getTime());
+                    tempDate.setHours(0, 0, 0, 0);
+                    tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
+                    const week1 = new Date(tempDate.getFullYear(), 0, 4);
+                    const weekNum = 1 + Math.round(((tempDate - week1) / 86400000 - 3 + (week1.getDay() + 6) % 7) / 7);
+                    key = `${{tempDate.getFullYear()}}-W${{String(weekNum).padStart(2, '0')}}`;
                 }} else {{
                     key = d.timestamp.substring(0, 7);
                 }}
