@@ -64,7 +64,7 @@ def generate_html(data: list[dict]) -> str:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Meditation Log Dashboard</title>
+    <title>禅定波羅蜜ダッシュボード</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {{
@@ -133,7 +133,7 @@ def generate_html(data: list[dict]) -> str:
     </style>
 </head>
 <body>
-    <h1>Meditation Log Dashboard</h1>
+    <h1>禅定波羅蜜ダッシュボード</h1>
 
     <!-- Metric Group & Period Selection -->
     <div class="controls">
