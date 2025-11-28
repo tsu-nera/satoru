@@ -40,6 +40,7 @@ from lib import (
     calculate_frontal_theta,
     calculate_frontal_asymmetry,
     calculate_alpha_power,
+    calculate_alpha_power_from_raw,
     calculate_spectral_entropy,
     calculate_spectral_entropy_time_series,
     calculate_segment_analysis,
@@ -442,7 +443,7 @@ def generate_markdown_report(data_path, output_dir, results):
     print(f'✓ レポート生成完了: {report_path}')
 
 
-def run_full_analysis(data_path, output_dir, save_to='none'):
+def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0):
     """
     完全な分析を実行
 
@@ -457,6 +458,8 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
         - 'none': 保存しない（デフォルト）
         - 'csv': ローカルCSVに保存（開発用）
         - 'sheets': Google Sheetsに保存（本番用）
+    warmup_minutes : float, default=1.0
+        ウォームアップ除外時間（分）。短い記録の場合は0を指定。
     """
     print('='*60)
     print('Muse脳波データ基本分析')
@@ -472,7 +475,7 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
 
     # データ読み込み
     print(f'Loading: {data_path}')
-    df = load_mind_monitor_csv(data_path, filter_headband=False)
+    df = load_mind_monitor_csv(data_path, filter_headband=False, warmup_seconds=warmup_minutes * 60)
 
     # データ情報を記録
     results['data_info'] = {
@@ -693,7 +696,18 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
         # Alpha Power (Brain Recharge Score) 解析
         try:
             print('計算中: Alpha Power (Brain Recharge Score)...')
-            alpha_power_result = calculate_alpha_power(df)
+            # Alpha列があるか確認（Mind Monitor形式）
+            alpha_cols = ['Alpha_TP9', 'Alpha_AF7', 'Alpha_AF8', 'Alpha_TP10']
+            has_alpha_data = all(
+                col in df.columns and df[col].notna().any()
+                for col in alpha_cols
+            )
+            if has_alpha_data:
+                alpha_power_result = calculate_alpha_power(df)
+            else:
+                # RAW EEGからAlpha Powerを計算（Muse App OSC形式）
+                print('  Alpha列が空のため、RAW EEGから計算...')
+                alpha_power_result = calculate_alpha_power_from_raw(df)
             results['alpha_power_score'] = alpha_power_result.score
             results['alpha_power_db'] = alpha_power_result.alpha_db
             results['alpha_power_stats'] = alpha_power_result.statistics
@@ -760,7 +774,7 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
             statistical_df = create_statistical_dataframe(
                 raw,
                 segment_minutes=3,
-                warmup_minutes=1.0,
+                warmup_minutes=warmup_minutes,
                 session_start=session_start,
                 fnirs_results=fnirs_results,
                 hr_data=hr_data,
@@ -786,7 +800,7 @@ def run_full_analysis(data_path, output_dir, save_to='none'):
             fmtheta_result.time_series,
             statistical_df,
             segment_minutes=3,
-            warmup_minutes=1.0,  # 最初の1分間を除外（アーティファクト対策）
+            warmup_minutes=warmup_minutes,
             exclude_first_segment=True,  # relaxing phase
             exclude_last_segment=True,   # post meditation stage
         )
@@ -1021,6 +1035,12 @@ def main():
         default='none',
         help='セッションログの保存先: none=保存しない（デフォルト）, csv=ローカルCSV（開発用）, sheets=Google Sheets（本番用）'
     )
+    parser.add_argument(
+        '--warmup',
+        type=float,
+        default=1.0,
+        help='ウォームアップ除外時間（分）。短い記録の場合は0を指定（デフォルト: 1.0）'
+    )
 
     args = parser.parse_args()
 
@@ -1032,7 +1052,7 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
 
     # 分析実行
-    run_full_analysis(args.data, args.output, save_to=args.save_to)
+    run_full_analysis(args.data, args.output, save_to=args.save_to, warmup_minutes=args.warmup)
 
     return 0
 
