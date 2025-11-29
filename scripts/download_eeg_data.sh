@@ -28,6 +28,11 @@ fi
 # .envから環境変数を読み込む
 export $(grep -v '^#' .env | xargs)
 
+# miniconda環境のSSL証明書問題を回避
+if [ -f "/etc/ssl/certs/ca-certificates.crt" ]; then
+    export SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+fi
+
 # 必須環境変数のチェック
 if [ -z "$GDRIVE_FOLDER_ID" ]; then
     echo "❌ エラー: GDRIVE_FOLDER_IDが設定されていません"

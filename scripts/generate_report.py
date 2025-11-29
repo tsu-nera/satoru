@@ -50,7 +50,7 @@ from lib import (
     analyze_fnirs,
     generate_session_summary,
     get_heart_rate_data,
-    analyze_respiratory,
+    analyze_motion,
 )
 from lib.session_log import write_to_csv, write_to_google_sheets
 
@@ -72,7 +72,8 @@ from lib.sensors.eeg.visualization import (
 from lib.visualization import (
     plot_segment_comparison,
     plot_fnirs_muse_style,
-    plot_respiratory,
+    plot_motion_heart_rate,
+    create_motion_stats_table,
 )
 from lib.statistical_dataframe import create_statistical_dataframe
 
@@ -407,19 +408,20 @@ def generate_markdown_report(data_path, output_dir, results):
             report += "\n\n"
 
     # ========================================
-    # 心拍変動と呼吸数推定
+    # 動作検出と心拍数
     # ========================================
-    if "hr_stats" in results or "hr_img" in results:
-        report += "## 💓 心拍変動と呼吸数推定\n\n"
+    if "motion_stats" in results or "motion_img" in results:
+        report += "## 🏃 動作検出と心拍数\n\n"
 
-        if "hr_stats" in results:
+        if "motion_stats" in results:
             report += "### 統計サマリー\n\n"
-            report += results["hr_stats"].to_markdown(index=False, floatfmt=".2f")
+            report += results["motion_stats"].to_markdown(index=False)
             report += "\n\n"
+            report += "> **注**: 加速度センサー（直線移動）とジャイロスコープ（頭部回転）で動作を検出。動作検出された区間はEEGアーティファクトの可能性があります。\n\n"
 
-        if "hr_img" in results:
-            report += "### 心拍 & 呼吸数の時系列\n\n"
-            report += f"![心拍・呼吸数時系列](img/{results['hr_img']})\n\n"
+        if "motion_img" in results:
+            report += "### 動作検出 & 心拍数の時系列\n\n"
+            report += f"![動作検出・心拍数時系列](img/{results['motion_img']})\n\n"
 
     # ========================================
     # 時間経過分析
@@ -525,39 +527,31 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
     except KeyError as exc:
         print(f'警告: fNIRSデータを処理できませんでした ({exc})')
 
-    # 心拍変動と呼吸数推定
+    # 動作検出（加速度・ジャイロ）と心拍数
     hr_data = None
+    motion_result = None
     try:
+        # 心拍数データ取得
         hr_data = get_heart_rate_data(df)
-        if hr_data and len(hr_data['heart_rate']) > 0:
-            print('計算中: 心拍変動と呼吸数推定...')
-            respiratory_results = analyze_respiratory(hr_data)
 
-            # 統計情報をDataFrame化
-            stats = respiratory_results['stats']
-            hr_stats_data = {
-                'Metric': ['RR平均 (ms)', 'RR標準偏差 (ms)', 'RR最小 (ms)', 'RR最大 (ms)',
-                          'FFT呼吸数平均 (回/分)', 'FFT呼吸数標準偏差 (回/分)'],
-                'Value': [
-                    stats['rr_mean'],
-                    stats['rr_std'],
-                    stats['rr_min'],
-                    stats['rr_max'],
-                    stats['respiratory_rate_fft_mean'],
-                    stats['respiratory_rate_fft_std']
-                ]
-            }
-            results['hr_stats'] = pd.DataFrame(hr_stats_data)
+        # 動作検出（10秒間隔）
+        print('計算中: 動作検出（加速度・ジャイロ）...')
+        motion_result = analyze_motion(df, interval='10s')
 
-            # 時系列プロット
-            print('プロット中: 心拍 & 呼吸数時系列...')
-            hr_img_name = 'heart_rate_respiratory.png'
-            fig_hr, _ = plot_respiratory(hr_data, respiratory_results)
-            fig_hr.savefig(img_dir / hr_img_name, dpi=150, bbox_inches='tight')
-            plt.close(fig_hr)
-            results['hr_img'] = hr_img_name
+        # 統計情報をDataFrame化
+        results['motion_stats'] = create_motion_stats_table(motion_result, hr_data=hr_data)
+
+        # 時系列プロット（動作検出 + 心拍数）
+        print('プロット中: 動作検出 & 心拍数時系列...')
+        motion_img_name = 'motion_heart_rate.png'
+        fig_motion, _ = plot_motion_heart_rate(motion_result, hr_data=hr_data, df=df)
+        fig_motion.savefig(img_dir / motion_img_name, dpi=150, bbox_inches='tight')
+        plt.close(fig_motion)
+        results['motion_img'] = motion_img_name
+        results['motion_ratio'] = motion_result['motion_ratio']
+
     except Exception as exc:
-        print(f'警告: 心拍データを処理できませんでした ({exc})')
+        print(f'警告: 動作検出を処理できませんでした ({exc})')
 
     # バンドパワー時系列（Museアプリ風）
     print('プロット中: バンドパワー時系列...')

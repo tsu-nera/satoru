@@ -14,6 +14,9 @@ from .fnirs import plot_fnirs, plot_fnirs_muse_style
 # 呼吸・心拍可視化
 from .respiratory import plot_respiratory, plot_frequency_spectrum
 
+# 動作検出可視化
+from .motion import plot_motion_heart_rate, create_motion_stats_table
+
 # 統合ダッシュボード
 from .dashboard import plot_integrated_dashboard
 
@@ -29,6 +32,9 @@ __all__ = [
     # 呼吸・心拍
     'plot_respiratory',
     'plot_frequency_spectrum',
+    # 動作検出
+    'plot_motion_heart_rate',
+    'create_motion_stats_table',
     # 統合ダッシュボード
     'plot_integrated_dashboard',
     # 共通ユーティリティ

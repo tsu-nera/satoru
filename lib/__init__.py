@@ -22,6 +22,11 @@ from .sensors.ppg import (
     analyze_respiratory
 )
 
+from .sensors.motion import (
+    analyze_motion,
+    MOTION_THRESHOLDS,
+)
+
 from .sensors.eeg import (
     calculate_band_statistics,
     calculate_hsi_statistics,
@@ -77,6 +82,9 @@ __all__ = [
     'estimate_respiratory_rate_welch',
     'estimate_respiratory_rate_fft',
     'analyze_respiratory',
+    # motion
+    'analyze_motion',
+    'MOTION_THRESHOLDS',
     # eeg
     'get_eeg_data',
     'calculate_band_statistics',

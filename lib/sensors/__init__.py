@@ -5,6 +5,7 @@
 - PPG: 心拍・呼吸数推定
 - fNIRS: 脳血流計測
 - EEG: 脳波解析
+- Motion: 加速度・ジャイロによる動作検出
 """
 
 # PPGセンサー（心拍・呼吸）
@@ -35,6 +36,18 @@ from .eeg import (
     get_psd_peak_frequencies
 )
 
+# モーションセンサー（加速度・ジャイロ）
+from .motion import (
+    MOTION_THRESHOLDS,
+    get_motion_data,
+    compute_magnitude,
+    detect_motion,
+    compute_motion_score,
+    analyze_motion_intervals,
+    get_motion_epochs,
+    analyze_motion
+)
+
 __all__ = [
     # PPG
     'estimate_rr_intervals',
@@ -55,4 +68,13 @@ __all__ = [
     'calculate_paf',
     'calculate_paf_time_evolution',
     'get_psd_peak_frequencies',
+    # Motion
+    'MOTION_THRESHOLDS',
+    'get_motion_data',
+    'compute_magnitude',
+    'detect_motion',
+    'compute_motion_score',
+    'analyze_motion_intervals',
+    'get_motion_epochs',
+    'analyze_motion',
 ]
