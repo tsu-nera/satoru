@@ -437,6 +437,7 @@ def generate_markdown_report(data_path, output_dir, results):
             report += "### 詳細データ\n\n"
             report += results['segment_table'].to_markdown(index=False, floatfmt='.3f')
             report += "\n\n"
+            report += "> **注**: min = 経過時間（3分間隔）\n\n"
 
     # ファイルに書き込み
     with open(report_path, 'w', encoding='utf-8') as f:

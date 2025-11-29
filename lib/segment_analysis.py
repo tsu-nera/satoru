@@ -253,6 +253,11 @@ def calculate_segment_analysis(
         f"{row['segment_start'].strftime('%H:%M')} - {row['segment_end'].strftime('%H:%M')}"
         for _, row in segment_frame.iterrows()
     ]
+    # 経過時間ラベル（開始時間のみ、例: 0, 3, 6）
+    segment_frame['elapsed_label'] = [
+        int(row['segment_index'] * segment_minutes)
+        for _, row in segment_frame.iterrows()
+    ]
 
     if segment_frame.empty:
         raise ValueError('時間セグメント分析の結果が空です。')
@@ -304,7 +309,7 @@ def calculate_segment_analysis(
 
         display_row = {
             'No.': seg_idx,
-            '時間帯': row['label'],
+            'min': row['elapsed_label'],
             'Theta (dB)': row['theta_mean'],
             'Alpha (dB)': row['alpha_mean'],
             'Beta (dB)': row['beta_mean'],
@@ -329,7 +334,7 @@ def calculate_segment_analysis(
         'session_end': session_end,
         'peak_segment_index': peak_idx,
         'peak_time_range': (
-            segment_frame.set_index('segment_index').loc[peak_idx, 'label']
+            segment_frame.set_index('segment_index').loc[peak_idx, 'elapsed_label']
             if peak_idx is not None
             else None
         ),

@@ -111,7 +111,7 @@ def plot_raw_preview(
         ax.set_ylabel(channel_name, rotation=0, labelpad=35, fontsize=11, fontweight='bold')
         ax.grid(True, alpha=0.2, linestyle='-')
 
-    axes[-1].set_xlabel('Time (s)', fontsize=12)
+    format_time_axis(axes[-1], times_rel, unit='minutes')
     axes[0].set_title('Raw EEG Preview (filtered)', fontsize=15, fontweight='bold', pad=14)
 
     if img_path:
@@ -749,7 +749,9 @@ def plot_band_ratios(
     ]
 
     # データ準備
-    if '時間帯' in segment_table.columns:
+    if 'min' in segment_table.columns:
+        segments = [str(m) for m in segment_table['min'].tolist()]
+    elif '時間帯' in segment_table.columns:
         segments = segment_table['時間帯'].tolist()
     elif 'No.' in segment_table.columns:
         segments = [f'Seg {i}' for i in segment_table['No.'].tolist()]
@@ -781,7 +783,7 @@ def plot_band_ratios(
     ax.axhline(y=1.0, color='gray', linestyle='--', alpha=0.5, linewidth=1.5)
 
     # 軸設定
-    ax.set_xlabel('Time Segment', fontsize=12)
+    ax.set_xlabel('Time (min)', fontsize=12)
     ax.set_ylabel('Ratio', fontsize=12)
     ax.set_title('Band Power Ratios by Segment', fontsize=14, fontweight='bold')
     ax.set_xticks(x)
