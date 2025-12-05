@@ -16,7 +16,7 @@ from .frequency import calculate_psd, calculate_spectrogram, calculate_spectrogr
 from .statistics import calculate_band_statistics, calculate_hsi_statistics
 
 # PAF解析
-from .paf import calculate_paf, calculate_paf_time_evolution
+from .paf import calculate_paf
 
 # ユーティリティ
 from .utils import get_psd_peak_frequencies
@@ -64,7 +64,6 @@ __all__ = [
     'calculate_hsi_statistics',
     # PAF解析
     'calculate_paf',
-    'calculate_paf_time_evolution',
     # ユーティリティ
     'get_psd_peak_frequencies',
     # Fmθ解析

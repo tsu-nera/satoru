@@ -33,6 +33,7 @@ class FrontalThetaResult:
     time_series: pd.Series
     statistics: pd.DataFrame
     metadata: dict
+    alpha_series: Optional[pd.Series] = None  # アルファ波時系列（オプション）
 
 
 def _prepare_raw_for_fmtheta(
@@ -60,10 +61,12 @@ def calculate_frontal_theta(
     channels: Optional[Iterable[str]] = None,
     band: Optional[Tuple[float, float]] = None,
     band_key: Optional[str] = None,
-    resample_interval: str = '2S',
+    resample_interval: str = '10S',
     smoothing_seconds: float = 6.0,
     rolling_window_seconds: float = 8.0,
     raw: Optional[mne.io.BaseRaw] = None,
+    include_alpha: bool = True,
+    alpha_band: Tuple[float, float] = (8.0, 12.0),
 ) -> FrontalThetaResult:
     """
     Frontal Midline Theta (Fmθ) の指標を計算する。
@@ -79,17 +82,22 @@ def calculate_frontal_theta(
     band_key : str, optional
         `FMTHETA_BAND_OPTIONS` に定義された帯域キー。例: 'narrow', 'medium', 'wide'
     resample_interval : str
-        可視化用にリサンプルする間隔。
+        可視化用にリサンプルする間隔。デフォルトは10秒。
     smoothing_seconds : float
         ローリング平均による平滑化時定数（秒）。
     raw : mne.io.BaseRaw, optional
         既存のRawオブジェクト。Noneの場合は新規作成。
+    include_alpha : bool
+        Trueの場合、アルファ波の時系列も計算して返す。
+    alpha_band : tuple
+        アルファ波の周波数帯域 (Hz)。デフォルトは (8.0, 12.0)。
 
     Returns
     -------
     FrontalThetaResult
         時系列・統計情報・メタデータを含む解析結果。
         時系列パワーはdB単位（10*log10(μV²)）で出力される。
+        include_alpha=Trueの場合、alpha_seriesにアルファ波時系列も含まれる。
     """
     if channels is None:
         channels = ('RAW_AF7', 'RAW_AF8')
@@ -213,8 +221,49 @@ def calculate_frontal_theta(
         },
     }
 
+    # アルファ波の計算（オプション）
+    alpha_series_final = None
+    if include_alpha:
+        raw_alpha_filtered = raw.copy().filter(
+            l_freq=alpha_band[0],
+            h_freq=alpha_band[1],
+            fir_design='firwin',
+            phase='zero',
+            verbose=False,
+        )
+        raw_alpha_envelope = raw_alpha_filtered.copy().apply_hilbert(envelope=True, verbose=False)
+        alpha_env_data_uv = raw_alpha_envelope.get_data(units='uV')
+
+        alpha_power_uv2 = alpha_env_data_uv.T ** 2
+        alpha_power_db = 10 * np.log10(alpha_power_uv2 + epsilon)
+
+        alpha_power_df = pd.DataFrame(
+            alpha_power_db,
+            index=time_index,
+            columns=list(channel_list),
+        )
+        alpha_power_series = alpha_power_df.mean(axis=1)
+
+        # 外れ値除去
+        alpha_upper_bound = alpha_power_series.quantile(0.90)
+        alpha_power_series = alpha_power_series.clip(lower=0.0, upper=alpha_upper_bound)
+
+        # リサンプル・平滑化（シータ波と同じ処理）
+        if resample_interval:
+            alpha_power_series = alpha_power_series.resample(resample_interval).median()
+        if smoothing_seconds and smoothing_seconds > 0:
+            window = f'{max(int(smoothing_seconds), 1)}S'
+            alpha_power_series = alpha_power_series.rolling(window=window, min_periods=1).mean()
+        if rolling_window_seconds and rolling_window_seconds > 0:
+            window = f'{max(int(rolling_window_seconds), 1)}S'
+            alpha_power_series = alpha_power_series.rolling(window=window, min_periods=1).median()
+
+        alpha_series_final = alpha_power_series.dropna()
+        metadata['alpha_band'] = alpha_band
+
     return FrontalThetaResult(
         time_series=series,
         statistics=stats_df,
         metadata=metadata,
+        alpha_series=alpha_series_final,
     )

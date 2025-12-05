@@ -65,7 +65,7 @@ def calculate_alpha_power(
     slope: Optional[float] = None,
     intercept: Optional[float] = None,
     offset: Optional[float] = None,
-    resample_interval: str = '2S',
+    resample_interval: str = '10S',
 ) -> AlphaPowerResult:
     """
     Alpha Power（Brain Recharge Score相当）を計算する。

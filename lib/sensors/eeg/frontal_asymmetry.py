@@ -47,7 +47,7 @@ def calculate_frontal_asymmetry(
     left_channel: str = 'RAW_AF7',
     right_channel: str = 'RAW_AF8',
     alpha_band: Tuple[float, float] = (8.0, 13.0),
-    resample_interval: str = '2S',
+    resample_interval: str = '10S',
     smoothing_seconds: float = 6.0,
     rolling_window_seconds: float = 8.0,
     raw: Optional[mne.io.BaseRaw] = None,

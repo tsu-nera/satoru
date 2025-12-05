@@ -32,7 +32,6 @@ from .eeg import (
     calculate_psd,
     calculate_spectrogram,
     calculate_paf,
-    calculate_paf_time_evolution,
     get_psd_peak_frequencies
 )
 
@@ -66,7 +65,6 @@ __all__ = [
     'calculate_psd',
     'calculate_spectrogram',
     'calculate_paf',
-    'calculate_paf_time_evolution',
     'get_psd_peak_frequencies',
     # Motion
     'MOTION_THRESHOLDS',

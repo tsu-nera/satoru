@@ -10,12 +10,10 @@ from .eeg_plots import (
     plot_raw_preview,
     plot_band_power_time_series,
     plot_psd,
-    plot_psd_time_series,
     plot_spectrogram,
     plot_spectrogram_grid,
     plot_band_ratios,
     plot_paf,
-    plot_paf_time_evolution,
 )
 
 # 指標別可視化
@@ -28,12 +26,10 @@ __all__ = [
     'plot_raw_preview',
     'plot_band_power_time_series',
     'plot_psd',
-    'plot_psd_time_series',
     'plot_spectrogram',
     'plot_spectrogram_grid',
     'plot_band_ratios',
     'plot_paf',
-    'plot_paf_time_evolution',
     # 指標別可視化
     'plot_frontal_theta',
     'plot_frontal_asymmetry',

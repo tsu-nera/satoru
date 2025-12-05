@@ -35,7 +35,6 @@ from lib import (
     calculate_spectrogram,
     calculate_spectrogram_all_channels,
     calculate_paf,
-    calculate_paf_time_evolution,
     get_psd_peak_frequencies,
     calculate_frontal_theta,
     calculate_frontal_asymmetry,
@@ -58,12 +57,10 @@ from lib.session_log import write_to_csv, write_to_google_sheets
 from lib.sensors.eeg.visualization import (
     plot_band_power_time_series,
     plot_psd,
-    plot_psd_time_series,
     plot_spectrogram,
     plot_spectrogram_grid,
     plot_band_ratios,
     plot_paf,
-    plot_paf_time_evolution,
     plot_raw_preview,
     plot_frontal_theta,
     plot_frontal_asymmetry,
@@ -290,7 +287,7 @@ def generate_markdown_report(data_path, output_dir, results):
     # 特徴的指標分析
     # ========================================
     fmtheta_keys = {'frontal_theta_img', 'frontal_theta_stats', 'frontal_theta_increase'}
-    paf_keys = {'paf_img', 'paf_summary', 'iaf', 'paf_time_img', 'paf_time_stats'}
+    paf_keys = {'paf_img', 'paf_summary', 'iaf'}
     faa_keys = {'faa_img', 'faa_stats'}
     band_ratio_keys = {'band_ratios_img', 'band_ratios_stats'}
 
@@ -562,8 +559,8 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
         df_for_band,
         img_path=img_dir / 'band_power_time_series.png',
         rolling_window=200,
-        resample_interval='2S',
-        smooth_window=9,
+        resample_interval='10S',
+        smooth_window=5,
         clip_percentile=98.0
     )
     results['band_power_img'] = 'band_power_time_series.png'
@@ -599,22 +596,6 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
             n_channels=min(4, len(mne_dict['channels'])),
         )
         results['raw_preview_img'] = raw_preview_img
-
-        # PSD時系列
-        print('プロット中: PSDの時間推移...')
-        psd_time_img_name = 'psd_time_series.png'
-        plot_psd_time_series(
-            raw,
-            channels=mne_dict['channels'],
-            img_path=img_dir / psd_time_img_name,
-            fmin=1.0,
-            fmax=40.0,
-            window_sec=8.0,
-            step_sec=2.0,
-            clip_percentile=90.0,
-            smooth_window=7
-        )
-        results['psd_time_series_img'] = psd_time_img_name
 
         # PSD計算
         print('計算中: パワースペクトル密度...')
@@ -677,16 +658,6 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
             'peak': paf_dict['iaf_peak'],
             'cog': paf_dict['iaf_cog']
         }
-
-        # PAF時間推移（優先チャネルを使用）
-        if tfr_primary:
-            print(f'計算中: PAF時間推移... (チャネル: {tfr_primary_channel})')
-            paf_time_dict = calculate_paf_time_evolution(tfr_primary, paf_dict)
-
-            print('プロット中: PAF時間推移...')
-            plot_paf_time_evolution(paf_time_dict, df, paf_dict, img_path=img_dir / 'paf_time_evolution.png')
-            results['paf_time_img'] = 'paf_time_evolution.png'
-            results['paf_time_stats'] = paf_time_dict['stats']
 
         # Alpha Power (Brain Recharge Score) 解析
         try:
