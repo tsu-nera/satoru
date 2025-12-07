@@ -48,6 +48,15 @@ from .alpha_power import (
     calculate_alpha_power_from_raw,
 )
 
+# ハーモニクス解析
+from .harmonics import (
+    HarmonicsResult,
+    PeakInfo,
+    PeakType,
+    analyze_harmonics,
+    DETAILED_FREQ_BANDS,
+)
+
 __all__ = [
     # 定数
     'FREQ_BANDS',
@@ -81,4 +90,10 @@ __all__ = [
     'AlphaPowerMethod',
     'calculate_alpha_power',
     'calculate_alpha_power_from_raw',
+    # ハーモニクス解析
+    'HarmonicsResult',
+    'PeakInfo',
+    'PeakType',
+    'analyze_harmonics',
+    'DETAILED_FREQ_BANDS',
 ]

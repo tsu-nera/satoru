@@ -49,6 +49,11 @@ from .sensors.eeg import (
     SpectralEntropyResult,
     calculate_spectral_entropy,
     calculate_spectral_entropy_time_series,
+    HarmonicsResult,
+    PeakInfo,
+    PeakType,
+    analyze_harmonics,
+    DETAILED_FREQ_BANDS,
 )
 
 from .segment_analysis import (
@@ -107,6 +112,11 @@ __all__ = [
     'SpectralEntropyResult',
     'calculate_spectral_entropy',
     'calculate_spectral_entropy_time_series',
+    'HarmonicsResult',
+    'PeakInfo',
+    'PeakType',
+    'analyze_harmonics',
+    'DETAILED_FREQ_BANDS',
     # high-level eeg utilities
     'SegmentAnalysisResult',
     'calculate_segment_analysis',
