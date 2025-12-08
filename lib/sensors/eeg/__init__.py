@@ -48,12 +48,14 @@ from .alpha_power import (
     calculate_alpha_power_from_raw,
 )
 
-# ハーモニクス解析
-from .harmonics import (
-    HarmonicsResult,
+# PSDピーク解析
+from .psd_peaks import (
+    PsdPeaksResult,
+    HarmonicsResult,  # 後方互換性
     PeakInfo,
     PeakType,
-    analyze_harmonics,
+    analyze_psd_peaks,
+    analyze_harmonics,  # 後方互換性
     DETAILED_FREQ_BANDS,
 )
 
@@ -90,10 +92,12 @@ __all__ = [
     'AlphaPowerMethod',
     'calculate_alpha_power',
     'calculate_alpha_power_from_raw',
-    # ハーモニクス解析
-    'HarmonicsResult',
+    # PSDピーク解析
+    'PsdPeaksResult',
+    'HarmonicsResult',  # 後方互換性
     'PeakInfo',
     'PeakType',
-    'analyze_harmonics',
+    'analyze_psd_peaks',
+    'analyze_harmonics',  # 後方互換性
     'DETAILED_FREQ_BANDS',
 ]

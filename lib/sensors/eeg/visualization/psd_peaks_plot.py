@@ -1,5 +1,5 @@
 """
-ハーモニクス分析の可視化モジュール
+PSDピーク分析の可視化モジュール
 """
 
 from pathlib import Path
@@ -8,11 +8,11 @@ from typing import Optional, Union
 import numpy as np
 import matplotlib.pyplot as plt
 
-from ..harmonics import HarmonicsResult, PeakType, DETAILED_FREQ_BANDS
+from ..psd_peaks import PsdPeaksResult, PeakType, DETAILED_FREQ_BANDS
 
 
-def plot_harmonics(
-    result: HarmonicsResult,
+def plot_psd_peaks(
+    result: PsdPeaksResult,
     psd_dict: dict,
     img_path: Optional[Union[str, Path]] = None,
     freq_max: float = 35.0,
@@ -22,8 +22,8 @@ def plot_harmonics(
 
     Parameters
     ----------
-    result : HarmonicsResult
-        analyze_harmonics() の戻り値
+    result : PsdPeaksResult
+        analyze_psd_peaks() の戻り値
     psd_dict : dict
         calculate_psd() の戻り値
     img_path : str or Path, optional
@@ -64,38 +64,48 @@ def plot_harmonics(
             color = band_colors.get(band_name, 'gray')
             ax.axvspan(low, min(high, freq_max), alpha=0.1, color=color)
 
-    # ピークをマーク（IAFは赤、SMRはシアン、その他は緑）
+    # ピークをマーク（IAFは赤、SMRはシアン、4Hz倍数はグレー、その他は緑）
     for peak in result.peaks:
         if peak.frequency <= freq_max:
-            if peak.peak_type == PeakType.FUNDAMENTAL:
+            # 4Hz倍数アーチファクトはグレーで表示
+            if peak.is_4hz_harmonic:
+                color = 'gray'
+                marker = 'x'
+                alpha = 0.5
+            elif peak.peak_type == PeakType.FUNDAMENTAL:
                 color = 'red'
                 marker = 'o'
+                alpha = 1.0
             elif peak.band_name == 'SMR':
                 color = 'darkcyan'
                 marker = 's'
+                alpha = 1.0
             else:
                 color = 'green'
                 marker = 's'
+                alpha = 1.0
 
             ax.scatter(
                 [peak.frequency], [peak.power_db],
                 color=color, s=100, marker=marker, zorder=5,
-                edgecolors='white', linewidths=1
+                edgecolors='white', linewidths=1, alpha=alpha
             )
 
-            # ラベル（主要なピークのみ）
-            if peak.prominence > 1.0 or peak.peak_type == PeakType.FUNDAMENTAL or peak.band_name == 'SMR':
-                label = f'{peak.frequency:.1f}Hz\n({peak.band_name})'
-                ax.annotate(
-                    label, (peak.frequency, peak.power_db),
-                    textcoords='offset points', xytext=(0, 12),
-                    ha='center', fontsize=8, color=color
-                )
+            # ラベル（主要なピークのみ、4Hz倍数は除外）
+            if not peak.is_4hz_harmonic:
+                if peak.prominence > 1.0 or peak.peak_type == PeakType.FUNDAMENTAL or peak.band_name == 'SMR':
+                    label = f'{peak.frequency:.1f}Hz\n({peak.band_name})'
+                    ax.annotate(
+                        label, (peak.frequency, peak.power_db),
+                        textcoords='offset points', xytext=(0, 12),
+                        ha='center', fontsize=8, color=color
+                    )
 
     # 凡例用のダミープロット
     ax.scatter([], [], color='red', marker='o', s=80, label='IAF (Fundamental)')
     ax.scatter([], [], color='darkcyan', marker='s', s=80, label='SMR')
     ax.scatter([], [], color='green', marker='s', s=80, label='Other Peaks')
+    ax.scatter([], [], color='gray', marker='x', s=80, alpha=0.5, label='4Hz Harmonic (Artifact)')
 
     ax.set_xlabel('Frequency (Hz)', fontsize=11)
     ax.set_ylabel('Power (dB)', fontsize=11)
@@ -111,3 +121,7 @@ def plot_harmonics(
         plt.close(fig)
 
     return fig
+
+
+# 後方互換性のためのエイリアス
+plot_harmonics = plot_psd_peaks

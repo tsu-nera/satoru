@@ -1,8 +1,9 @@
 """
-ハーモニクス（高調波）分析モジュール
+PSDピーク分析モジュール
 
-PSDのピーク検出と分類を行い、各ピークが独立した脳リズムか
-ハーモニクス（高調波）かを判定する。SMR (12-15Hz) も分類に含む。
+PSDからピークを検出し、周波数帯域で分類する。
+SMR (12-15Hz) も帯域として識別される。
+4Hzの整数倍はMuse/Mind Monitor由来のアーチファクトとしてフラグ付けされる。
 """
 
 from __future__ import annotations
@@ -38,6 +39,31 @@ DETAILED_FREQ_BANDS: Dict[str, Tuple[float, float, str]] = {
 }
 
 
+def _is_4hz_harmonic(freq: float, tolerance: float = 0.5) -> bool:
+    """
+    周波数が4Hzの整数倍かどうかを判定
+
+    4Hz倍数（4, 8, 12, 16, 20, 24, 28, 32...）はMuse/Mind Monitor由来の
+    アーチファクトである可能性が高い。
+
+    Parameters
+    ----------
+    freq : float
+        判定する周波数 (Hz)
+    tolerance : float
+        許容誤差 (Hz)
+
+    Returns
+    -------
+    bool
+        4Hzの整数倍であればTrue
+    """
+    if freq < 4.0:
+        return False
+    remainder = freq % 4.0
+    return remainder < tolerance or (4.0 - remainder) < tolerance
+
+
 @dataclass
 class PeakInfo:
     """検出されたピークの情報"""
@@ -49,17 +75,22 @@ class PeakInfo:
     peak_type: PeakType
     harmonic_of: Optional[float] = None
     harmonic_number: Optional[int] = None
+    is_4hz_harmonic: bool = False  # 4Hz倍数アーチファクトの可能性
 
 
 @dataclass
-class HarmonicsResult:
-    """ハーモニクス分析結果"""
+class PsdPeaksResult:
+    """PSDピーク分析結果"""
     peaks: List[PeakInfo]
     peaks_table: pd.DataFrame
     fundamental_candidates: pd.DataFrame
     best_fundamental: Optional[float]
     statistics: pd.DataFrame
     metadata: dict
+
+
+# 後方互換性のためのエイリアス
+HarmonicsResult = PsdPeaksResult
 
 
 def _classify_frequency_band(freq: float) -> Tuple[str, str]:
@@ -139,66 +170,6 @@ def _find_psd_peaks(
     return peak_freqs, peak_powers, prominences
 
 
-def _analyze_harmonics_with_fundamental(
-    peak_freqs: np.ndarray,
-    fundamental: float,
-    tolerance: float = 0.8,
-    max_harmonic: int = 6,
-    freq_max: float = 45.0,
-) -> dict:
-    """
-    指定された基本周波数でハーモニクス系列を分析
-
-    Parameters
-    ----------
-    peak_freqs : np.ndarray
-        検出されたピーク周波数
-    fundamental : float
-        基本周波数（通常はIAF）
-    tolerance : float
-        ハーモニクス一致判定の許容誤差（Hz）
-    max_harmonic : int
-        検出する最大倍音数
-    freq_max : float
-        検出する最大周波数
-
-    Returns
-    -------
-    result : dict
-        ハーモニクス分析結果
-    """
-    matches = []
-    total_error = 0.0
-
-    for h_num in range(2, max_harmonic + 1):  # 2倍音から開始（1倍音は基本周波数自体）
-        expected = fundamental * h_num
-        if expected > freq_max:
-            continue
-
-        if len(peak_freqs) > 0:
-            distances = np.abs(peak_freqs - expected)
-            min_idx = np.argmin(distances)
-            min_dist = distances[min_idx]
-
-            if min_dist < tolerance:
-                matches.append({
-                    'harmonic': h_num,
-                    'expected': expected,
-                    'actual': float(peak_freqs[min_idx]),
-                    'error': float(min_dist),
-                })
-                total_error += min_dist
-
-    avg_error = total_error / len(matches) if matches else float('inf')
-
-    return {
-        'fundamental': float(fundamental),
-        'matches': matches,
-        'match_count': len(matches),
-        'avg_error': avg_error,
-    }
-
-
 def _classify_peaks(
     peak_freqs: np.ndarray,
     peak_powers: np.ndarray,
@@ -236,6 +207,9 @@ def _classify_peaks(
         if iaf is not None and abs(freq - iaf) < 1.0:
             peak_type = PeakType.FUNDAMENTAL
 
+        # 4Hz倍数アーチファクトの判定
+        is_artifact = _is_4hz_harmonic(freq)
+
         peaks.append(PeakInfo(
             frequency=float(freq),
             power_db=float(power),
@@ -245,6 +219,7 @@ def _classify_peaks(
             peak_type=peak_type,
             harmonic_of=None,
             harmonic_number=None,
+            is_4hz_harmonic=is_artifact,
         ))
 
     # パワー順にソート
@@ -253,18 +228,19 @@ def _classify_peaks(
     return peaks
 
 
-def analyze_harmonics(
+def analyze_psd_peaks(
     psd_dict: dict,
     iaf: Optional[float] = None,
     freq_range: Tuple[float, float] = (1.0, 45.0),
     prominence: float = 0.5,
     max_peaks: int = 15,
-) -> HarmonicsResult:
+) -> PsdPeaksResult:
     """
     PSDのピーク分析を実行
 
     PSDからピークを検出し、周波数帯域で分類する。
     SMR (12-15Hz) も帯域として識別される。
+    4Hzの整数倍はアーチファクトとしてフラグ付けされる。
 
     Parameters
     ----------
@@ -282,7 +258,7 @@ def analyze_harmonics(
 
     Returns
     -------
-    HarmonicsResult
+    PsdPeaksResult
         ピーク分析結果
     """
     freqs = psd_dict['freqs']
@@ -300,7 +276,7 @@ def analyze_harmonics(
         empty_df = pd.DataFrame(columns=[
             '周波数 (Hz)', 'パワー (dB)', '帯域', '備考'
         ])
-        return HarmonicsResult(
+        return PsdPeaksResult(
             peaks=[],
             peaks_table=empty_df,
             fundamental_candidates=pd.DataFrame(),
@@ -326,6 +302,7 @@ def analyze_harmonics(
             'パワー (dB)': round(p.power_db, 1),
             '帯域': p.band_name,
             '備考': note,
+            'is_4hz_harmonic': p.is_4hz_harmonic,  # 内部フラグ（フィルタ用）
         })
 
     peaks_table = pd.DataFrame(table_rows)
@@ -355,7 +332,7 @@ def analyze_harmonics(
         'channels': psd_dict['channels'],
     }
 
-    return HarmonicsResult(
+    return PsdPeaksResult(
         peaks=peaks,
         peaks_table=peaks_table,
         fundamental_candidates=pd.DataFrame(),
@@ -363,3 +340,7 @@ def analyze_harmonics(
         statistics=statistics,
         metadata=metadata,
     )
+
+
+# 後方互換性のためのエイリアス
+analyze_harmonics = analyze_psd_peaks

@@ -20,7 +20,7 @@ from .eeg_plots import (
 from .frontal_theta_plot import plot_frontal_theta
 from .frontal_asymmetry_plot import plot_frontal_asymmetry
 from .spectral_entropy_plot import plot_spectral_entropy
-from .harmonics_plot import plot_harmonics
+from .psd_peaks_plot import plot_psd_peaks, plot_harmonics  # plot_harmonicsは後方互換性
 
 __all__ = [
     # 基本EEG可視化
@@ -35,5 +35,6 @@ __all__ = [
     'plot_frontal_theta',
     'plot_frontal_asymmetry',
     'plot_spectral_entropy',
-    'plot_harmonics',
+    'plot_psd_peaks',
+    'plot_harmonics',  # 後方互換性
 ]

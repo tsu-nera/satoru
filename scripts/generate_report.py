@@ -50,7 +50,7 @@ from lib import (
     generate_session_summary,
     get_heart_rate_data,
     analyze_motion,
-    analyze_harmonics,
+    analyze_psd_peaks,
 )
 from lib.session_log import write_to_csv, write_to_google_sheets
 
@@ -65,7 +65,7 @@ from lib.sensors.eeg.visualization import (
     plot_raw_preview,
     plot_frontal_theta,
     plot_frontal_asymmetry,
-    plot_harmonics,
+    plot_psd_peaks,
 )
 
 from lib.visualization import (
@@ -294,12 +294,23 @@ def generate_markdown_report(data_path, output_dir, results):
 
             harmonics_table = results['harmonics_table']
             if not harmonics_table.empty:
-                report += harmonics_table.to_markdown(index=False)
-                report += "\n\n"
+                # 4Hz倍数アーチファクトを除外して表示
+                if 'is_4hz_harmonic' in harmonics_table.columns:
+                    display_table = harmonics_table[~harmonics_table['is_4hz_harmonic']].copy()
+                    display_table = display_table.drop(columns=['is_4hz_harmonic'])
+                else:
+                    display_table = harmonics_table
+
+                if not display_table.empty:
+                    report += display_table.to_markdown(index=False)
+                    report += "\n\n"
 
             report += """> **帯域の説明**:
 > - **IAF**: Individual Alpha Frequency（個人のアルファ波ピーク周波数）
 > - **SMR**: 感覚運動リズム（12-15Hz）、身体の静止と落ち着きに関連
+>
+> **注意**: 4Hzの整数倍（4, 8, 12, 16, 20, 24, 28, 32 Hz等）はMuse/Mind Monitor由来の
+> アーチファクトの可能性があるため、テーブルから除外しています（グラフではグレーの×印で表示）。
 
 """
 
@@ -679,20 +690,20 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
             'cog': paf_dict['iaf_cog']
         }
 
-        # ハーモニクス分析（PSDピーク分類、SMR含む）
+        # PSDピーク分析（SMR含む）
         try:
-            print('計算中: ハーモニクス分析...')
-            iaf_for_harmonics = paf_dict.get('iaf_peak', paf_dict.get('iaf'))
-            harmonics_result = analyze_harmonics(psd_dict, iaf=iaf_for_harmonics)
-            results['harmonics_table'] = harmonics_result.peaks_table
-            results['harmonics_stats'] = harmonics_result.statistics
-            results['harmonics_result'] = harmonics_result
+            print('計算中: PSDピーク分析...')
+            iaf_for_peaks = paf_dict.get('iaf_peak', paf_dict.get('iaf'))
+            psd_peaks_result = analyze_psd_peaks(psd_dict, iaf=iaf_for_peaks)
+            results['harmonics_table'] = psd_peaks_result.peaks_table
+            results['harmonics_stats'] = psd_peaks_result.statistics
+            results['harmonics_result'] = psd_peaks_result
 
-            print('プロット中: ハーモニクス分析...')
-            plot_harmonics(harmonics_result, psd_dict, img_path=img_dir / 'harmonics.png')
-            results['harmonics_img'] = 'harmonics.png'
+            print('プロット中: PSDピーク分析...')
+            plot_psd_peaks(psd_peaks_result, psd_dict, img_path=img_dir / 'psd_peaks.png')
+            results['harmonics_img'] = 'psd_peaks.png'
         except Exception as exc:
-            print(f'警告: ハーモニクス分析に失敗しました ({exc})')
+            print(f'警告: PSDピーク分析に失敗しました ({exc})')
 
         # Alpha Power (Brain Recharge Score) 解析
         try:

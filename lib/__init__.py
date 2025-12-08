@@ -49,10 +49,12 @@ from .sensors.eeg import (
     SpectralEntropyResult,
     calculate_spectral_entropy,
     calculate_spectral_entropy_time_series,
-    HarmonicsResult,
+    PsdPeaksResult,
+    HarmonicsResult,  # 後方互換性
     PeakInfo,
     PeakType,
-    analyze_harmonics,
+    analyze_psd_peaks,
+    analyze_harmonics,  # 後方互換性
     DETAILED_FREQ_BANDS,
 )
 
@@ -112,10 +114,12 @@ __all__ = [
     'SpectralEntropyResult',
     'calculate_spectral_entropy',
     'calculate_spectral_entropy_time_series',
-    'HarmonicsResult',
+    'PsdPeaksResult',
+    'HarmonicsResult',  # 後方互換性
     'PeakInfo',
     'PeakType',
-    'analyze_harmonics',
+    'analyze_psd_peaks',
+    'analyze_harmonics',  # 後方互換性
     'DETAILED_FREQ_BANDS',
     # high-level eeg utilities
     'SegmentAnalysisResult',
