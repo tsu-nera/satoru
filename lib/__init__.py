@@ -56,6 +56,9 @@ from .sensors.eeg import (
     analyze_psd_peaks,
     analyze_harmonics,  # 後方互換性
     DETAILED_FREQ_BANDS,
+    SMRResult,
+    calculate_smr,
+    SMR_BAND,
 )
 
 from .segment_analysis import (
@@ -121,6 +124,9 @@ __all__ = [
     'analyze_psd_peaks',
     'analyze_harmonics',  # 後方互換性
     'DETAILED_FREQ_BANDS',
+    'SMRResult',
+    'calculate_smr',
+    'SMR_BAND',
     # high-level eeg utilities
     'SegmentAnalysisResult',
     'calculate_segment_analysis',

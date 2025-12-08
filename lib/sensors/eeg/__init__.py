@@ -59,6 +59,13 @@ from .psd_peaks import (
     DETAILED_FREQ_BANDS,
 )
 
+# SMR解析
+from .smr import (
+    SMRResult,
+    calculate_smr,
+    SMR_BAND,
+)
+
 __all__ = [
     # 定数
     'FREQ_BANDS',
@@ -100,4 +107,8 @@ __all__ = [
     'analyze_psd_peaks',
     'analyze_harmonics',  # 後方互換性
     'DETAILED_FREQ_BANDS',
+    # SMR解析
+    'SMRResult',
+    'calculate_smr',
+    'SMR_BAND',
 ]

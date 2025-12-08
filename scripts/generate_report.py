@@ -51,6 +51,7 @@ from lib import (
     get_heart_rate_data,
     analyze_motion,
     analyze_psd_peaks,
+    calculate_smr,
 )
 from lib.session_log import write_to_csv, write_to_google_sheets
 
@@ -66,6 +67,7 @@ from lib.sensors.eeg.visualization import (
     plot_frontal_theta,
     plot_frontal_asymmetry,
     plot_psd_peaks,
+    plot_smr,
 )
 
 from lib.visualization import (
@@ -318,11 +320,12 @@ def generate_markdown_report(data_path, output_dir, results):
     # 特徴的指標分析
     # ========================================
     fmtheta_keys = {'frontal_theta_img', 'frontal_theta_stats', 'frontal_theta_increase'}
+    smr_keys = {'smr_img', 'smr_stats', 'smr_increase'}
     paf_keys = {'paf_img', 'paf_summary', 'iaf'}
     faa_keys = {'faa_img', 'faa_stats'}
     band_ratio_keys = {'band_ratios_img', 'band_ratios_stats'}
 
-    if any(key in results for key in (fmtheta_keys | paf_keys | faa_keys | band_ratio_keys)):
+    if any(key in results for key in (fmtheta_keys | smr_keys | paf_keys | faa_keys | band_ratio_keys)):
         report += "## 🎯 特徴的指標分析\n\n"
 
         # Frontal Midline Theta
@@ -344,6 +347,32 @@ def generate_markdown_report(data_path, output_dir, results):
                 inc = results['frontal_theta_increase']
                 if pd.notna(inc):
                     report += f"セッション後半の平均Fmθは前半比で **{inc:+.1f}%** 変化しました。\n\n"
+
+        # SMR (Sensorimotor Rhythm)
+        if any(key in results for key in smr_keys):
+            report += "### SMR-band Power (AF)\n\n"
+
+            if 'smr_img' in results:
+                report += f"![SMR](img/{results['smr_img']})\n\n"
+
+            if 'smr_stats' in results:
+                stats_df = results['smr_stats']
+                if 'Unit' in stats_df.columns:
+                    stats_df = stats_df.drop(columns=['Unit'])
+                report += stats_df.to_markdown(index=False, floatfmt='.3f')
+                report += "\n\n"
+                report += "> 単位: dB (10×log₁₀(μV²))\n\n"
+
+            if 'smr_increase' in results:
+                inc = results['smr_increase']
+                if pd.notna(inc):
+                    report += f"セッション後半の平均SMRは前半比で **{inc:+.1f}%** 変化しました。\n\n"
+
+            report += """> **解釈**: SMR帯域（12-15Hz）は身体の静止と穏やかな集中に関連します。
+> - 増加: 身体静止・運動抑制・集中状態
+> - 注意: AF領域での測定のため、本来のSMR（C3/C4）の代替指標として扱います。
+
+"""
 
         # Individual Alpha Frequency
         if any(key in results for key in paf_keys):
@@ -777,6 +806,22 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
     except Exception as exc:
         print(f'警告: Fmθ解析に失敗しました ({exc})')
 
+    # SMR解析（12-15Hz, AF領域）
+    smr_result = None
+    try:
+        print('計算中: SMR (12-15Hz, AF領域)...')
+        smr_result = calculate_smr(df, raw=raw_unfiltered if raw_unfiltered else None)
+        print('プロット中: SMR...')
+        plot_smr(
+            smr_result,
+            img_path=img_dir / 'smr.png'
+        )
+        results['smr_img'] = 'smr.png'
+        results['smr_stats'] = smr_result.statistics
+        results['smr_increase'] = smr_result.metadata.get('increase_rate_percent')
+    except Exception as exc:
+        print(f'警告: SMR解析に失敗しました ({exc})')
+
     # Statistical DataFrame生成（統一的なバンドパワー・比率計算）
     statistical_df = None
     if raw is not None:
@@ -815,6 +860,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
             warmup_minutes=warmup_minutes,
             exclude_first_segment=True,  # relaxing phase
             exclude_last_segment=True,   # post meditation stage
+            smr_series=smr_result.time_series if smr_result else None,
         )
         print('プロット中: 時間セグメント比較...')
         segment_plot_name = 'time_segment_metrics.png'

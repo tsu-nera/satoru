@@ -73,6 +73,7 @@ def calculate_segment_analysis(
     warmup_minutes: float = 0.0,
     exclude_first_segment: bool = False,
     exclude_last_segment: bool = False,
+    smr_series: Optional[pd.Series] = None,
 ) -> SegmentAnalysisResult:
     """
     セッションを一定時間のセグメントに分割し、主要指標を算出する。
@@ -87,13 +88,15 @@ def calculate_segment_analysis(
         create_statistical_dataframe()が返す統計DataFrame辞書。
         必須キー: 'band_powers', 'band_ratios'
     segment_minutes : int, default 5
-        セグメント長（分単位）。1
+        セグメント長（分単位）。
     warmup_minutes : float, default 0.0
         セッション開始後の除外期間（分単位）。アーティファクト除去のため。
     exclude_first_segment : bool, default False
         最初のセグメントをスコア計算・ピーク判定から除外（relaxing phase）。
     exclude_last_segment : bool, default False
         最後のセグメントをスコア計算・ピーク判定から除外（post meditation stage）。
+    smr_series : pd.Series, optional
+        SMR（12-15Hz）の時系列データ（indexはタイムスタンプ）。
 
     Returns
     -------
@@ -146,6 +149,11 @@ def calculate_segment_analysis(
     fmtheta_series = fmtheta_series.sort_index()
     fmtheta_series = fmtheta_series[fmtheta_series.index >= session_start]
 
+    # SMR時系列（ウォームアップ期間を除外）
+    if smr_series is not None:
+        smr_series = smr_series.sort_index()
+        smr_series = smr_series[smr_series.index >= session_start]
+
     # IAF時系列をStatistical DFから取得
     iaf_series = statistical_df['iaf'].sort_index()
     iaf_series = iaf_series[iaf_series.index >= session_start]
@@ -190,6 +198,18 @@ def calculate_segment_analysis(
         else:
             fm_mean = fm_clean.mean() if len(fm_clean) > 0 else np.nan
 
+        # SMR平均の計算（外れ値除去）
+        smr_mean = np.nan
+        if smr_series is not None:
+            smr_slice = smr_series.loc[(smr_series.index >= start) & (smr_series.index < end)]
+            smr_clean = smr_slice.dropna()
+            if len(smr_clean) > 3:
+                z_scores = np.abs(stats.zscore(smr_clean))
+                smr_filtered = smr_clean[z_scores < 3.0]
+                smr_mean = smr_filtered.mean() if len(smr_filtered) > 0 else smr_clean.mean()
+            else:
+                smr_mean = smr_clean.mean() if len(smr_clean) > 0 else np.nan
+
         # IAF平均（Statistical DFから自動取得済み）
         iaf_mean = np.nan
         iaf_cv = np.nan
@@ -231,6 +251,7 @@ def calculate_segment_analysis(
             'segment_start': start,
             'segment_end': end,
             'fmtheta_mean': fm_mean,
+            'smr_mean': smr_mean,
             'spectral_entropy': se_mean,
             'iaf_mean': iaf_mean,
             'alpha_mean': alpha_mean,
@@ -317,6 +338,7 @@ def calculate_segment_analysis(
             'β/α': row['beta_alpha_ratio'],
             'β/θ': row['beta_theta_ratio'],
             'Fmθ (dB)': row['fmtheta_mean'],
+            'SMR (dB)': row['smr_mean'],
             'SE': row['spectral_entropy'],
             'IAF (Hz)': row['iaf_mean'],
             'HbO': row['hbo_mean'],
