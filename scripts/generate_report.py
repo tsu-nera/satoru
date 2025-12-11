@@ -100,30 +100,32 @@ def seconds_to_minutes(value):
 
 def generate_fnirs_stats_table(fnirs_stats: dict) -> pd.DataFrame:
     """fNIRS統計情報をDataFrame化して整形"""
-    df_stats = pd.DataFrame(fnirs_stats).T
+    # lateralityを除外してleft/rightのみをDataFrame化
+    hemisphere_stats = {k: v for k, v in fnirs_stats.items() if k != 'laterality'}
+    df_stats = pd.DataFrame(hemisphere_stats).T
     df_stats = df_stats.rename(
         index={"left": "左半球", "right": "右半球"},
         columns={
             "hbo_mean": "HbO平均",
-            "hbo_std": "HbO標準偏差",
             "hbo_min": "HbO最小",
             "hbo_max": "HbO最大",
             "hbr_mean": "HbR平均",
-            "hbr_std": "HbR標準偏差",
             "hbr_min": "HbR最小",
             "hbr_max": "HbR最大",
+            "hbt_mean": "HbT平均",
+            "hbd_mean": "HbD平均",
         },
     )
     return df_stats[
         [
             "HbO平均",
-            "HbO標準偏差",
             "HbO最小",
             "HbO最大",
             "HbR平均",
-            "HbR標準偏差",
             "HbR最小",
             "HbR最大",
+            "HbT平均",
+            "HbD平均",
         ]
     ]
 
@@ -418,7 +420,10 @@ def generate_markdown_report(data_path, output_dir, results):
             if 'faa_stats' in results:
                 report += results['faa_stats'].to_markdown(index=False, floatfmt='.3f')
                 report += "\n\n"
-                report += "> **解釈**: FAA = ln(右) - ln(左)。正値は左半球優位（接近動機・ポジティブ感情）、負値は右半球優位（回避動機・ネガティブ感情）を示唆します。\n\n"
+                report += "> **解釈**: FAA = 10×log₁₀(右Alpha) - 10×log₁₀(左Alpha) [dB単位]。\n"
+                report += "> Alpha波パワーは脳活動と逆相関（パワー↑=活動↓）するため、\n"
+                report += "> 正値（右Alpha > 左Alpha）は左半球優位（接近動機・ポジティブ感情）、\n"
+                report += "> 負値（左Alpha > 右Alpha）は右半球優位（回避動機・ネガティブ感情）を示唆します。\n\n"
 
         # Spectral Entropy
         if 'spectral_entropy_stats' in results:
@@ -463,6 +468,47 @@ def generate_markdown_report(data_path, output_dir, results):
             report += "### 統計サマリー\n\n"
             report += results["fnirs_stats"].to_markdown(floatfmt=".2f")
             report += "\n\n"
+
+            report += "> **指標の説明**:\n"
+            report += "> - **HbO**: 酸素化ヘモグロビン（脳活動で増加）\n"
+            report += "> - **HbR**: 脱酸素化ヘモグロビン（脳活動で減少）\n"
+            report += "> - **HbT**: 総ヘモグロビン (HbO + HbR)、総血液量の変化を示す\n"
+            report += "> - **HbD**: ヘモグロビン差分 (HbO - HbR)、酸素化の程度を示す\n\n"
+
+        if "fnirs_laterality" in results:
+            lat = results["fnirs_laterality"]
+            report += "### Laterality Index (左右差)\n\n"
+
+            # テーブル作成
+            li_table = []
+
+            # HbOベースのLI
+            if "li_hbo" in lat and pd.notna(lat["li_hbo"]):
+                li_hbo = lat["li_hbo"]
+                if li_hbo > 0.1:
+                    interp_hbo = "右半球優位"
+                elif li_hbo < -0.1:
+                    interp_hbo = "左半球優位"
+                else:
+                    interp_hbo = "均衡"
+                li_table.append({"指標": "LI (HbO)", "値": f"{li_hbo:.3f}", "解釈": interp_hbo})
+
+            # HbDベースのLI
+            if "li_hbd" in lat and pd.notna(lat["li_hbd"]):
+                li_hbd = lat["li_hbd"]
+                if li_hbd > 0.1:
+                    interp_hbd = "右半球優位"
+                elif li_hbd < -0.1:
+                    interp_hbd = "左半球優位"
+                else:
+                    interp_hbd = "均衡"
+                li_table.append({"指標": "LI (HbD)", "値": f"{li_hbd:.3f}", "解釈": interp_hbd})
+
+            if li_table:
+                df_li = pd.DataFrame(li_table)
+                report += df_li.to_markdown(index=False)
+                report += "\n\n"
+                report += "> **LI (Laterality Index)**: LI = (右 - 左) / (右 + 左)。範囲は-1～+1で、正値は右半球優位、負値は左半球優位を示します。\n\n"
 
     # ========================================
     # 動作検出と心拍数
@@ -575,6 +621,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
             print('計算中: fNIRS統計...')
             fnirs_results = analyze_fnirs(optics_data)
             results['fnirs_stats'] = generate_fnirs_stats_table(fnirs_results['stats'])
+            results['fnirs_laterality'] = fnirs_results['stats']['laterality']
 
             print('プロット中: fNIRS時系列...')
             fig_fnirs, _ = plot_fnirs_muse_style(fnirs_results)

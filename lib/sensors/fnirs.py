@@ -175,26 +175,69 @@ def analyze_fnirs(optics_data):
     right_hbo_stats = safe_stats(right_hbo)
     right_hbr_stats = safe_stats(right_hbr)
 
+    # HbT (Total Hemoglobin) と HbD (Hemoglobin Difference) を計算
+    left_hbt = left_hbo + left_hbr
+    left_hbd = left_hbo - left_hbr
+    right_hbt = right_hbo + right_hbr
+    right_hbd = right_hbo - right_hbr
+
+    left_hbt_stats = safe_stats(left_hbt)
+    left_hbd_stats = safe_stats(left_hbd)
+    right_hbt_stats = safe_stats(right_hbt)
+    right_hbd_stats = safe_stats(right_hbd)
+
+    # Laterality Index (LI) を計算
+    # LI = (Right - Left) / (Right + Left)
+    # HbOベースとHbDベースの両方を計算
+    hbo_left_mean = left_hbo_stats['mean']
+    hbo_right_mean = right_hbo_stats['mean']
+    hbd_left_mean = left_hbd_stats['mean']
+    hbd_right_mean = right_hbd_stats['mean']
+
+    # HbOベースのLI
+    if np.isfinite(hbo_left_mean) and np.isfinite(hbo_right_mean):
+        denominator = hbo_left_mean + hbo_right_mean
+        if abs(denominator) > 1e-6:
+            li_hbo = (hbo_right_mean - hbo_left_mean) / denominator
+        else:
+            li_hbo = np.nan
+    else:
+        li_hbo = np.nan
+
+    # HbDベースのLI
+    if np.isfinite(hbd_left_mean) and np.isfinite(hbd_right_mean):
+        denominator = hbd_left_mean + hbd_right_mean
+        if abs(denominator) > 1e-6:
+            li_hbd = (hbd_right_mean - hbd_left_mean) / denominator
+        else:
+            li_hbd = np.nan
+    else:
+        li_hbd = np.nan
+
     stats = {
         'left': {
             'hbo_mean': left_hbo_stats['mean'],
-            'hbo_std': left_hbo_stats['std'],
             'hbo_min': left_hbo_stats['min'],
             'hbo_max': left_hbo_stats['max'],
             'hbr_mean': left_hbr_stats['mean'],
-            'hbr_std': left_hbr_stats['std'],
             'hbr_min': left_hbr_stats['min'],
             'hbr_max': left_hbr_stats['max'],
+            'hbt_mean': left_hbt_stats['mean'],
+            'hbd_mean': left_hbd_stats['mean'],
         },
         'right': {
             'hbo_mean': right_hbo_stats['mean'],
-            'hbo_std': right_hbo_stats['std'],
             'hbo_min': right_hbo_stats['min'],
             'hbo_max': right_hbo_stats['max'],
             'hbr_mean': right_hbr_stats['mean'],
-            'hbr_std': right_hbr_stats['std'],
             'hbr_min': right_hbr_stats['min'],
             'hbr_max': right_hbr_stats['max'],
+            'hbt_mean': right_hbt_stats['mean'],
+            'hbd_mean': right_hbd_stats['mean'],
+        },
+        'laterality': {
+            'li_hbo': li_hbo,
+            'li_hbd': li_hbd,
         }
     }
 
