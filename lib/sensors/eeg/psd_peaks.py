@@ -175,7 +175,8 @@ def _classify_peaks(
     peak_powers: np.ndarray,
     prominences: np.ndarray,
     iaf: Optional[float] = None,
-) -> List[PeakInfo]:
+    fmt_band: Tuple[float, float] = (4.0, 8.0),
+) -> Tuple[List[PeakInfo], Optional[float]]:
     """
     ピークを帯域で分類
 
@@ -189,13 +190,28 @@ def _classify_peaks(
         各ピークの突出度
     iaf : float, optional
         Individual Alpha Frequency
+    fmt_band : tuple, optional
+        Frontal Midline Theta帯域 (Hz)、デフォルトは (4.0, 8.0)
 
     Returns
     -------
     peaks : list of PeakInfo
         分類されたピーク情報
+    fmt_peak_freq : float or None
+        FMTピーク周波数（見つからなければNone）
     """
     peaks = []
+
+    # FMT帯域内のピークを見つけて、最もパワーの高いものをFMTピークとする
+    fmt_candidates = []
+    for freq, power, prom in zip(peak_freqs, peak_powers, prominences):
+        if fmt_band[0] <= freq < fmt_band[1]:
+            fmt_candidates.append((freq, power))
+
+    fmt_peak_freq = None
+    if fmt_candidates:
+        # パワーが最も高いものを選択
+        fmt_peak_freq = max(fmt_candidates, key=lambda x: x[1])[0]
 
     for freq, power, prom in zip(peak_freqs, peak_powers, prominences):
         band_name, band_desc = _classify_frequency_band(freq)
@@ -225,7 +241,7 @@ def _classify_peaks(
     # パワー順にソート
     peaks.sort(key=lambda p: -p.power_db)
 
-    return peaks
+    return peaks, fmt_peak_freq
 
 
 def analyze_psd_peaks(
@@ -234,12 +250,14 @@ def analyze_psd_peaks(
     freq_range: Tuple[float, float] = (1.0, 45.0),
     prominence: float = 0.5,
     max_peaks: int = 15,
+    fmt_band: Tuple[float, float] = (4.0, 8.0),
 ) -> PsdPeaksResult:
     """
     PSDのピーク分析を実行
 
     PSDからピークを検出し、周波数帯域で分類する。
     SMR (12-15Hz) も帯域として識別される。
+    FMT (Frontal Midline Theta) のピーク周波数も識別される。
     4Hzの整数倍はアーチファクトとしてフラグ付けされる。
 
     Parameters
@@ -255,11 +273,13 @@ def analyze_psd_peaks(
         ピーク検出の突出度閾値（dB）
     max_peaks : int
         レポートに含める最大ピーク数
+    fmt_band : tuple, optional
+        Frontal Midline Theta帯域 (Hz)、デフォルトは (4.0, 8.0)
 
     Returns
     -------
     PsdPeaksResult
-        ピーク分析結果
+        ピーク分析結果（metadata['fmt_peak']にFMTピーク周波数が含まれる）
     """
     freqs = psd_dict['freqs']
     psds = psd_dict['psds']
@@ -282,11 +302,11 @@ def analyze_psd_peaks(
             fundamental_candidates=pd.DataFrame(),
             best_fundamental=iaf,
             statistics=pd.DataFrame([{'Metric': 'Peak Count', 'Value': 0}]),
-            metadata={'freq_range': freq_range, 'prominence': prominence, 'iaf': iaf},
+            metadata={'freq_range': freq_range, 'prominence': prominence, 'iaf': iaf, 'fmt_peak': None},
         )
 
-    # ピーク分類（帯域ベース）
-    peaks = _classify_peaks(peak_freqs, peak_powers, prominences, iaf)
+    # ピーク分類（帯域ベース）、FMTピーク周波数も取得
+    peaks, fmt_peak_freq = _classify_peaks(peak_freqs, peak_powers, prominences, iaf, fmt_band)
 
     # ピークテーブル作成
     table_rows = []
@@ -296,6 +316,8 @@ def analyze_psd_peaks(
             note = "IAF"
         elif p.band_name == 'SMR':
             note = "SMR"
+        elif fmt_peak_freq is not None and abs(p.frequency - fmt_peak_freq) < 0.1:
+            note = "FMT"
 
         table_rows.append({
             '周波数 (Hz)': round(p.frequency, 1),
@@ -315,6 +337,12 @@ def analyze_psd_peaks(
     if iaf is not None:
         stats_rows.append({'Metric': 'IAF (Hz)', 'Value': round(iaf, 2)})
 
+    # FMTピークの情報を追加
+    if fmt_peak_freq is not None:
+        fmt_peak_info = [p for p in peaks if abs(p.frequency - fmt_peak_freq) < 0.1][0]
+        stats_rows.append({'Metric': 'FMT Peak (Hz)', 'Value': round(fmt_peak_freq, 1)})
+        stats_rows.append({'Metric': 'FMT Power (dB)', 'Value': round(fmt_peak_info.power_db, 1)})
+
     # SMRピークの情報を追加
     smr_peaks = [p for p in peaks if p.band_name == 'SMR']
     if smr_peaks:
@@ -328,6 +356,8 @@ def analyze_psd_peaks(
         'freq_range': freq_range,
         'prominence': prominence,
         'iaf': iaf,
+        'fmt_peak': fmt_peak_freq,
+        'fmt_band': fmt_band,
         'n_channels': len(psd_dict['channels']),
         'channels': psd_dict['channels'],
     }

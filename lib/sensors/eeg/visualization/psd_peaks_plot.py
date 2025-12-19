@@ -64,7 +64,10 @@ def plot_psd_peaks(
             color = band_colors.get(band_name, 'gray')
             ax.axvspan(low, min(high, freq_max), alpha=0.1, color=color)
 
-    # ピークをマーク（IAFは赤、SMRはシアン、4Hz倍数はグレー、その他は緑）
+    # FMTピーク周波数を取得
+    fmt_peak_freq = result.metadata.get('fmt_peak')
+
+    # ピークをマーク（IAFは赤、FMTはオレンジ、SMRはシアン、4Hz倍数はグレー、その他は緑）
     for peak in result.peaks:
         if peak.frequency <= freq_max:
             # 4Hz倍数アーチファクトはグレーで表示
@@ -75,6 +78,10 @@ def plot_psd_peaks(
             elif peak.peak_type == PeakType.FUNDAMENTAL:
                 color = 'red'
                 marker = 'o'
+                alpha = 1.0
+            elif fmt_peak_freq is not None and abs(peak.frequency - fmt_peak_freq) < 0.1:
+                color = 'darkorange'
+                marker = '^'
                 alpha = 1.0
             elif peak.band_name == 'SMR':
                 color = 'darkcyan'
@@ -93,7 +100,8 @@ def plot_psd_peaks(
 
             # ラベル（主要なピークのみ、4Hz倍数は除外）
             if not peak.is_4hz_harmonic:
-                if peak.prominence > 1.0 or peak.peak_type == PeakType.FUNDAMENTAL or peak.band_name == 'SMR':
+                is_fmt = fmt_peak_freq is not None and abs(peak.frequency - fmt_peak_freq) < 0.1
+                if peak.prominence > 1.0 or peak.peak_type == PeakType.FUNDAMENTAL or peak.band_name == 'SMR' or is_fmt:
                     label = f'{peak.frequency:.1f}Hz\n({peak.band_name})'
                     ax.annotate(
                         label, (peak.frequency, peak.power_db),
@@ -103,6 +111,7 @@ def plot_psd_peaks(
 
     # 凡例用のダミープロット
     ax.scatter([], [], color='red', marker='o', s=80, label='IAF (Fundamental)')
+    ax.scatter([], [], color='darkorange', marker='^', s=80, label='FMT (Frontal Midline Theta)')
     ax.scatter([], [], color='darkcyan', marker='s', s=80, label='SMR')
     ax.scatter([], [], color='green', marker='s', s=80, label='Other Peaks')
     ax.scatter([], [], color='gray', marker='x', s=80, alpha=0.5, label='4Hz Harmonic (Artifact)')

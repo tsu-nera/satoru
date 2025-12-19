@@ -41,9 +41,11 @@ class SegmentAnalysisResult:
     """時間セグメント分析の結果を保持する。"""
 
     segments: pd.DataFrame
-    table: pd.DataFrame
+    table: pd.DataFrame  # 後方互換性のため残す（metrics_tableと同じ内容）
     normalized: pd.DataFrame
     metadata: Dict[str, object]
+    band_power_table: pd.DataFrame  # 新規: バンドパワー詳細テーブル
+    metrics_table: pd.DataFrame  # 新規: 比率と特徴指標テーブル
 
     def to_markdown(self, floatfmt: str = '.3f') -> str:
         """集計表をMarkdown文字列として返す。"""
@@ -171,9 +173,11 @@ def calculate_segment_analysis(
 
         # Statistical DFから直接値を取得（セグメント化済み）
         # バンドパワー（dB）
+        delta_mean = band_powers_df.loc[start, 'Delta'] if start in band_powers_df.index else np.nan
+        theta_mean = band_powers_df.loc[start, 'Theta'] if start in band_powers_df.index else np.nan
         alpha_mean = band_powers_df.loc[start, 'Alpha'] if start in band_powers_df.index else np.nan
         beta_mean = band_powers_df.loc[start, 'Beta'] if start in band_powers_df.index else np.nan
-        theta_mean = band_powers_df.loc[start, 'Theta'] if start in band_powers_df.index else np.nan
+        gamma_mean = band_powers_df.loc[start, 'Gamma'] if start in band_powers_df.index else np.nan
 
         # バンド比率（対数スケール: dB差分）
         theta_alpha_ratio_db = band_ratios_df.loc[start, 'theta_alpha_db'] if start in band_ratios_df.index else np.nan
@@ -234,6 +238,31 @@ def calculate_segment_analysis(
         if hr_df is not None and start in hr_df.index:
             hr_mean = hr_df.loc[start, 'hr_mean']
 
+        # 相対パワー（%）の計算
+        # dB → パワーに変換（10^(dB/10)）
+        delta_power = 10 ** (delta_mean / 10) if pd.notna(delta_mean) else 0.0
+        theta_power = 10 ** (theta_mean / 10) if pd.notna(theta_mean) else 0.0
+        alpha_power = 10 ** (alpha_mean / 10) if pd.notna(alpha_mean) else 0.0
+        beta_power = 10 ** (beta_mean / 10) if pd.notna(beta_mean) else 0.0
+        gamma_power = 10 ** (gamma_mean / 10) if pd.notna(gamma_mean) else 0.0
+
+        # 合計パワー
+        total_power = delta_power + theta_power + alpha_power + beta_power + gamma_power
+
+        # 相対パワー（%）
+        if total_power > 0:
+            delta_relative = (delta_power / total_power) * 100
+            theta_relative = (theta_power / total_power) * 100
+            alpha_relative = (alpha_power / total_power) * 100
+            beta_relative = (beta_power / total_power) * 100
+            gamma_relative = (gamma_power / total_power) * 100
+        else:
+            delta_relative = np.nan
+            theta_relative = np.nan
+            alpha_relative = np.nan
+            beta_relative = np.nan
+            gamma_relative = np.nan
+
         # 総合スコア計算（利用可能な指標のみ）
         segment_score_result = calculate_meditation_score(
             fmtheta=fm_mean,
@@ -254,9 +283,16 @@ def calculate_segment_analysis(
             'smr_mean': smr_mean,
             'spectral_entropy': se_mean,
             'iaf_mean': iaf_mean,
+            'delta_mean': delta_mean,
+            'theta_mean': theta_mean,
             'alpha_mean': alpha_mean,
             'beta_mean': beta_mean,
-            'theta_mean': theta_mean,
+            'gamma_mean': gamma_mean,
+            'delta_relative': delta_relative,
+            'theta_relative': theta_relative,
+            'alpha_relative': alpha_relative,
+            'beta_relative': beta_relative,
+            'gamma_relative': gamma_relative,
             'theta_alpha_ratio': theta_alpha_ratio,
             'theta_alpha_ratio_db': theta_alpha_ratio_db,
             'beta_alpha_ratio': beta_alpha_ratio,
@@ -311,8 +347,10 @@ def calculate_segment_analysis(
         peak_idx = int(scoring_scores.idxmax())
 
     # 表形式（日本語ラベル）
-    # 注: バンド比率はdB形式のみ表示（実数値は不安定で解釈困難なため）
-    display_rows = []
+    # テーブル1: バンドパワー詳細（絶対パワー + 相対パワー）
+    # テーブル2: 比率と特徴指標（Theta/Alpha/Beta dBを除く）
+    band_power_rows = []
+    metrics_rows = []
     first_idx = all_indices[0] if all_indices else None
     last_idx = all_indices[-1] if all_indices else None
 
@@ -328,12 +366,27 @@ def calculate_segment_analysis(
         elif peak_idx is not None and seg_idx == peak_idx:
             note = 'peak'
 
-        display_row = {
+        # テーブル1: バンドパワー詳細（12列）
+        band_power_row = {
             'No.': seg_idx,
             'min': row['elapsed_label'],
-            'Theta (dB)': row['theta_mean'],
-            'Alpha (dB)': row['alpha_mean'],
-            'Beta (dB)': row['beta_mean'],
+            'δ (dB)': row['delta_mean'],
+            'θ (dB)': row['theta_mean'],
+            'α (dB)': row['alpha_mean'],
+            'β (dB)': row['beta_mean'],
+            'γ (dB)': row['gamma_mean'],
+            'δ (%)': row['delta_relative'],
+            'θ (%)': row['theta_relative'],
+            'α (%)': row['alpha_relative'],
+            'β (%)': row['beta_relative'],
+            'γ (%)': row['gamma_relative'],
+        }
+        band_power_rows.append(band_power_row)
+
+        # テーブル2: 比率と特徴指標（13列）
+        metrics_row = {
+            'No.': seg_idx,
+            'min': row['elapsed_label'],
             'θ/α': row['theta_alpha_ratio'],
             'β/α': row['beta_alpha_ratio'],
             'β/θ': row['beta_theta_ratio'],
@@ -346,9 +399,13 @@ def calculate_segment_analysis(
             'HR': row['hr_mean'],
             '備考': note,
         }
-        display_rows.append(display_row)
+        metrics_rows.append(metrics_row)
 
-    table = pd.DataFrame(display_rows)
+    band_power_table = pd.DataFrame(band_power_rows)
+    metrics_table = pd.DataFrame(metrics_rows)
+
+    # 後方互換性のため、tableはmetrics_tableと同じ内容にする
+    table = metrics_table.copy()
 
     metadata = {
         'segment_minutes': segment_minutes,
@@ -373,6 +430,8 @@ def calculate_segment_analysis(
         table=table,
         normalized=normalized,
         metadata=metadata,
+        band_power_table=band_power_table,
+        metrics_table=metrics_table,
     )
 
 

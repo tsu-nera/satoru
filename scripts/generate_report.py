@@ -254,7 +254,7 @@ def generate_markdown_report(data_path, output_dir, results):
         report += "\n"
 
     # ピークパフォーマンス区間
-    segment_keys = {'segment_table', 'segment_plot', 'segment_peak_range'}
+    segment_keys = {'segment_table', 'band_power_table', 'metrics_table', 'segment_plot', 'segment_peak_range'}
     if any(key in results for key in segment_keys):
         peak_range = results.get('segment_peak_range')
         peak_score = results.get('segment_peak_score')
@@ -311,6 +311,7 @@ def generate_markdown_report(data_path, output_dir, results):
 
             report += """> **帯域の説明**:
 > - **IAF**: Individual Alpha Frequency（個人のアルファ波ピーク周波数）
+> - **FMT**: Frontal Midline Theta（前頭部中心線シータ、4-8Hz）、瞑想深度に関連
 > - **SMR**: 感覚運動リズム（12-15Hz）、身体の静止と落ち着きに関連
 >
 > **注意**: 4Hzの整数倍（4, 8, 12, 16, 20, 24, 28, 32 Hz等）はMuse/Mind Monitor由来の
@@ -536,11 +537,19 @@ def generate_markdown_report(data_path, output_dir, results):
             report += "### セグメント別パフォーマンス\n\n"
             report += f"![時間セグメント比較](img/{results['segment_plot']})\n\n"
 
-        if 'segment_table' in results:
-            report += "### 詳細データ\n\n"
-            report += results['segment_table'].to_markdown(index=False, floatfmt='.3f')
+        # テーブル1: バンドパワー詳細
+        if 'band_power_table' in results:
+            report += "### バンドパワー詳細\n\n"
+            report += results['band_power_table'].to_markdown(index=False, floatfmt='.2f')
             report += "\n\n"
-            report += "> **注**: min = 経過時間（3分間隔）\n\n"
+            report += "> **注**: min = 経過時間（分）、dB = 絶対パワー、% = 相対パワー（全バンド合計に対する割合）\n\n"
+
+        # テーブル2: 比率と特徴指標
+        if 'metrics_table' in results:
+            report += "### 比率と特徴指標\n\n"
+            report += results['metrics_table'].to_markdown(index=False, floatfmt='.3f')
+            report += "\n\n"
+            report += "> **注**: min = 経過時間（分）\n\n"
 
     # ファイルに書き込み
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -915,7 +924,9 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
             segment_result,
             img_path=img_dir / segment_plot_name,
         )
-        results['segment_table'] = segment_result.table
+        results['segment_table'] = segment_result.table  # 後方互換性のため残す
+        results['band_power_table'] = segment_result.band_power_table
+        results['metrics_table'] = segment_result.metrics_table
         results['segment_plot'] = segment_plot_name
         results['segment_peak_range'] = segment_result.metadata.get('peak_time_range')
         results['segment_peak_score'] = segment_result.metadata.get('peak_score')
