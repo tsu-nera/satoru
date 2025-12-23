@@ -227,6 +227,14 @@ def create_statistical_dataframe(
     ratios_dict['gamma_theta_db'] = band_powers_df['Gamma'] - band_powers_df['Theta']
     ratios_dict['gamma_theta'] = 10 ** (ratios_dict['gamma_theta_db'] / 10)
 
+    # 低周波数/高周波数比（瞑想深度・睡眠傾向）
+    # 低周波数: δ+θ (1-8Hz) = 深いリラックス・睡眠・深い瞑想
+    # 高周波数: α+β+γ (8-50Hz) = 覚醒・認知活動・注意
+    low_freq_power = 10 ** (band_powers_df['Delta'] / 10) + 10 ** (band_powers_df['Theta'] / 10)
+    high_freq_power = 10 ** (band_powers_df['Alpha'] / 10) + 10 ** (band_powers_df['Beta'] / 10) + 10 ** (band_powers_df['Gamma'] / 10)
+    ratios_dict['low_high'] = low_freq_power / high_freq_power
+    ratios_dict['low_high_db'] = 10 * np.log10(ratios_dict['low_high'])
+
     # DataFrameに変換
     band_ratios_df = pd.DataFrame(ratios_dict, index=timestamps)
 
