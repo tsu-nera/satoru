@@ -123,6 +123,7 @@ def calculate_segment_analysis(
     se_df = statistical_df['spectral_entropy']
     fnirs_df = statistical_df.get('fnirs')
     hr_df = statistical_df.get('hr')
+    posture_df = statistical_df.get('posture')
 
     if 'TimeStamp' not in df_clean.columns:
         raise ValueError('TimeStamp列が存在しません。')
@@ -238,6 +239,11 @@ def calculate_segment_analysis(
         if hr_df is not None and start in hr_df.index:
             hr_mean = hr_df.loc[start, 'hr_mean']
 
+        # Yaw RMS値を取得（オプション）
+        yaw_rms = np.nan
+        if posture_df is not None and start in posture_df.index:
+            yaw_rms = posture_df.loc[start, 'yaw_rms']
+
         # 相対パワー（%）の計算
         # dB → パワーに変換（10^(dB/10)）
         delta_power = 10 ** (delta_mean / 10) if pd.notna(delta_mean) else 0.0
@@ -302,6 +308,7 @@ def calculate_segment_analysis(
             'hbo_mean': hbo_mean,
             'hbr_mean': hbr_mean,
             'hr_mean': hr_mean,
+            'yaw_rms': yaw_rms,
             'meditation_score': meditation_score,
         })
 
@@ -366,9 +373,8 @@ def calculate_segment_analysis(
         elif peak_idx is not None and seg_idx == peak_idx:
             note = 'peak'
 
-        # テーブル1: バンドパワー詳細（12列）
+        # テーブル1: バンドパワー詳細（11列）
         band_power_row = {
-            'No.': seg_idx,
             'min': row['elapsed_label'],
             'δ (dB)': row['delta_mean'],
             'θ (dB)': row['theta_mean'],
@@ -385,7 +391,6 @@ def calculate_segment_analysis(
 
         # テーブル2: 比率と特徴指標（13列）
         metrics_row = {
-            'No.': seg_idx,
             'min': row['elapsed_label'],
             'θ/α': row['theta_alpha_ratio'],
             'β/α': row['beta_alpha_ratio'],
@@ -397,6 +402,7 @@ def calculate_segment_analysis(
             'HbO': row['hbo_mean'],
             'HbR': row['hbr_mean'],
             'HR': row['hr_mean'],
+            'Yaw RMS': row['yaw_rms'],
             '備考': note,
         }
         metrics_rows.append(metrics_row)

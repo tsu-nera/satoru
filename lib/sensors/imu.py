@@ -501,18 +501,13 @@ def compute_posture_statistics(
         gyro_magnitude_corrected = compute_magnitude(gyro_x_dc, gyro_y_dc, gyro_z_dc)
         gyro_rms_corrected = compute_rms(gyro_magnitude_corrected)
 
-        # Pitch角度（前後傾き）
-        ax_mean = np.nanmean(acc_x)
-        ay_mean = np.nanmean(acc_y)
-        az_mean = np.nanmean(acc_z)
-        pitch_rad = np.arctan2(ax_mean, np.sqrt(ay_mean**2 + az_mean**2))
-        pitch_angle = np.degrees(pitch_rad)
+        # Pitch RMS（前後方向の回転）
+        pitch_rms = compute_rms(gyro_y)
 
-        # Roll角度（左右傾き）
-        roll_rad = np.arctan2(ay_mean, az_mean)
-        roll_angle = np.degrees(roll_rad)
+        # Roll RMS（左右方向の回転）
+        roll_rms = compute_rms(gyro_x)
 
-        # Yaw RMS
+        # Yaw RMS（水平方向の回転）
         yaw_rms = compute_rms(gyro_z)
 
         results.append({
@@ -521,12 +516,15 @@ def compute_posture_statistics(
             'motion_index_max': motion_index_max,
             'gyro_rms': gyro_rms_val,
             'gyro_rms_corrected': gyro_rms_corrected,
-            'pitch_angle': pitch_angle,
-            'roll_angle': roll_angle,
+            'pitch_rms': pitch_rms,
+            'roll_rms': roll_rms,
             'yaw_rms': yaw_rms,
         })
 
-    return pd.DataFrame(results)
+    posture_df = pd.DataFrame(results)
+    # timestampをindexに設定（segment_analysis.pyでの検索用）
+    posture_df = posture_df.set_index('timestamp')
+    return posture_df
 
 
 class PostureAnalyzer:
@@ -675,10 +673,12 @@ class PostureAnalyzer:
         -------
         metrics : dict
             {
-                'acc_rms': float (g),
+                'motion_index_mean': float (g),
+                'motion_index_max': float (g),
                 'gyro_rms': float (deg/s),
-                'pitch_angle': float (deg),
-                'roll_angle': float (deg),
+                'gyro_rms_corrected': float (deg/s),
+                'pitch_rms': float (deg/s),
+                'roll_rms': float (deg/s),
                 'yaw_rms': float (deg/s)
             }
         """
@@ -696,8 +696,8 @@ class PostureAnalyzer:
             'motion_index_max': motion_max,
             'gyro_rms': compute_rms(gyro_magnitude),
             'gyro_rms_corrected': gyro_rms_corrected,
-            'pitch_angle': self.compute_pitch_angle(acc_x, acc_y, acc_z),
-            'roll_angle': self.compute_roll_angle(acc_y, acc_z),
+            'pitch_rms': compute_rms(gyro_y),
+            'roll_rms': compute_rms(gyro_x),
             'yaw_rms': compute_rms(gyro_z),
         }
 
@@ -798,7 +798,7 @@ class PostureAnalyzer:
 
         # 列順を整理
         cols = ['interval', 'motion_index_mean', 'motion_index_max',
-                'gyro_rms', 'gyro_rms_corrected', 'pitch_angle', 'roll_angle', 'yaw_rms']
+                'gyro_rms', 'gyro_rms_corrected', 'pitch_rms', 'roll_rms', 'yaw_rms']
         if level == 'standard':
             cols.extend(['acc_std', 'gyro_mean', 'pitch_variance', 'roll_variance'])
 
@@ -841,7 +841,7 @@ class PostureAnalyzer:
 
         summary = {}
         for key in ['motion_index_mean', 'motion_index_max',
-                    'gyro_rms', 'gyro_rms_corrected', 'pitch_angle', 'roll_angle', 'yaw_rms']:
+                    'gyro_rms', 'gyro_rms_corrected', 'pitch_rms', 'roll_rms', 'yaw_rms']:
             summary[key] = {
                 'mean': interval_df[key].mean(),
                 'min': interval_df[key].min(),

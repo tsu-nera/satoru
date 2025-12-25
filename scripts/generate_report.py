@@ -76,7 +76,7 @@ from lib.visualization import (
     plot_motion_heart_rate,
     create_motion_stats_table,
 )
-from lib.sensors.posture import PostureAnalyzer
+from lib.sensors.imu import PostureAnalyzer
 from lib.statistical_dataframe import create_statistical_dataframe
 
 
@@ -546,9 +546,9 @@ def generate_markdown_report(data_path, output_dir, results):
                     'motion_index_mean': ('平均モーション指数', 'g'),
                     'motion_index_max': ('最大モーション指数', 'g'),
                     'gyro_rms': ('ジャイロRMS', 'deg/s'),
-                    'pitch_angle': ('Pitch角度', 'deg'),
-                    'roll_angle': ('Roll角度', 'deg'),
-                    'yaw_rms': ('Yaw角速度', 'deg/s'),
+                    'pitch_rms': ('Pitch RMS', 'deg/s'),
+                    'roll_rms': ('Roll RMS', 'deg/s'),
+                    'yaw_rms': ('Yaw RMS', 'deg/s'),
                 }
                 if metric in metric_names:
                     name, unit = metric_names[metric]
@@ -565,22 +565,23 @@ def generate_markdown_report(data_path, output_dir, results):
             report += "\n\n"
             report += "> **指標の説明**:\n"
             report += "> - **平均/最大モーション指数**: 重力成分除去後の純粋な動き（論文ベース、小さいほど静止）\n"
-            report += "> - **ジャイロRMS**: 頭部回転の総合指標（脳波との相関r=0.60、小さいほど安定）\n"
-            report += "> - **Pitch角度**: 前後の傾斜角度。正=前傾、負=後傾\n"
-            report += "> - **Roll角度**: 左右の傾斜角度。正=右傾き、負=左傾き\n"
-            report += "> - **Yaw角速度**: 左右への首振り回転（水平面での回転）\n\n"
+            report += "> - **ジャイロRMS**: 頭部回転の総合指標（3軸合成、小さいほど安定）\n"
+            report += "> - **Pitch RMS**: 前後方向の回転運動（小さいほど安定）\n"
+            report += "> - **Roll RMS**: 左右方向の回転運動（小さいほど安定）\n"
+            report += "> - **Yaw RMS**: 水平方向の回転運動（脳波との相関実証済、小さいほど安定）\n\n"
 
         if "posture_df" in results:
             report += "### 時系列詳細（3分ごと）\n\n"
 
             # 経過時間を追加
             posture_df = results["posture_df"].copy()
-            start_time = posture_df['timestamp'].iloc[0]
-            posture_df['min'] = ((posture_df['timestamp'] - start_time).dt.total_seconds() / 60.0).round(0).astype(int)
+            # timestampはindexになっている
+            start_time = posture_df.index[0]
+            posture_df['min'] = ((posture_df.index - start_time).total_seconds() / 60.0).round(0).astype(int)
 
             # テーブル用のカラムを選択
             table_cols = ['min', 'motion_index_mean', 'motion_index_max',
-                         'gyro_rms', 'pitch_angle', 'roll_angle', 'yaw_rms']
+                         'gyro_rms', 'pitch_rms', 'roll_rms', 'yaw_rms']
 
             # 心拍数データがあれば追加
             if "motion_stats" in results:
@@ -601,8 +602,8 @@ def generate_markdown_report(data_path, output_dir, results):
             display_df['motion_mean'] = display_df['motion_mean'].apply(lambda x: f"{float(x):.4f}")
             display_df['motion_max'] = display_df['motion_max'].apply(lambda x: f"{float(x):.4f}")
             display_df['gyro_rms'] = display_df['gyro_rms'].apply(lambda x: f"{float(x):.2f}")
-            display_df['pitch'] = display_df['pitch'].apply(lambda x: f"{float(x):.1f}")
-            display_df['roll'] = display_df['roll'].apply(lambda x: f"{float(x):.1f}")
+            display_df['pitch'] = display_df['pitch'].apply(lambda x: f"{float(x):.2f}")
+            display_df['roll'] = display_df['roll'].apply(lambda x: f"{float(x):.2f}")
             display_df['yaw'] = display_df['yaw'].apply(lambda x: f"{float(x):.2f}")
 
             report += display_df.to_markdown(index=False)
@@ -621,14 +622,22 @@ def generate_markdown_report(data_path, output_dir, results):
         # テーブル1: バンドパワー詳細
         if 'band_power_table' in results:
             report += "### バンドパワー詳細\n\n"
-            report += results['band_power_table'].to_markdown(index=False, floatfmt='.2f')
+            # minカラムのみ整数表示にするため、コピーして型変換
+            band_power_display = results['band_power_table'].copy()
+            if 'min' in band_power_display.columns:
+                band_power_display['min'] = band_power_display['min'].astype(int)
+            report += band_power_display.to_markdown(index=False, floatfmt='.2f')
             report += "\n\n"
             report += "> **注**: min = 経過時間（分）、dB = 絶対パワー、% = 相対パワー（全バンド合計に対する割合）\n\n"
 
         # テーブル2: 比率と特徴指標
         if 'metrics_table' in results:
             report += "### 比率と特徴指標\n\n"
-            report += results['metrics_table'].to_markdown(index=False, floatfmt='.3f')
+            # minカラムのみ整数表示にするため、コピーして型変換
+            metrics_display = results['metrics_table'].copy()
+            if 'min' in metrics_display.columns:
+                metrics_display['min'] = metrics_display['min'].astype(int)
+            report += metrics_display.to_markdown(index=False, floatfmt='.3f')
             report += "\n\n"
             report += "> **注**: min = 経過時間（分）\n\n"
 

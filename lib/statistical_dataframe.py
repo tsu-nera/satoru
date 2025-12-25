@@ -565,8 +565,8 @@ def create_statistical_dataframe(
                 'motion_index_max': ('Posture', 'モーション指数(max)', 'g'),
                 'gyro_rms': ('Posture', 'ジャイロRMS', 'deg/s'),
                 'gyro_rms_corrected': ('Posture', 'ジャイロRMS(補正)', 'deg/s'),
-                'pitch_angle': ('Posture', 'Pitch角度', 'deg'),
-                'roll_angle': ('Posture', 'Roll角度', 'deg'),
+                'pitch_rms': ('Posture', 'Pitch RMS', 'deg/s'),
+                'roll_rms': ('Posture', 'Roll RMS', 'deg/s'),
                 'yaw_rms': ('Posture', 'Yaw RMS', 'deg/s'),
             }
 
