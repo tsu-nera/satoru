@@ -35,6 +35,7 @@ def create_statistical_dataframe(
     fnirs_results: Optional[Dict] = None,
     hr_data: Optional[Dict] = None,
     df_timestamps: Optional[pd.Series] = None,
+    df: Optional[pd.DataFrame] = None,
 ) -> Dict[str, pd.DataFrame]:
     """
     統一的なStatistical DataFrameを生成する。
@@ -59,6 +60,8 @@ def create_statistical_dataframe(
         get_heart_rate_data()の戻り値（心拍データ）
     df_timestamps : pd.Series, optional
         元データのTimeStamp列（fNIRS/HR計算に必要）
+    df : pd.DataFrame, optional
+        Mind Monitor形式の元データ（Posture統計量計算に必要）
 
     Returns
     -------
@@ -70,6 +73,7 @@ def create_statistical_dataframe(
             'iaf': Series,                 # Individual Alpha Frequency時系列（Hz）
             'fnirs': DataFrame,            # セグメント別fNIRS時系列（HbO/HbR平均）
             'hr': DataFrame,               # セグメント別心拍数時系列
+            'posture': DataFrame,          # セグメント別Posture統計量時系列
             'statistics': DataFrame        # 統計サマリー（縦長形式）
         }
 
@@ -548,6 +552,55 @@ def create_statistical_dataframe(
                 },
             ])
 
+    # Posture統計量計算（オプション）
+    posture_df = pd.DataFrame()  # デフォルトは空のDataFrame
+    if df is not None:
+        try:
+            from .sensors.posture import compute_posture_statistics
+            posture_df = compute_posture_statistics(df, timestamps, segment_minutes)
+
+            # Posture統計量をstatistics_rowsに追加
+            posture_metrics = {
+                'motion_index_mean': ('Posture', 'モーション指数(mean)', 'g'),
+                'motion_index_max': ('Posture', 'モーション指数(max)', 'g'),
+                'gyro_rms': ('Posture', 'ジャイロRMS', 'deg/s'),
+                'gyro_rms_corrected': ('Posture', 'ジャイロRMS(補正)', 'deg/s'),
+                'pitch_angle': ('Posture', 'Pitch角度', 'deg'),
+                'roll_angle': ('Posture', 'Roll角度', 'deg'),
+                'yaw_rms': ('Posture', 'Yaw RMS', 'deg/s'),
+            }
+
+            for col, (category, display_name, unit) in posture_metrics.items():
+                if col in posture_df.columns:
+                    values = posture_df[col].dropna()
+                    if len(values) > 0:
+                        # Z-score外れ値除去
+                        if len(values) > 3:
+                            z_scores = np.abs(stats.zscore(values))
+                            filtered_values = values[z_scores < 3.0]
+                            if len(filtered_values) > 0:
+                                values = filtered_values
+
+                        statistics_rows.extend([
+                            {
+                                'Category': category,
+                                'Metric': f'{col}_Mean',
+                                'Value': values.mean(),
+                                'Unit': unit,
+                                'DisplayName': f'{display_name}平均 ({unit})',
+                            },
+                            {
+                                'Category': category,
+                                'Metric': f'{col}_Std',
+                                'Value': values.std(),
+                                'Unit': unit,
+                                'DisplayName': f'{display_name}標準偏差 ({unit})',
+                            },
+                        ])
+        except Exception as e:
+            # エラー時は空のDataFrameのまま継続
+            print(f'警告: Posture統計量の計算に失敗しました ({e})')
+
     statistics_df = pd.DataFrame(statistics_rows)
 
     return {
@@ -557,6 +610,7 @@ def create_statistical_dataframe(
         'iaf': iaf_series,
         'fnirs': fnirs_df,
         'hr': hr_df,
+        'posture': posture_df,
         'statistics': statistics_df,
     }
 

@@ -7,6 +7,9 @@
 import numpy as np
 import pandas as pd
 
+# 共通ユーティリティをインポート
+from .movement import compute_magnitude, compute_rms
+
 
 # センサー定数
 DEFAULT_SAMPLING_RATE = 52.0  # Hz (Muse S)
@@ -22,22 +25,7 @@ MOTION_THRESHOLDS = {
 ACC_COLUMNS = ['Accelerometer_X', 'Accelerometer_Y', 'Accelerometer_Z']
 GYRO_COLUMNS = ['Gyro_X', 'Gyro_Y', 'Gyro_Z']
 
-
-def compute_magnitude(x, y, z):
-    """
-    3軸データからマグニチュード（大きさ）を計算
-
-    Parameters
-    ----------
-    x, y, z : np.ndarray
-        各軸のデータ
-
-    Returns
-    -------
-    magnitude : np.ndarray
-        ベクトルの大きさ sqrt(x^2 + y^2 + z^2)
-    """
-    return np.sqrt(x**2 + y**2 + z**2)
+# compute_magnitude は movement.py から import されています（後方互換性のため再エクスポート）
 
 
 def get_motion_data(df):

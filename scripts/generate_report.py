@@ -76,6 +76,7 @@ from lib.visualization import (
     plot_motion_heart_rate,
     create_motion_stats_table,
 )
+from lib.sensors.posture import PostureAnalyzer
 from lib.statistical_dataframe import create_statistical_dataframe
 
 
@@ -528,6 +529,86 @@ def generate_markdown_report(data_path, output_dir, results):
             report += f"![動作検出・心拍数時系列](img/{results['motion_img']})\n\n"
 
     # ========================================
+    # 坐相・動作・心拍
+    # ========================================
+    if "posture_summary" in results or "posture_img" in results:
+        report += "## 🧘 坐相・動作・心拍\n\n"
+
+        if "posture_summary" in results:
+            report += "### 統計サマリー\n\n"
+
+            # サマリーテーブルを作成
+            posture_summary = results["posture_summary"]
+            summary_data = []
+            for metric, stats in posture_summary.items():
+                # メトリック名と単位のマッピング
+                metric_names = {
+                    'motion_index_mean': ('平均モーション指数', 'g'),
+                    'motion_index_max': ('最大モーション指数', 'g'),
+                    'gyro_rms': ('ジャイロRMS', 'deg/s'),
+                    'pitch_angle': ('Pitch角度', 'deg'),
+                    'roll_angle': ('Roll角度', 'deg'),
+                    'yaw_rms': ('Yaw角速度', 'deg/s'),
+                }
+                if metric in metric_names:
+                    name, unit = metric_names[metric]
+                    summary_data.append({
+                        '指標': name,
+                        '平均': f"{float(stats['mean']):.4f}",
+                        '最小': f"{float(stats['min']):.4f}",
+                        '最大': f"{float(stats['max']):.4f}",
+                        '単位': unit
+                    })
+
+            summary_df = pd.DataFrame(summary_data)
+            report += summary_df.to_markdown(index=False)
+            report += "\n\n"
+            report += "> **指標の説明**:\n"
+            report += "> - **平均/最大モーション指数**: 重力成分除去後の純粋な動き（論文ベース、小さいほど静止）\n"
+            report += "> - **ジャイロRMS**: 頭部回転の総合指標（脳波との相関r=0.60、小さいほど安定）\n"
+            report += "> - **Pitch角度**: 前後の傾斜角度。正=前傾、負=後傾\n"
+            report += "> - **Roll角度**: 左右の傾斜角度。正=右傾き、負=左傾き\n"
+            report += "> - **Yaw角速度**: 左右への首振り回転（水平面での回転）\n\n"
+
+        if "posture_df" in results:
+            report += "### 時系列詳細（3分ごと）\n\n"
+
+            # 経過時間を追加
+            posture_df = results["posture_df"].copy()
+            start_time = posture_df['timestamp'].iloc[0]
+            posture_df['min'] = ((posture_df['timestamp'] - start_time).dt.total_seconds() / 60.0).round(0).astype(int)
+
+            # テーブル用のカラムを選択
+            table_cols = ['min', 'motion_index_mean', 'motion_index_max',
+                         'gyro_rms', 'pitch_angle', 'roll_angle', 'yaw_rms']
+
+            # 心拍数データがあれば追加
+            if "motion_stats" in results:
+                motion_stats = results["motion_stats"]
+                if "心拍数（平均）" in motion_stats.columns:
+                    # 3分間隔に合わせて心拍数を追加（簡易版：最初の値を使用）
+                    hr_value = float(motion_stats["心拍数（平均）"].iloc[0].replace(" BPM", ""))
+                    posture_df['HR'] = hr_value  # 簡易版
+                    table_cols.append('HR')
+
+            # カラム名を設定
+            display_df = posture_df[table_cols].copy()
+            display_df.columns = ['min', 'motion_mean', 'motion_max',
+                                 'gyro_rms', 'pitch', 'roll', 'yaw'] + \
+                                (['HR'] if 'HR' in table_cols else [])
+
+            # 数値を丸める
+            display_df['motion_mean'] = display_df['motion_mean'].apply(lambda x: f"{float(x):.4f}")
+            display_df['motion_max'] = display_df['motion_max'].apply(lambda x: f"{float(x):.4f}")
+            display_df['gyro_rms'] = display_df['gyro_rms'].apply(lambda x: f"{float(x):.2f}")
+            display_df['pitch'] = display_df['pitch'].apply(lambda x: f"{float(x):.1f}")
+            display_df['roll'] = display_df['roll'].apply(lambda x: f"{float(x):.1f}")
+            display_df['yaw'] = display_df['yaw'].apply(lambda x: f"{float(x):.2f}")
+
+            report += display_df.to_markdown(index=False)
+            report += "\n\n"
+
+    # ========================================
     # 時間経過分析
     # ========================================
     if any(key in results for key in segment_keys):
@@ -892,10 +973,27 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
                 fnirs_results=fnirs_results,
                 hr_data=hr_data,
                 df_timestamps=df['TimeStamp'],
+                df=df,  # Posture統計量計算用
             )
             results['statistical_df'] = statistical_df
             print(f'  バンドパワー: {len(statistical_df["band_powers"])} セグメント')
             print(f'  バンド比率: {len(statistical_df["band_ratios"])} セグメント')
+
+            # 坐相統計量の取得（Statistical DataFrame から）
+            if 'posture' in statistical_df and not statistical_df['posture'].empty:
+                print(f'  Posture統計量: {len(statistical_df["posture"])} セグメント')
+                posture_df = statistical_df['posture']
+
+                # 後方互換性のため、PostureAnalyzer でもサマリーを計算
+                posture_analyzer = PostureAnalyzer()
+                posture_summary = posture_analyzer.compute_summary(df)
+
+                # 結果を保存
+                results['posture_df'] = posture_df
+                results['posture_summary'] = posture_summary
+            else:
+                print('  警告: Statistical DataFrame に posture が含まれていません')
+
         except Exception as exc:
             print(f'警告: Statistical DataFrame生成に失敗しました ({exc})')
 
