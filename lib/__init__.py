@@ -22,7 +22,7 @@ from .sensors.ppg import (
     analyze_respiratory
 )
 
-from .sensors.motion import (
+from .sensors.imu import (
     analyze_motion,
     MOTION_THRESHOLDS,
 )

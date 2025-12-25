@@ -5,7 +5,7 @@
 - PPG: 心拍・呼吸数推定
 - fNIRS: 脳血流計測
 - EEG: 脳波解析
-- Motion: 加速度・ジャイロによる動作検出
+- IMU: 加速度・ジャイロによる動作検出と姿勢評価
 """
 
 # PPGセンサー（心拍・呼吸）
@@ -35,16 +35,23 @@ from .eeg import (
     get_psd_peak_frequencies
 )
 
-# モーションセンサー（加速度・ジャイロ）
-from .motion import (
+# IMUセンサー（加速度・ジャイロ）
+from .imu import (
+    # Motion detection (artifact removal)
     MOTION_THRESHOLDS,
-    get_motion_data,
     compute_magnitude,
     detect_motion,
     compute_motion_score,
     analyze_motion_intervals,
     get_motion_epochs,
-    analyze_motion
+    analyze_motion,
+    # Posture analysis
+    compute_posture_statistics,
+    PostureAnalyzer,
+    # Common utilities
+    remove_dc_offset,
+    compute_rms,
+    extract_sensor_data,
 )
 
 __all__ = [
@@ -66,13 +73,19 @@ __all__ = [
     'calculate_spectrogram',
     'calculate_paf',
     'get_psd_peak_frequencies',
-    # Motion
+    # IMU - Motion detection
     'MOTION_THRESHOLDS',
-    'get_motion_data',
     'compute_magnitude',
     'detect_motion',
     'compute_motion_score',
     'analyze_motion_intervals',
     'get_motion_epochs',
     'analyze_motion',
+    # IMU - Posture analysis
+    'compute_posture_statistics',
+    'PostureAnalyzer',
+    # IMU - Common utilities
+    'remove_dc_offset',
+    'compute_rms',
+    'extract_sensor_data',
 ]

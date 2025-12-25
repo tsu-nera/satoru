@@ -556,7 +556,7 @@ def create_statistical_dataframe(
     posture_df = pd.DataFrame()  # デフォルトは空のDataFrame
     if df is not None:
         try:
-            from .sensors.posture import compute_posture_statistics
+            from .sensors.imu import compute_posture_statistics
             posture_df = compute_posture_statistics(df, timestamps, segment_minutes)
 
             # Posture統計量をstatistics_rowsに追加
