@@ -244,6 +244,14 @@ def calculate_segment_analysis(
         if posture_df is not None and start in posture_df.index:
             yaw_rms = posture_df.loc[start, 'yaw_rms']
 
+        # FMT/α比率の計算
+        # FMT (dB) / Alpha (dB) → 線形比率
+        fmt_alpha_ratio = np.nan
+        fmt_alpha_ratio_db = np.nan
+        if pd.notna(fm_mean) and pd.notna(alpha_mean):
+            fmt_alpha_ratio_db = fm_mean - alpha_mean
+            fmt_alpha_ratio = 10 ** (fmt_alpha_ratio_db / 10)
+
         # 相対パワー（%）の計算
         # dB → パワーに変換（10^(dB/10)）
         delta_power = 10 ** (delta_mean / 10) if pd.notna(delta_mean) else 0.0
@@ -305,6 +313,8 @@ def calculate_segment_analysis(
             'beta_alpha_ratio_db': beta_alpha_ratio_db,
             'beta_theta_ratio': beta_theta_ratio,
             'beta_theta_ratio_db': beta_theta_ratio_db,
+            'fmt_alpha_ratio': fmt_alpha_ratio,
+            'fmt_alpha_ratio_db': fmt_alpha_ratio_db,
             'hbo_mean': hbo_mean,
             'hbr_mean': hbr_mean,
             'hr_mean': hr_mean,
@@ -389,13 +399,14 @@ def calculate_segment_analysis(
         }
         band_power_rows.append(band_power_row)
 
-        # テーブル2: 比率と特徴指標（13列）
+        # テーブル2: 比率と特徴指標（14列）
         metrics_row = {
             'min': row['elapsed_label'],
             'θ/α': row['theta_alpha_ratio'],
             'β/α': row['beta_alpha_ratio'],
             'β/θ': row['beta_theta_ratio'],
             'Fmθ (dB)': row['fmtheta_mean'],
+            'FMT/α': row['fmt_alpha_ratio'],
             'SMR (dB)': row['smr_mean'],
             'SE': row['spectral_entropy'],
             'IAF (Hz)': row['iaf_mean'],
