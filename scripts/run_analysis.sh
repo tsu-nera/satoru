@@ -39,11 +39,11 @@ source "$PROJECT_ROOT/venv/bin/activate"
 
 # CSVファイルパスの取得
 if [ $# -eq 0 ]; then
-    # 引数なしの場合、dataディレクトリから最新のCSVを使用
-    CSV_FILE=$(find "$PROJECT_ROOT/data" -name "*.csv" -type f -printf "%T@ %p\n" | sort -rn | head -1 | cut -d' ' -f2-)
+    # 引数なしの場合、data/museディレクトリから最新のCSVを使用
+    CSV_FILE=$(find "$PROJECT_ROOT/data/muse" -name "*.csv" -type f -printf "%T@ %p\n" | sort -rn | head -1 | cut -d' ' -f2-)
 
     if [ -z "$CSV_FILE" ]; then
-        echo "エラー: data/ ディレクトリにCSVファイルが見つかりません"
+        echo "エラー: data/muse/ ディレクトリにCSVファイルが見つかりません"
         echo ""
         echo "Usage: $0 [CSV_FILE_PATH] [OUTPUT_DIR] [SAVE_TO]"
         echo ""
@@ -51,8 +51,8 @@ if [ $# -eq 0 ]; then
         echo "  $0                                                              # 最新CSVをtmp/に出力（セッションログ保存なし）"
         echo "  SAVE_TO=csv $0                                                  # 最新CSVをtmp/に出力＆ローカルCSVに保存"
         echo "  SAVE_TO=sheets $0                                               # 最新CSVをtmp/に出力＆Google Sheetsに保存"
-        echo "  $0 data/mindMonitor_2025-11-04--16-59-52.csv                   # 指定CSVをtmp/に出力"
-        echo "  $0 data/mindMonitor_2025-11-04--16-59-52.csv tmp sheets        # Google Sheetsに保存（本番用）"
+        echo "  $0 data/muse/mindMonitor_2025-11-04--16-59-52.csv                   # 指定CSVをtmp/に出力"
+        echo "  $0 data/muse/mindMonitor_2025-11-04--16-59-52.csv tmp sheets        # Google Sheetsに保存（本番用）"
         exit 1
     fi
 

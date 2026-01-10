@@ -14,13 +14,13 @@ Usage:
 
     # 直接指定モード
     python validate_alpha_power_params.py \
-        --data data/file1.csv --score 54 \
-        --data data/file2.csv --score 62
+        --data data/muse/file1.csv --score 54 \
+        --data data/muse/file2.csv --score 62
 
 sessions.csv の形式:
     path,muse_score
-    data/mindMonitor_2025-11-22.csv,54
-    data/mindMonitor_2025-11-24.csv,62
+    data/muse/mindMonitor_2025-11-22.csv,54
+    data/muse/mindMonitor_2025-11-24.csv,62
 """
 
 import sys
