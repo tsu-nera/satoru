@@ -352,3 +352,45 @@ def get_hrv_data(df: pd.DataFrame,
         'session_start': df.attrs.get('session_start'),
         'sampling_rate': 1000  # R-R間隔はms単位なので1000Hz相当
     }
+
+
+def get_heart_rate_data_from_selfloops(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Selfloopsデータから心拍数データを抽出（Muse形式互換）
+
+    lib/loaders/mind_monitor.py:get_heart_rate_data()と同じ形式で返す。
+    これによりgenerate_report.pyのStatistical DataFrame生成ロジックで
+    そのまま使用できる。
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        load_selfloops_csv()の戻り値（TimeStamp列を含む）
+
+    Returns
+    -------
+    hr_dict : dict
+        {
+            'heart_rate': np.ndarray,   # 心拍数（bpm）
+            'time': np.ndarray,         # 相対時間（秒）
+            'timestamps': np.ndarray    # 絶対時刻（pandas Timestamp）
+        }
+
+    Examples
+    --------
+    >>> sl_df = load_selfloops_csv('data/selfloops/file.csv')
+    >>> hr_data = get_heart_rate_data_from_selfloops(sl_df)
+    >>> print(hr_data['heart_rate'].mean())
+    75.5
+    """
+    if 'HR (bpm)' not in df.columns:
+        raise ValueError("'HR (bpm)' column not found in Selfloops data")
+
+    # 心拍数が0より大きいデータのみ抽出（Mind Monitorと同じパターン）
+    df_hr = df[df['HR (bpm)'] > 0].copy()
+
+    return {
+        'heart_rate': df_hr['HR (bpm)'].values,
+        'time': df_hr['Time_sec'].values,
+        'timestamps': df_hr['TimeStamp'].values
+    }

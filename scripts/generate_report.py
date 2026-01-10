@@ -518,6 +518,10 @@ def generate_markdown_report(data_path, output_dir, results):
     if "motion_stats" in results or "motion_img" in results:
         report += "## 🏃 動作検出と心拍数\n\n"
 
+        # データソース情報を表示
+        if 'hr_data_source' in results:
+            report += f"**心拍数データソース**: {results['hr_data_source']}\n\n"
+
         if "motion_stats" in results:
             report += "### 統計サマリー\n\n"
             report += results["motion_stats"].to_markdown(index=False)
@@ -648,7 +652,7 @@ def generate_markdown_report(data_path, output_dir, results):
     print(f'✓ レポート生成完了: {report_path}')
 
 
-def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0):
+def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0, selfloops_data=None):
     """
     完全な分析を実行
 
@@ -665,6 +669,8 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
         - 'sheets': Google Sheetsに保存（本番用）
     warmup_minutes : float, default=1.0
         ウォームアップ除外時間（分）。短い記録の場合は0を指定。
+    selfloops_data : Path, default=None
+        Selfloops HRVデータファイルパス（オプション）
     """
     print('='*60)
     print('Muse脳波データ基本分析')
@@ -733,10 +739,23 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
 
     # 動作検出（加速度・ジャイロ）と心拍数
     hr_data = None
+    hr_data_source = None
     motion_result = None
     try:
-        # 心拍数データ取得
-        hr_data = get_heart_rate_data(df)
+        # 心拍数データ取得（Selfloops優先、なければMuse）
+        if selfloops_data and selfloops_data.exists():
+            # Selfloopsデータから心拍数を取得
+            print(f'Loading Selfloops HR data: {selfloops_data}')
+            from lib.loaders.selfloops import load_selfloops_csv, get_heart_rate_data_from_selfloops
+            sl_df = load_selfloops_csv(str(selfloops_data), warmup_seconds=0.0)
+            hr_data = get_heart_rate_data_from_selfloops(sl_df)
+            hr_data_source = 'Selfloops'
+        else:
+            # Museデータから心拍数を取得
+            hr_data = get_heart_rate_data(df)
+            hr_data_source = 'Muse'
+
+        results['hr_data_source'] = hr_data_source  # レポート表示用
 
         # 動作検出（10秒間隔）
         print('計算中: 動作検出（加速度・ジャイロ）...')
@@ -755,7 +774,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
         results['motion_ratio'] = motion_result['motion_ratio']
 
     except Exception as exc:
-        print(f'警告: 動作検出を処理できませんでした ({exc})')
+        print(f'警告: 心拍数データまたは動作検出を処理できませんでした ({exc})')
 
     # バンドパワー時系列（Museアプリ風）
     print('プロット中: バンドパワー時系列...')
@@ -1264,6 +1283,12 @@ def main():
         default=1.0,
         help='ウォームアップ除外時間（分）。短い記録の場合は0を指定（デフォルト: 1.0）'
     )
+    parser.add_argument(
+        '--selfloops-data',
+        type=Path,
+        default=None,
+        help='Selfloops HRVデータファイルパス（オプション）。指定された場合、Muse心拍数の代わりに使用'
+    )
 
     args = parser.parse_args()
 
@@ -1275,7 +1300,13 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
 
     # 分析実行
-    run_full_analysis(args.data, args.output, save_to=args.save_to, warmup_minutes=args.warmup)
+    run_full_analysis(
+        args.data,
+        args.output,
+        save_to=args.save_to,
+        warmup_minutes=args.warmup,
+        selfloops_data=args.selfloops_data
+    )
 
     return 0
 
