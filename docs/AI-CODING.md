@@ -85,6 +85,8 @@ Mind Monitor (Muse Headband用アプリ) のCSVデータを扱う場合は、以
 ```
 satoru/
 ├── data/              # データファイル
+│   ├── muse/          # Muse HeadbandのCSVデータ
+│   ├── selfloops/     # HRVデータ
 │   └── samples/       # サンプルCSVデータ
 ├── docs/              # ドキュメント
 ├── notebooks/         # Jupyter notebooks

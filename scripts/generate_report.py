@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-Muse脳波データ基本分析スクリプト
+瞑想分析レポート生成スクリプト
 
-lib/eeg.py の関数を使用してマークダウンレポートを生成します。
+Muse各種センサーデータ（EEG、fNIRS、ECG、IMU）を統合的に分析し、
+マークダウンレポートを生成します。
 
 Usage:
     python generate_report.py --data <CSV_PATH> [--output <REPORT_PATH>]
@@ -155,7 +156,7 @@ def generate_markdown_report(data_path, output_dir, results):
     duration_min = seconds_to_minutes(info.get('duration_sec'))
     duration_str = f"{duration_min:.1f} 分" if duration_min is not None else "N/A"
 
-    report = f"""# Muse脳波データ分析レポート
+    report = f"""# 瞑想分析レポート
 
 - **生成日時**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
 - **データファイル**: `{data_path.name}`
@@ -513,26 +514,64 @@ def generate_markdown_report(data_path, output_dir, results):
                 report += "> **LI (Laterality Index)**: LI = (右 - 左) / (右 + 左)。範囲は-1～+1で、正値は右半球優位、負値は左半球優位を示します。\n\n"
 
     # ========================================
-    # 動作検出と心拍数
+    # 自律神経系分析(ECG)
     # ========================================
-    if "motion_stats" in results or "motion_img" in results:
-        report += "## 🏃 動作検出と心拍数\n\n"
+    if "hrv_stats" in results or "hrv_img" in results:
+        report += "## 🫀 自律神経系分析(ECG)\n\n"
 
-        if "motion_stats" in results:
-            report += "### 統計サマリー\n\n"
-            report += results["motion_stats"].to_markdown(index=False)
-            report += "\n\n"
+        if "hrv_img" in results:
+            report += "### HRV時系列\n\n"
+            report += f"![HRV時系列](img/{results['hrv_img']})\n\n"
+            report += "> **時系列の見方**:\n"
+            report += "> - **RMSSD**: 副交感神経活動の指標。高いほどリラックス状態。\n"
+            report += "> - **LF/HF Ratio**: 自律神経バランス。1.0未満は副交感神経優位（リラックス）、1.0以上は交感神経優位（緊張）。\n\n"
+
+        if "hrv_stats" in results:
+            report += "### HRV統計指標\n\n"
+
+            stats_df = results["hrv_stats"]
+            for domain in ['Time Domain', 'Frequency Domain', 'Nonlinear']:
+                domain_stats = stats_df[stats_df['Domain'] == domain]
+                if not domain_stats.empty:
+                    report += f"#### {domain}\n\n"
+                    display_df = domain_stats[['Metric', 'Value', 'Unit', 'Interpretation']].copy()
+
+                    # 周波数領域は値が非常に小さい場合があるため、適切にフォーマット
+                    if domain == 'Frequency Domain':
+                        # 値を適切にフォーマット（小さい値は科学的記数法、大きい値は通常表記）
+                        def format_freq_value(val):
+                            if pd.isna(val):
+                                return 'N/A'
+                            if abs(val) < 0.01:
+                                return f'{val:.2e}'
+                            elif abs(val) < 1:
+                                return f'{val:.4f}'
+                            else:
+                                return f'{val:.2f}'
+
+                        display_df['Value'] = display_df['Value'].apply(format_freq_value)
+                        report += display_df.to_markdown(index=False)
+                    else:
+                        report += display_df.to_markdown(index=False, floatfmt=".2f")
+                    report += "\n\n"
+
+            report += "> **指標の説明**:\n"
+            report += "> - **時間領域（Time Domain）**: R-R間隔の変動を時間で評価。SDNN/RMSSDが高いほど心拍変動が大きく、リラックス状態。\n"
+            report += "> - **周波数領域（Frequency Domain）**: 心拍変動を周波数解析。HFは副交感神経、LFは交感神経＋副交感神経の混合。\n"
+            report += "> - **非線形（Nonlinear）**: Poincaréプロットによる複雑性評価。SD1は短期変動、SD2は長期変動。\n"
+            report += "> - **LF/HF Ratio**: 1.0未満で副交感神経優位（リラックス）、1.0以上で交感神経優位（ストレス・緊張）が示唆されます。\n\n"
+
+    # ========================================
+    # 坐相分析(IMU)
+    # ========================================
+    if "posture_summary" in results or "posture_img" in results or "motion_only_img" in results:
+        report += "## 🧘 坐相分析(IMU)\n\n"
+
+        # 動作検出グラフ
+        if "motion_only_img" in results:
+            report += "### 動作検出の時系列\n\n"
+            report += f"![動作検出時系列](img/{results['motion_only_img']})\n\n"
             report += "> **注**: 加速度センサー（直線移動）とジャイロスコープ（頭部回転）で動作を検出。動作検出された区間はEEGアーティファクトの可能性があります。\n\n"
-
-        if "motion_img" in results:
-            report += "### 動作検出 & 心拍数の時系列\n\n"
-            report += f"![動作検出・心拍数時系列](img/{results['motion_img']})\n\n"
-
-    # ========================================
-    # 坐相・動作・心拍
-    # ========================================
-    if "posture_summary" in results or "posture_img" in results:
-        report += "## 🧘 坐相・動作・心拍\n\n"
 
         if "posture_summary" in results:
             report += "### 統計サマリー\n\n"
@@ -648,7 +687,7 @@ def generate_markdown_report(data_path, output_dir, results):
     print(f'✓ レポート生成完了: {report_path}')
 
 
-def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0):
+def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0, selfloops_data=None):
     """
     完全な分析を実行
 
@@ -665,9 +704,11 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
         - 'sheets': Google Sheetsに保存（本番用）
     warmup_minutes : float, default=1.0
         ウォームアップ除外時間（分）。短い記録の場合は0を指定。
+    selfloops_data : Path, default=None
+        Selfloops HRVデータファイルパス（オプション）
     """
     print('='*60)
-    print('Muse脳波データ基本分析')
+    print('瞑想分析レポート生成')
     print('='*60)
     print()
 
@@ -733,29 +774,78 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
 
     # 動作検出（加速度・ジャイロ）と心拍数
     hr_data = None
+    hr_data_source = None
     motion_result = None
     try:
-        # 心拍数データ取得
-        hr_data = get_heart_rate_data(df)
+        # 心拍数データ取得（Selfloops優先、なければMuse）
+        if selfloops_data and selfloops_data.exists():
+            # Selfloopsデータから心拍数を取得
+            print(f'Loading Selfloops HR data: {selfloops_data}')
+            from lib.loaders.selfloops import load_selfloops_csv, get_heart_rate_data_from_selfloops
+            sl_df = load_selfloops_csv(str(selfloops_data), warmup_seconds=0.0)
+            hr_data = get_heart_rate_data_from_selfloops(sl_df)
+            hr_data_source = 'Selfloops'
+        else:
+            # Museデータから心拍数を取得
+            hr_data = get_heart_rate_data(df)
+            hr_data_source = 'Muse'
+
+        results['hr_data_source'] = hr_data_source  # レポート表示用
 
         # 動作検出（10秒間隔）
         print('計算中: 動作検出（加速度・ジャイロ）...')
         motion_result = analyze_motion(df, interval='10s')
 
-        # 統計情報をDataFrame化
+        # 統計情報をDataFrame化（心拍数情報を含む）
         results['motion_stats'] = create_motion_stats_table(motion_result, hr_data=hr_data)
 
-        # 時系列プロット（動作検出 + 心拍数）
-        print('プロット中: 動作検出 & 心拍数時系列...')
-        motion_img_name = 'motion_heart_rate.png'
-        fig_motion, _ = plot_motion_heart_rate(motion_result, hr_data=hr_data, df=df)
+        # 時系列プロット（動作検出のみ、心拍数は含まない）
+        print('プロット中: 動作検出時系列...')
+        motion_img_name = 'motion_only.png'
+        fig_motion, _ = plot_motion_heart_rate(motion_result, hr_data=None, df=df)
         fig_motion.savefig(img_dir / motion_img_name, dpi=150, bbox_inches='tight')
         plt.close(fig_motion)
-        results['motion_img'] = motion_img_name
+        results['motion_only_img'] = motion_img_name
         results['motion_ratio'] = motion_result['motion_ratio']
 
     except Exception as exc:
-        print(f'警告: 動作検出を処理できませんでした ({exc})')
+        print(f'警告: 心拍数データまたは動作検出を処理できませんでした ({exc})')
+
+    # 自律神経系分析（HRV）
+    hrv_result = None
+    try:
+        if selfloops_data and selfloops_data.exists():
+            print('計算中: HRV解析（自律神経系）...')
+            from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
+            from lib.sensors.ecg.hrv import calculate_hrv_standard_set
+
+            sl_df = load_selfloops_csv(str(selfloops_data), warmup_seconds=60.0)
+            hrv_data = get_hrv_data(sl_df, clean_artifacts=True)
+
+            # セッション時間チェック
+            total_duration = hrv_data['time'][-1] - hrv_data['time'][0]
+            if total_duration < 180:
+                print(f'⚠️  HRV解析スキップ: 記録時間が短すぎます（{total_duration:.0f}秒 < 180秒）')
+            else:
+                hrv_result = calculate_hrv_standard_set(hrv_data)
+                results['hrv_stats'] = hrv_result.statistics
+
+                print('プロット中: HRV時系列...')
+                from lib.sensors.ecg.visualization.hrv_plot import plot_hrv_time_series
+
+                hrv_img_name = 'hrv_time_series.png'
+                plot_hrv_time_series(
+                    hrv_result,
+                    img_path=str(img_dir / hrv_img_name),
+                    title='HRV Time Series Analysis',
+                    hr_data=hr_data
+                )
+                results['hrv_img'] = hrv_img_name
+
+    except Exception as e:
+        print(f'⚠️  HRV解析エラー: {e}')
+        import traceback
+        traceback.print_exc()
 
     # バンドパワー時系列（Museアプリ風）
     print('プロット中: バンドパワー時系列...')
@@ -1237,7 +1327,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0)
 def main():
     """メイン処理"""
     parser = argparse.ArgumentParser(
-        description='Muse脳波データの基本分析とレポート生成（リファクタリング版）'
+        description='Muse各種センサーデータ（EEG、fNIRS、ECG、IMU）の統合的な瞑想分析とレポート生成'
     )
     parser.add_argument(
         '--data',
@@ -1264,6 +1354,12 @@ def main():
         default=1.0,
         help='ウォームアップ除外時間（分）。短い記録の場合は0を指定（デフォルト: 1.0）'
     )
+    parser.add_argument(
+        '--selfloops-data',
+        type=Path,
+        default=None,
+        help='Selfloops HRVデータファイルパス（オプション）。指定された場合、Muse心拍数の代わりに使用'
+    )
 
     args = parser.parse_args()
 
@@ -1275,7 +1371,13 @@ def main():
     args.output.mkdir(parents=True, exist_ok=True)
 
     # 分析実行
-    run_full_analysis(args.data, args.output, save_to=args.save_to, warmup_minutes=args.warmup)
+    run_full_analysis(
+        args.data,
+        args.output,
+        save_to=args.save_to,
+        warmup_minutes=args.warmup,
+        selfloops_data=args.selfloops_data
+    )
 
     return 0
 

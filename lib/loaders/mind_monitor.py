@@ -12,6 +12,9 @@ from pathlib import Path
 # EEG定数のインポート（get_eeg_data用）
 from ..sensors.eeg.constants import DEFAULT_SFREQ
 
+# 共通ローダーユーティリティ
+from .base import apply_warmup
+
 
 def load_mind_monitor_csv(csv_path, filter_headband=True, warmup_seconds=60.0):
     """
@@ -53,10 +56,8 @@ def load_mind_monitor_csv(csv_path, filter_headband=True, warmup_seconds=60.0):
         df = df[df['HeadBandOn'] == 1].copy()
 
     # ウォームアップ期間の除外（全センサー共通）
-    if warmup_seconds and warmup_seconds > 0:
-        start_time = df['TimeStamp'].min()
-        warmup_cutoff = start_time + pd.Timedelta(seconds=warmup_seconds)
-        df = df[df['TimeStamp'] >= warmup_cutoff].copy()
+    # Mind Monitorはreset_time=False（元のTime_secを保持）
+    df = apply_warmup(df, warmup_seconds, timestamp_column='TimeStamp', reset_time=False)
 
     return df
 

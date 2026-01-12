@@ -15,6 +15,9 @@ scipy>=1.11
 # EEG Signal Processing
 mne>=1.10
 
+# HRV & Neurophysiological Signal Processing
+neurokit2>=0.2.12
+
 # Jupyter
 jupyterlab>=4.0
 

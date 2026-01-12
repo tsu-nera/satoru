@@ -27,6 +27,10 @@ from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
+# プロジェクトルートをパスに追加
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.loaders.selfloops import rename_selfloops_file
+
 
 # APIスコープ（読み取り専用）
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
@@ -86,9 +90,11 @@ def list_csv_files(service: any, folder_id: str) -> List[Dict]:
     print(f"\nフォルダID: {folder_id} からファイルを検索中...")
 
     # クエリ: CSVまたはZIPファイル、削除されていないもの
+    # text/plain も含める（拡張子なしのCSVファイル対応）
     query = (
         f"'{folder_id}' in parents "
         "and (mimeType='text/csv' or mimeType='application/zip' "
+        "or mimeType='text/plain' "
         "or name contains '.csv' or name contains '.zip') "
         "and trashed=false"
     )
@@ -154,6 +160,10 @@ def download_file(service: any, file_id: str, file_name: str, output_dir: str) -
     Returns:
         ダウンロードしたファイルのパス
     """
+    # 拡張子がない場合は .csv を追加（CSV形式のファイル対応）
+    if not Path(file_name).suffix and not file_name.endswith('.zip'):
+        file_name = f"{file_name}.csv"
+
     output_path = Path(output_dir) / file_name
 
     # 出力ディレクトリ作成
@@ -348,6 +358,10 @@ def main():
                     # Path(downloaded_path).unlink()
                 else:
                     print("⚠️  ZIPファイルの解凍に失敗しましたが、ZIPファイルは保存されています")
+
+            # Selfloopsファイルの場合はタイムスタンプからリネーム
+            if final_path.endswith('.csv'):
+                final_path = rename_selfloops_file(final_path)
 
             print(f"\n✅ すべての処理が完了しました")
             print(f"ファイルパス: {final_path}")

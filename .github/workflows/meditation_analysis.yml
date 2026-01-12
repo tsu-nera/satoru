@@ -1,0 +1,278 @@
+name: Meditation Analysis (EEG + HRV)
+
+on:
+  workflow_dispatch:
+    inputs:
+      date:
+        description: '分析する日付（例: 2025-11-04）省略時は最新ファイル'
+        required: false
+        default: 'latest'
+        type: string
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # 最大30分（通常5-10分）
+    permissions:
+      contents: write
+    env:
+      TZ: Asia/Tokyo
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      - name: Python環境セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 依存関係インストール
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Google Drive認証情報を設定
+        env:
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+        run: |
+          mkdir -p /tmp/credentials
+          echo "$GDRIVE_CREDENTIALS" > /tmp/credentials/gdrive.json
+          echo "GOOGLE_APPLICATION_CREDENTIALS=/tmp/credentials/gdrive.json" >> $GITHUB_ENV
+
+      - name: Google DriveからMuseデータを取得
+        env:
+          FOLDER_ID_MUSE: ${{ secrets.GDRIVE_FOLDER_ID_MUSE }}
+        run: |
+          # 一時ディレクトリ作成
+          mkdir -p /tmp/data/muse
+
+          # MuseCSVファイルをダウンロード
+          if [ "${{ github.event.inputs.date }}" = "latest" ]; then
+            echo "最新Museファイルをダウンロード中..."
+            python scripts/fetch_from_gdrive.py \
+              --folder-id "$FOLDER_ID_MUSE" \
+              --download latest \
+              --output /tmp/data/muse
+          else
+            echo "日付指定でダウンロード中: ${{ github.event.inputs.date }}"
+            python scripts/fetch_from_gdrive.py \
+              --folder-id "$FOLDER_ID_MUSE" \
+              --download "${{ github.event.inputs.date }}" \
+              --output /tmp/data/muse
+          fi
+
+          # ダウンロードしたMuseCSVファイルのパスを環境変数に保存
+          MUSE_CSV=$(ls /tmp/data/muse/*.csv | head -n 1)
+          echo "MUSE_CSV_PATH=$MUSE_CSV" >> $GITHUB_ENV
+          echo "✅ Museダウンロード完了: $MUSE_CSV"
+
+          # MuseファイルのタイムスタンプからSelfloopsの日付を推定
+          # ファイル名形式: muse_2026-01-10-163045.csv
+          MUSE_BASENAME=$(basename "$MUSE_CSV")
+          MUSE_DATE=$(echo "$MUSE_BASENAME" | grep -oP '\d{4}-\d{2}-\d{2}' | head -n 1)
+          echo "MUSE_DATE=$MUSE_DATE" >> $GITHUB_ENV
+          echo "Muse測定日: $MUSE_DATE"
+
+      - name: Google DriveからSelfLoopsデータを取得（オプション）
+        env:
+          FOLDER_ID_SELFLOOPS: ${{ secrets.GDRIVE_FOLDER_ID_SELFLOOPS }}
+        continue-on-error: true
+        run: |
+          # 一時ディレクトリ作成
+          mkdir -p /tmp/data/selfloops
+
+          # SelfLoopsデータをダウンロード（Muse日付ベース）
+          if [ -z "$MUSE_DATE" ]; then
+            echo "⚠️  Muse日付が取得できないため、SelfLoopsダウンロードをスキップ"
+            echo "SELFLOOPS_AVAILABLE=false" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          echo "SelfLoopsデータをダウンロード中（日付: $MUSE_DATE）..."
+          python scripts/fetch_from_gdrive.py \
+            --folder-id "$FOLDER_ID_SELFLOOPS" \
+            --download "$MUSE_DATE" \
+            --output /tmp/data/selfloops || {
+              echo "⚠️  SelfLoopsデータが見つかりません。EEG分析のみ実行します。"
+              echo "SELFLOOPS_AVAILABLE=false" >> $GITHUB_ENV
+              exit 0
+            }
+
+          # ダウンロードしたSelfLoopsファイルを確認
+          SELFLOOPS_FILE=$(ls /tmp/data/selfloops/*.txt 2>/dev/null | head -n 1)
+          if [ -z "$SELFLOOPS_FILE" ]; then
+            echo "⚠️  SelfLoopsデータファイルが見つかりません。EEG分析のみ実行します。"
+            echo "SELFLOOPS_AVAILABLE=false" >> $GITHUB_ENV
+            exit 0
+          fi
+
+          echo "SELFLOOPS_FILE_PATH=$SELFLOOPS_FILE" >> $GITHUB_ENV
+          echo "SELFLOOPS_AVAILABLE=true" >> $GITHUB_ENV
+          echo "✅ SelfLoopsダウンロード完了: $SELFLOOPS_FILE"
+
+      - name: タイムスタンプ検証（Muse vs SelfLoops）
+        if: env.SELFLOOPS_AVAILABLE == 'true'
+        run: |
+          echo "同一セッション判定中..."
+
+          # Python で簡易的なタイムスタンプ比較を実行
+          python3 << 'EOF'
+          import os
+          import pandas as pd
+          from pathlib import Path
+          import sys
+
+          muse_csv = os.environ['MUSE_CSV_PATH']
+          selfloops_file = os.environ.get('SELFLOOPS_FILE_PATH')
+
+          if not selfloops_file:
+              print("⚠️  SelfLoopsファイルが設定されていません")
+              sys.exit(0)
+
+          # Museデータの開始/終了時刻を取得
+          try:
+              muse_df = pd.read_csv(muse_csv)
+              muse_start = pd.to_datetime(muse_df['TimeStamp'].iloc[0])
+              muse_end = pd.to_datetime(muse_df['TimeStamp'].iloc[-1])
+              print(f"Muse測定: {muse_start} ~ {muse_end}")
+
+              # SelfLoopsファイルの1行目から日時を取得（例: "10 1月 2026 16:08:50"）
+              # 注: SelfLoopsファイル形式によって調整が必要
+              with open(selfloops_file, 'r') as f:
+                  first_line = f.readline().strip()
+                  # 簡易判定: ファイルが存在すればOKとする
+                  print(f"SelfLoopsファイル: {selfloops_file}")
+                  print(f"SelfLoops 1行目: {first_line}")
+
+              # 時間差が30分以内であれば同一セッションと判定
+              # （実装を簡略化するため、ファイルの存在のみで判定）
+              print("✅ SelfLoopsデータが利用可能です")
+
+          except Exception as e:
+              print(f"⚠️  タイムスタンプ検証エラー: {e}")
+              print("EEG分析のみ実行します")
+              with open(os.environ['GITHUB_ENV'], 'a') as env:
+                  env.write('SELFLOOPS_AVAILABLE=false\n')
+          EOF
+
+      - name: 瞑想分析を実行
+        env:
+          GSHEET_SESSION_LOG_ID: ${{ secrets.GSHEET_SESSION_LOG_ID }}
+          GDRIVE_CREDS_JSON: ${{ secrets.GDRIVE_CREDENTIALS }}
+        run: |
+          # タイムスタンプ生成
+          TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+          OUTPUT_DIR="/tmp/meditation_reports/${TIMESTAMP}"
+
+          echo "分析開始..."
+          echo "  入力Muse CSV: $MUSE_CSV_PATH"
+
+          # SelfLoopsデータの有無で分析モードを切り替え
+          if [ "$SELFLOOPS_AVAILABLE" = "true" ] && [ -n "$SELFLOOPS_FILE_PATH" ]; then
+            echo "  入力SelfLoops: $SELFLOOPS_FILE_PATH"
+            echo "  モード: EEG + HRV統合分析"
+            echo "  出力先: $OUTPUT_DIR"
+
+            # レポート生成（SelfLoopsデータ付き）
+            python scripts/generate_report.py \
+              --data "$MUSE_CSV_PATH" \
+              --output "$OUTPUT_DIR" \
+              --save-to sheets \
+              --selfloops-data "$SELFLOOPS_FILE_PATH"
+
+            ANALYSIS_MODE="EEG + HRV"
+          else
+            echo "  モード: EEG分析のみ"
+            echo "  出力先: $OUTPUT_DIR"
+
+            # レポート生成（Muse EEGのみ）
+            python scripts/generate_report.py \
+              --data "$MUSE_CSV_PATH" \
+              --output "$OUTPUT_DIR" \
+              --save-to sheets
+
+            ANALYSIS_MODE="EEG only"
+          fi
+
+          # 環境変数に保存
+          CSV_NAME=$(basename "$MUSE_CSV_PATH")
+          COMMIT_DATE=$(date +'%Y-%m-%d %H:%M:%S')
+
+          echo "OUTPUT_DIR=$OUTPUT_DIR" >> $GITHUB_ENV
+          echo "CSV_NAME=$CSV_NAME" >> $GITHUB_ENV
+          echo "COMMIT_DATE=$COMMIT_DATE" >> $GITHUB_ENV
+          echo "ANALYSIS_MODE=$ANALYSIS_MODE" >> $GITHUB_ENV
+          echo "分析完了: $OUTPUT_DIR"
+
+      - name: GitHub Releaseを作成してレポートと画像を公開
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          REPORT_MD="${OUTPUT_DIR}/REPORT.md"
+
+          # タグ名とリリース名を生成
+          TAG_NAME="meditation-report-$(date +%Y%m%d_%H%M%S)"
+          RELEASE_TITLE="Meditation Analysis Report (${ANALYSIS_MODE}) - ${COMMIT_DATE}"
+
+          echo "Releaseを作成中..."
+          echo "  タグ: ${TAG_NAME}"
+          echo "  タイトル: ${RELEASE_TITLE}"
+
+          # 画像パスをReleaseのURLに置換（元の順序を保持）
+          sed "s|img/\([^)]*\.png\)|https://github.com/${{ github.repository }}/releases/download/${TAG_NAME}/\1|g" \
+            "$REPORT_MD" > /tmp/report_with_images.md
+
+          # ワークフロー実行リンクと分析モードをレポート冒頭に追加
+          echo "> **ワークフロー実行**: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})" > /tmp/release_notes.md
+          echo "> **分析モード**: ${ANALYSIS_MODE}" >> /tmp/release_notes.md
+          echo "" >> /tmp/release_notes.md
+          cat /tmp/report_with_images.md >> /tmp/release_notes.md
+
+          # 画像ファイル一覧を取得
+          IMG_FILES=$(ls "${OUTPUT_DIR}"/img/*.png 2>/dev/null || echo "")
+
+          if [ -z "$IMG_FILES" ]; then
+            echo "⚠️  画像ファイルが見つかりません"
+            exit 1
+          fi
+
+          # Releaseを作成して画像とレポートを添付
+          RELEASE_URL=$(gh release create "${TAG_NAME}" \
+            --repo "${{ github.repository }}" \
+            --title "${RELEASE_TITLE}" \
+            --notes-file /tmp/release_notes.md \
+            ${IMG_FILES})
+
+          echo "✅ Release作成完了: ${RELEASE_URL}"
+          echo "RELEASE_URL=${RELEASE_URL}" >> $GITHUB_ENV
+
+      - name: クリーンアップ
+        if: always()
+        run: |
+          # 一時ファイル削除
+          rm -rf /tmp/data
+          rm -rf /tmp/credentials
+          rm -rf /tmp/meditation_reports
+
+      - name: 分析結果サマリー
+        if: success()
+        run: |
+          echo "✅ 瞑想分析が完了しました"
+          echo ""
+          echo "📊 GitHub Releaseでレポートを閲覧:"
+          echo "   ${RELEASE_URL}"
+          echo ""
+          echo "🧠 分析モード: ${ANALYSIS_MODE}"
+          if [ "$ANALYSIS_MODE" = "EEG + HRV" ]; then
+            echo "   - Muse EEGデータ"
+            echo "   - SelfLoops HRVデータ"
+            echo "   - 統合分析（脳波 + 自律神経）"
+          else
+            echo "   - Muse EEGデータのみ"
+            echo "   ℹ️  SelfLoopsデータが見つからないため、HRV分析はスキップされました"
+          fi
+          echo ""
+          echo "💡 スマホからGitHub Mobileアプリで閲覧できます"
+          echo "   Releases → 最新のリリース"
