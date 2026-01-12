@@ -34,10 +34,11 @@ from lib import (
 )
 
 # HRV分析関数をインポート
-from analyze_hrv import (
-    load_selfloops_data,
-    calculate_time_domain_hrv,
-    calculate_frequency_domain_hrv,
+from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
+from lib.sensors.ecg.analysis import (
+    analyze_hrv,
+    analyze_hrv_time_domain,
+    analyze_hrv_frequency_domain,
 )
 
 
@@ -507,7 +508,7 @@ def main():
 
     # 2. HRVデータ読み込み
     print(f'Loading HRV: {args.hrv.name}')
-    hrv_df = load_selfloops_data(args.hrv)
+    hrv_df = load_selfloops_csv(str(args.hrv))
     print(f'HRVデータ形状: {hrv_df.shape[0]} 行 × {hrv_df.shape[1]} 列')
     print()
 
@@ -565,12 +566,25 @@ def main():
 
     # 4. HRV分析
     print('分析中: HRV指標...')
-    hrv_time_domain = calculate_time_domain_hrv(hrv_df['R-R (ms)'].values)
+    hrv_data = get_hrv_data(hrv_df)
+    hrv_time_domain_df = analyze_hrv_time_domain(hrv_data, show=False)
+    hrv_freq_domain_df = analyze_hrv_frequency_domain(hrv_data, show=False)
+
+    # DataFrameから値を取得して辞書形式に変換
+    hrv_time_domain = {
+        'sdnn': hrv_time_domain_df['HRV_SDNN'].values[0],
+        'rmssd': hrv_time_domain_df['HRV_RMSSD'].values[0],
+        'pnn50': hrv_time_domain_df['HRV_pNN50'].values[0],
+    }
+    hrv_freq_domain = {
+        'lf_hf_ratio': hrv_freq_domain_df['HRV_LFHF'].values[0],
+        'lf_power': hrv_freq_domain_df['HRV_LF'].values[0],
+        'hf_power': hrv_freq_domain_df['HRV_HF'].values[0],
+    }
+
     print(f'  SDNN: {hrv_time_domain["sdnn"]:.2f} ms')
     print(f'  RMSSD: {hrv_time_domain["rmssd"]:.2f} ms')
     print(f'  pNN50: {hrv_time_domain["pnn50"]:.2f} %')
-
-    hrv_freq_domain = calculate_frequency_domain_hrv(hrv_df['R-R (ms)'].values)
     print(f'  LF/HF Ratio: {hrv_freq_domain["lf_hf_ratio"]:.2f}')
     print()
 
