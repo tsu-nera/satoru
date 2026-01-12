@@ -23,7 +23,7 @@ def _get_column_headers() -> List[str]:
     Returns
     -------
     list of str
-        12個のカラム名のリスト
+        14個のカラム名のリスト
     """
     return [
         'timestamp',
@@ -38,6 +38,8 @@ def _get_column_headers() -> List[str]:
         'beta_best',
         'theta_alpha_mean',
         'theta_alpha_best',
+        'hrv_mean',
+        'hrv_best',
     ]
 
 
@@ -93,6 +95,8 @@ def _extract_session_data(results: Dict) -> Dict:
         'beta_best': best_metrics.get('beta_best', np.nan),
         'theta_alpha_mean': mean_metrics.get('theta_alpha_mean', np.nan),
         'theta_alpha_best': best_metrics.get('theta_alpha_best', np.nan),
+        'hrv_mean': mean_metrics.get('hrv_mean', np.nan),
+        'hrv_best': best_metrics.get('hrv_best', np.nan),
     }
 
 
@@ -121,7 +125,7 @@ def write_to_csv(
 
     Notes
     -----
-    CSVスキーマ（12カラム）:
+    CSVスキーマ（14カラム）:
     - timestamp: セッション開始時刻 (YYYY-MM-DD HH:MM:SS)
     - duration_min: 計測時間（分）
     - fm_theta_mean: Fmθ平均 (dB)
@@ -134,6 +138,8 @@ def write_to_csv(
     - beta_best: Beta最小値 (dB)
     - theta_alpha_mean: θ/α比平均 (ratio)
     - theta_alpha_best: θ/α比最良値 (ratio)
+    - hrv_mean: HRV (RMSSD) 平均 (ms)
+    - hrv_best: HRV (RMSSD) 最良値 (ms)
     """
     # デフォルトのCSVパス
     if csv_path is None:
@@ -240,7 +246,7 @@ def write_to_google_sheets(
     try:
         result = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range=f'{sheet_name}!A:L',
+            range=f'{sheet_name}!A:N',
         ).execute()
         values = result.get('values', [])
     except Exception as e:
@@ -253,7 +259,7 @@ def write_to_google_sheets(
         header_body = {'values': [_get_column_headers()]}
         service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
-            range=f'{sheet_name}!A1:L1',
+            range=f'{sheet_name}!A1:N1',
             valueInputOption='USER_ENTERED',
             body=header_body,
         ).execute()
@@ -261,7 +267,7 @@ def write_to_google_sheets(
 
     # 新しい行を追加
     next_row = len(values) + 1
-    range_name = f'{sheet_name}!A{next_row}:L{next_row}'
+    range_name = f'{sheet_name}!A{next_row}:N{next_row}'
 
     # データを書き込み
     body = {'values': [new_row]}

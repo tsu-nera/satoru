@@ -15,13 +15,6 @@ from .sensors.fnirs import (
     analyze_fnirs
 )
 
-from .sensors.ppg import (
-    estimate_rr_intervals,
-    estimate_respiratory_rate_welch,
-    estimate_respiratory_rate_fft,
-    analyze_respiratory
-)
-
 from .sensors.imu import (
     analyze_motion,
     MOTION_THRESHOLDS,
@@ -86,11 +79,6 @@ __all__ = [
     # fnirs
     'calculate_hbo_hbr',
     'analyze_fnirs',
-    # respiratory
-    'estimate_rr_intervals',
-    'estimate_respiratory_rate_welch',
-    'estimate_respiratory_rate_fft',
-    'analyze_respiratory',
     # motion
     'analyze_motion',
     'MOTION_THRESHOLDS',

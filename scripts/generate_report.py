@@ -242,6 +242,7 @@ def generate_markdown_report(data_path, output_dir, results):
             ('Alpha', 'alpha_mean', 'alpha_best', 'dB'),
             ('Beta', 'beta_mean', 'beta_best', 'dB'),
             ('θ/α', 'theta_alpha_mean', 'theta_alpha_best', 'ratio'),
+            ('HRV', 'hrv_mean', 'hrv_best', 'ms'),
         ]
 
         for label, mean_key, best_key, unit in metrics_config:
@@ -561,6 +562,71 @@ def generate_markdown_report(data_path, output_dir, results):
             report += "> - **非線形（Nonlinear）**: Poincaréプロットによる複雑性評価。SD1は短期変動、SD2は長期変動。\n"
             report += "> - **LF/HF Ratio**: 1.0未満で副交感神経優位（リラックス）、1.0以上で交感神経優位（ストレス・緊張）が示唆されます。\n\n"
 
+        # 呼吸指標（ECG-Derived Respiration）
+        if "respiration_result" in results:
+            report += "### 呼吸指標\n\n"
+
+            respiration_result = results["respiration_result"]
+
+            # 基本指標テーブル
+            br_data = [
+                {"指標": "平均呼吸数", "値": f"{respiration_result.breathing_rate:.1f}", "単位": "bpm"},
+                {"指標": "呼吸数（標準偏差）", "値": f"{respiration_result.breathing_rate_std:.1f}", "単位": "bpm"},
+            ]
+
+            # 時系列データから最小BRを計算
+            br_series = respiration_result.time_series['BR (bpm)'].dropna()
+            if len(br_series) > 0:
+                min_br = br_series.min()
+                br_data.append({"指標": "最小呼吸数", "値": f"{min_br:.1f}", "単位": "bpm"})
+
+            if not pd.isna(respiration_result.spectral_breathing_rate):
+                br_data.append({
+                    "指標": "呼吸数（スペクトル法）",
+                    "値": f"{respiration_result.spectral_breathing_rate:.1f}",
+                    "単位": "bpm"
+                })
+
+            br_df = pd.DataFrame(br_data)
+            report += br_df.to_markdown(index=False)
+            report += "\n\n"
+
+            # 共鳴呼吸回数（Resonance Breathing Pace）
+            if "rbp_result" in results:
+                rbp_result = results["rbp_result"]
+                report += "#### 共鳴呼吸回数（Resonance Breathing Pace）\n\n"
+
+                rbp_data = []
+
+                # RMSSD基準の最適範囲
+                rbp_data.append({
+                    "基準": "RMSSD",
+                    "最適範囲": rbp_result.optimal_rmssd['range'],
+                    "中心値": f"{rbp_result.optimal_rmssd['center']:.1f}",
+                    "RMSSD平均": f"{rbp_result.optimal_rmssd['value']:.1f}",
+                })
+
+                # LF Power基準の最適範囲
+                rbp_data.append({
+                    "基準": "LF Power",
+                    "最適範囲": rbp_result.optimal_lf['range'],
+                    "中心値": f"{rbp_result.optimal_lf['center']:.1f}",
+                    "LF Power平均": f"{rbp_result.optimal_lf['value']:.1f}",
+                })
+
+                rbp_df = pd.DataFrame(rbp_data)
+                report += rbp_df.to_markdown(index=False)
+                report += "\n\n"
+
+                report += "> **共鳴呼吸回数（RBP）**: HRV振幅が最大化される呼吸数。副交感神経活動を最適化する呼吸ペースの目安となります。\n"
+                report += "> - **RMSSD基準**: 副交感神経活動（RMSSD）が最大となる呼吸数範囲\n"
+                report += "> - **LF Power基準**: LFパワーが最大となる呼吸数範囲（圧受容体反射に関連）\n\n"
+
+            report += "> **呼吸指標の説明**:\n"
+            report += "> - **平均呼吸数**: セッション全体の平均呼吸数（ECG-Derived Respiration法で推定）\n"
+            report += "> - **最小呼吸数**: セッション中の最も遅い呼吸数（深い瞑想状態の指標）\n"
+            report += "> - **スペクトル法**: 周波数解析によって推定された呼吸数\n\n"
+
     # ========================================
     # 坐相分析(IMU)
     # ========================================
@@ -676,9 +742,85 @@ def generate_markdown_report(data_path, output_dir, results):
             metrics_display = results['metrics_table'].copy()
             if 'min' in metrics_display.columns:
                 metrics_display['min'] = metrics_display['min'].astype(int)
-            report += metrics_display.to_markdown(index=False, floatfmt='.3f')
+
+            # HRVデータがある場合、RMSSDをセグメントごとに追加
+            if 'hrv_result' in results:
+                try:
+                    hrv_result = results['hrv_result']
+                    if hasattr(hrv_result, 'time_series') and 'rmssd' in hrv_result.time_series:
+                        rmssd_series = hrv_result.time_series['rmssd']
+
+                        # セグメントごとにRMSSDを集約
+                        data_info = results.get('data_info', {})
+                        session_start = data_info.get('start_time')
+
+                        if session_start is not None and len(rmssd_series) > 0:
+                            rmssd_values = []
+                            for _, row in metrics_display.iterrows():
+                                segment_min = float(row['min'])
+                                segment_start_time = session_start + pd.Timedelta(minutes=segment_min)
+                                segment_end_time = segment_start_time + pd.Timedelta(minutes=3)
+
+                                # このセグメントの時刻範囲に該当するRMSSDを取得
+                                # rmssd_seriesのインデックスがdatetime
+                                mask = (rmssd_series.index >= segment_start_time) & \
+                                       (rmssd_series.index < segment_end_time)
+                                segment_rmssd = rmssd_series[mask]
+
+                                if len(segment_rmssd) > 0:
+                                    rmssd_values.append(segment_rmssd.mean())
+                                else:
+                                    rmssd_values.append(np.nan)
+
+                            metrics_display['HRV'] = rmssd_values
+                except Exception as e:
+                    print(f'警告: HRVデータの追加に失敗しました ({e})')
+                    import traceback
+                    traceback.print_exc()
+
+            # BRデータがある場合、セグメントごとに追加
+            if 'respiration_result' in results:
+                try:
+                    respiration_result = results['respiration_result']
+                    br_time_series = respiration_result.time_series
+
+                    if 'BR (bpm)' in br_time_series.columns and 'Time (min)' in br_time_series.columns:
+                        # セグメントごとにBRを集約
+                        br_values = []
+                        for _, row in metrics_display.iterrows():
+                            segment_min = float(row['min'])
+                            segment_end_min = segment_min + 3
+
+                            # このセグメントの時刻範囲に該当するBRを取得
+                            mask = (br_time_series['Time (min)'] >= segment_min) & \
+                                   (br_time_series['Time (min)'] < segment_end_min)
+                            segment_br = br_time_series.loc[mask, 'BR (bpm)']
+
+                            if len(segment_br) > 0:
+                                br_values.append(segment_br.mean())
+                            else:
+                                br_values.append(np.nan)
+
+                        metrics_display['BR'] = br_values
+                except Exception as e:
+                    print(f'警告: BRデータの追加に失敗しました ({e})')
+                    import traceback
+                    traceback.print_exc()
+
+            # 列の順序を調整：「備考」を最後に移動
+            if '備考' in metrics_display.columns:
+                cols = [col for col in metrics_display.columns if col != '備考']
+                cols.append('備考')
+                metrics_display = metrics_display[cols]
+
+            report += metrics_display.to_markdown(index=False, floatfmt='.2f')
             report += "\n\n"
-            report += "> **注**: min = 経過時間（分）\n\n"
+            report += "> **注**: min = 経過時間（分）"
+            if 'HRV' in metrics_display.columns:
+                report += "、HRV = 副交感神経活動指標（RMSSD、ms、高いほどリラックス）"
+            if 'BR' in metrics_display.columns:
+                report += "、BR = 呼吸数（bpm、低いほど深い呼吸）"
+            report += "\n\n"
 
     # ファイルに書き込み
     with open(report_path, 'w', encoding='utf-8') as f:
@@ -813,6 +955,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
 
     # 自律神経系分析（HRV）
     hrv_result = None
+    hrv_data = None
     try:
         if selfloops_data and selfloops_data.exists():
             print('計算中: HRV解析（自律神経系）...')
@@ -829,6 +972,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
             else:
                 hrv_result = calculate_hrv_standard_set(hrv_data)
                 results['hrv_stats'] = hrv_result.statistics
+                results['hrv_result'] = hrv_result  # 時系列データ用に保存
 
                 print('プロット中: HRV時系列...')
                 from lib.sensors.ecg.visualization.hrv_plot import plot_hrv_time_series
@@ -844,6 +988,36 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
 
     except Exception as e:
         print(f'⚠️  HRV解析エラー: {e}')
+        import traceback
+        traceback.print_exc()
+
+    # 呼吸分析（ECG-Derived Respiration）
+    respiration_result = None
+    rbp_result = None
+    try:
+        if hrv_data is not None:
+            print('計算中: 呼吸分析（ECG-Derived Respiration）...')
+            from lib.sensors.ecg.respiration import estimate_resonance_breathing_pace
+
+            respiration_result, rbp_result = estimate_resonance_breathing_pace(
+                hrv_data,
+                target_fs=8.0,
+                peak_distance=8.0,
+                window_minutes=3.0,
+                bin_width=0.5
+            )
+
+            # 結果を保存
+            results['respiration_result'] = respiration_result
+            if rbp_result is not None:
+                results['rbp_result'] = rbp_result
+
+            print(f'  平均BR: {respiration_result.breathing_rate:.1f} bpm')
+            if rbp_result:
+                print(f'  共鳴呼吸回数（RMSSD基準）: {rbp_result.optimal_rmssd["range"]} bpm')
+
+    except Exception as e:
+        print(f'⚠️  呼吸分析エラー: {e}')
         import traceback
         traceback.print_exc()
 
@@ -1141,6 +1315,20 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
             'beta_mean': segments['beta_mean'].mean() if 'beta_mean' in segments else None,
             'theta_alpha_mean': segments['theta_alpha_ratio'].mean() if 'theta_alpha_ratio' in segments else None,
         }
+
+        # HRV (RMSSD) の mean/best を計算
+        if 'hrv_result' in results:
+            try:
+                hrv_result_obj = results['hrv_result']
+                if hasattr(hrv_result_obj, 'time_series') and 'rmssd' in hrv_result_obj.time_series:
+                    rmssd_series = hrv_result_obj.time_series['rmssd']
+                    rmssd_valid = rmssd_series.dropna()
+                    if len(rmssd_valid) > 0:
+                        mean_metrics['hrv_mean'] = rmssd_valid.mean()
+                        best_metrics['hrv_best'] = rmssd_valid.max()  # RMSSDは高いほど良い
+            except Exception as e:
+                print(f'警告: HRV mean/best計算に失敗しました ({e})')
+
         results['mean_metrics'] = mean_metrics
 
     except Exception as exc:

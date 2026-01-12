@@ -2,19 +2,10 @@
 センサー解析モジュール
 各種生体センサーの信号処理と解析
 
-- PPG: 心拍・呼吸数推定
 - fNIRS: 脳血流計測
 - EEG: 脳波解析
 - IMU: 加速度・ジャイロによる動作検出と姿勢評価
 """
-
-# PPGセンサー（心拍・呼吸）
-from .ppg import (
-    estimate_rr_intervals,
-    estimate_respiratory_rate_welch,
-    estimate_respiratory_rate_fft,
-    analyze_respiratory
-)
 
 # fNIRSセンサー（脳血流）
 from .fnirs import (
@@ -55,11 +46,6 @@ from .imu import (
 )
 
 __all__ = [
-    # PPG
-    'estimate_rr_intervals',
-    'estimate_respiratory_rate_welch',
-    'estimate_respiratory_rate_fft',
-    'analyze_respiratory',
     # fNIRS
     'calculate_hbo_hbr',
     'analyze_fnirs',
