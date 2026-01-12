@@ -16,6 +16,32 @@ import neurokit2 as nk
 from scipy import interpolate
 
 
+def calculate_respiratory_period(respiratory_rate):
+    """
+    呼吸数(bpm)から呼吸周期(秒)を計算
+
+    Parameters
+    ----------
+    respiratory_rate : float or np.ndarray
+        呼吸数 (breaths per minute)
+
+    Returns
+    -------
+    float or np.ndarray
+        呼吸周期 (seconds)
+
+    Examples
+    --------
+    >>> calculate_respiratory_period(15)
+    4.0
+    >>> calculate_respiratory_period(12)
+    5.0
+    >>> calculate_respiratory_period(20)
+    3.0
+    """
+    return 60.0 / respiratory_rate
+
+
 @dataclass
 class RespirationResult:
     """

@@ -55,6 +55,7 @@ from lib import (
     calculate_smr,
 )
 from lib.session_log import write_to_csv, write_to_google_sheets
+from lib.sensors.ecg.respiration import calculate_respiratory_period
 
 # 可視化関数をインポート
 from lib.sensors.eeg.visualization import (
@@ -568,17 +569,21 @@ def generate_markdown_report(data_path, output_dir, results):
 
             respiration_result = results["respiration_result"]
 
-            # 基本指標テーブル
-            br_data = [
-                {"指標": "平均呼吸数", "値": f"{respiration_result.breathing_rate:.1f}", "単位": "bpm"},
-                {"指標": "呼吸数（標準偏差）", "値": f"{respiration_result.breathing_rate_std:.1f}", "単位": "bpm"},
-            ]
+            # 基本指標テーブル（瞑想の深さを示す指標を優先）
+            br_data = []
 
-            # 時系列データから最小BRを計算
+            # 時系列データから最小BRを計算（最も深い瞑想状態）
             br_series = respiration_result.time_series['BR (bpm)'].dropna()
             if len(br_series) > 0:
                 min_br = br_series.min()
+                max_period = calculate_respiratory_period(min_br)
+                br_data.append({"指標": "最大呼吸周期", "値": f"{max_period:.1f}", "単位": "秒"})
                 br_data.append({"指標": "最小呼吸数", "値": f"{min_br:.1f}", "単位": "bpm"})
+
+            # 平均値
+            br_data.append({"指標": "平均呼吸周期", "値": f"{calculate_respiratory_period(respiration_result.breathing_rate):.1f}", "単位": "秒"})
+            br_data.append({"指標": "平均呼吸数", "値": f"{respiration_result.breathing_rate:.1f}", "単位": "bpm"})
+            br_data.append({"指標": "呼吸数（標準偏差）", "値": f"{respiration_result.breathing_rate_std:.1f}", "単位": "bpm"})
 
             if not pd.isna(respiration_result.spectral_breathing_rate):
                 br_data.append({
@@ -623,8 +628,10 @@ def generate_markdown_report(data_path, output_dir, results):
                 report += "> - **LF Power基準**: LFパワーが最大となる呼吸数範囲（圧受容体反射に関連）\n\n"
 
             report += "> **呼吸指標の説明**:\n"
-            report += "> - **平均呼吸数**: セッション全体の平均呼吸数（ECG-Derived Respiration法で推定）\n"
+            report += "> - **最大呼吸周期**: 最も遅い呼吸の周期。深い瞑想状態での呼吸の長さを示す重要指標\n"
             report += "> - **最小呼吸数**: セッション中の最も遅い呼吸数（深い瞑想状態の指標）\n"
+            report += "> - **平均呼吸周期**: 1回の呼吸にかかる平均時間。呼吸数(bpm)から計算（60÷呼吸数）\n"
+            report += "> - **平均呼吸数**: セッション全体の平均呼吸数（ECG-Derived Respiration法で推定）\n"
             report += "> - **スペクトル法**: 周波数解析によって推定された呼吸数\n\n"
 
     # ========================================
@@ -778,15 +785,15 @@ def generate_markdown_report(data_path, output_dir, results):
                     import traceback
                     traceback.print_exc()
 
-            # BRデータがある場合、セグメントごとに追加
+            # RPデータ（呼吸周期）がある場合、セグメントごとに追加
             if 'respiration_result' in results:
                 try:
                     respiration_result = results['respiration_result']
                     br_time_series = respiration_result.time_series
 
                     if 'BR (bpm)' in br_time_series.columns and 'Time (min)' in br_time_series.columns:
-                        # セグメントごとにBRを集約
-                        br_values = []
+                        # セグメントごとにBRを集約し、呼吸周期に変換
+                        rp_values = []
                         for _, row in metrics_display.iterrows():
                             segment_min = float(row['min'])
                             segment_end_min = segment_min + 3
@@ -797,13 +804,16 @@ def generate_markdown_report(data_path, output_dir, results):
                             segment_br = br_time_series.loc[mask, 'BR (bpm)']
 
                             if len(segment_br) > 0:
-                                br_values.append(segment_br.mean())
+                                avg_br = segment_br.mean()
+                                # BRから呼吸周期に変換
+                                avg_rp = calculate_respiratory_period(avg_br)
+                                rp_values.append(avg_rp)
                             else:
-                                br_values.append(np.nan)
+                                rp_values.append(np.nan)
 
-                        metrics_display['BR'] = br_values
+                        metrics_display['RP'] = rp_values
                 except Exception as e:
-                    print(f'警告: BRデータの追加に失敗しました ({e})')
+                    print(f'警告: RPデータの追加に失敗しました ({e})')
                     import traceback
                     traceback.print_exc()
 
@@ -818,8 +828,8 @@ def generate_markdown_report(data_path, output_dir, results):
             report += "> **注**: min = 経過時間（分）"
             if 'HRV' in metrics_display.columns:
                 report += "、HRV = 副交感神経活動指標（RMSSD、ms、高いほどリラックス）"
-            if 'BR' in metrics_display.columns:
-                report += "、BR = 呼吸数（bpm、低いほど深い呼吸）"
+            if 'RP' in metrics_display.columns:
+                report += "、RP = 呼吸周期（秒、高いほど深い呼吸）"
             report += "\n\n"
 
     # ファイルに書き込み
