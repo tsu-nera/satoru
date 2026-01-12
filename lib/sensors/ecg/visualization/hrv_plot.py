@@ -145,7 +145,7 @@ def plot_hrv_time_series(
                 'timestamp': timestamps,
                 'heart_rate': heart_rate
             })
-            hr_df['time_sec'] = (hr_df['timestamp'] - start_time).total_seconds()
+            hr_df['time_sec'] = (hr_df['timestamp'] - start_time).dt.total_seconds()
 
             hr_time_sec = hr_df['time_sec'].values
             hr_values = hr_df['heart_rate'].values
