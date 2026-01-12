@@ -9,6 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from ..psd_peaks import PsdPeaksResult, PeakType, DETAILED_FREQ_BANDS
+from ....visualization.utils import power_to_db, style_frequency_plot
 
 
 def plot_psd_peaks(
@@ -38,7 +39,7 @@ def plot_psd_peaks(
     """
     freqs = psd_dict['freqs']
     psd_avg = np.mean(psd_dict['psds'], axis=0)
-    psd_db = 10 * np.log10(psd_avg + 1e-10)
+    psd_db = power_to_db(psd_avg)  # 共通関数を使用
 
     fig, ax = plt.subplots(1, 1, figsize=(14, 6))
 

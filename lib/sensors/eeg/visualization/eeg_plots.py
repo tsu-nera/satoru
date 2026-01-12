@@ -9,7 +9,7 @@ import matplotlib.dates as mdates
 
 from ..constants import FREQ_BANDS
 from ..frequency import calculate_psd
-from ....visualization.utils import format_time_axis
+from ....visualization.utils import format_time_axis, apply_frequency_band_shading
 
 
 DEFAULT_SPECTROGRAM_CMAP = 'magma'
@@ -273,10 +273,11 @@ def plot_psd(
     fig = None
 
     def _highlight_bands(ax_list):
-        for ax in ax_list:
-            for band_name, (low, high, color) in bands.items():
-                label = f'{band_name} ({low}-{high}Hz)' if ax is ax_list[0] else None
-                ax.axvspan(low, high, alpha=0.12, color=color, label=label)
+        """周波数帯域を色分け（共通関数を使用）"""
+        for idx, ax in enumerate(ax_list):
+            # 最初のaxesのみラベルを追加
+            add_labels = (idx == 0)
+            apply_frequency_band_shading(ax, bands, freqs.max(), alpha=0.12, add_labels=add_labels)
 
     def _style_axes(ax_list):
         if not ax_list:

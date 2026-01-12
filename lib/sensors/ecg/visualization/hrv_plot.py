@@ -2,14 +2,29 @@
 心拍変動（HRV）可視化モジュール
 """
 
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from scipy import signal
 
 from ..hrv import HRVResult
-from ....visualization.utils import format_time_axis
+from ....visualization.utils import (
+    format_time_axis,
+    power_to_db,
+    apply_frequency_band_shading,
+    style_frequency_plot
+)
+
+
+# HRV周波数帯域定義（NeuroKit2準拠）
+HRV_FREQ_BANDS = {
+    'VLF': (0.0, 0.04, 'purple'),   # Very Low Frequency
+    'LF': (0.04, 0.15, 'blue'),     # Low Frequency（交感神経＋副交感神経）
+    'HF': (0.15, 0.4, 'green'),     # High Frequency（副交感神経）
+}
 
 
 def plot_hrv_time_series(
@@ -210,3 +225,125 @@ def plot_hrv_time_series(
         plt.close(fig)
 
     return result.time_series, fig
+
+
+def plot_hrv_frequency(
+    hrv_data: Dict,
+    hrv_indices: Optional[pd.DataFrame] = None,
+    img_path: Optional[Union[str, Path]] = None,
+    freq_max: float = 0.5
+) -> plt.Figure:
+    """
+    EEG PSDスタイルでHRV周波数解析をプロット
+
+    デザイン仕様:
+    - 既存のEEG PSD可視化と同じスタイル（14x6インチ、dBスケール）
+    - 周波数帯域の色分け（VLF/LF/HF）
+    - ピークマーカー（LF/HFピーク）
+    - HRV指標をテキスト表示
+
+    Parameters
+    ----------
+    hrv_data : dict
+        HRVデータ（rr_intervals, sampling_rate）
+        get_hrv_data()の戻り値
+    hrv_indices : pd.DataFrame, optional
+        NeuroKit2のHRV解析結果（analyze_hrv()の戻り値）
+        指定されない場合は内部で計算
+    img_path : str or Path, optional
+        保存先パス
+    freq_max : float, default=0.5
+        表示する最大周波数（Hz）
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図
+
+    Examples
+    --------
+    >>> from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
+    >>> from lib.sensors.ecg.analysis import analyze_hrv
+    >>> df = load_selfloops_csv('data.csv')
+    >>> hrv_data = get_hrv_data(df)
+    >>> hrv_indices = analyze_hrv(hrv_data)
+    >>> plot_hrv_frequency(hrv_data, hrv_indices, 'hrv_frequency.png')
+    """
+    # HRV指標が指定されていない場合は計算
+    if hrv_indices is None:
+        from ..analysis import analyze_hrv
+        hrv_indices = analyze_hrv(hrv_data, show=False)
+
+    # RR間隔の時系列を等間隔に補間
+    rr_ms = hrv_data['rr_intervals']
+    rr_times = np.cumsum(rr_ms) / 1000.0  # msからsに変換
+    rr_times = np.insert(rr_times, 0, 0)
+    rr_values = np.append(rr_ms, rr_ms[-1])
+
+    # 4Hzで補間（NeuroKit2デフォルト）
+    sampling_rate = 4.0
+    interpolated_times = np.arange(0, rr_times[-1], 1.0 / sampling_rate)
+    interpolated_rr = np.interp(interpolated_times, rr_times, rr_values)
+
+    # Welch法でPSD計算
+    freqs, psd = signal.welch(
+        interpolated_rr,
+        fs=sampling_rate,
+        nperseg=min(len(interpolated_rr), 256),
+        window='hann'
+    )
+
+    # dBスケールに変換（共通関数を使用）
+    psd_db = power_to_db(psd)
+
+    # プロット（EEG PSDスタイル）
+    fig, ax = plt.subplots(1, 1, figsize=(14, 6))
+
+    # 周波数範囲をマスク
+    mask = (freqs >= 0.0) & (freqs <= freq_max)
+
+    # メインのPSDライン
+    ax.plot(freqs[mask], psd_db[mask], 'b-', linewidth=2.0, alpha=0.9, label='HRV PSD')
+
+    # 周波数帯域を色分け（共通関数を使用）
+    apply_frequency_band_shading(ax, HRV_FREQ_BANDS, freq_max, alpha=0.12)
+
+    # HRV指標から値を取得
+    lf_power = hrv_indices['HRV_LF'].values[0]
+    hf_power = hrv_indices['HRV_HF'].values[0]
+    lf_hf_ratio = hrv_indices['HRV_LFHF'].values[0]
+
+    # ピーク周波数を推定してマーク
+    lf_mask = (freqs >= 0.04) & (freqs <= 0.15)
+    hf_mask = (freqs >= 0.15) & (freqs <= 0.4)
+
+    if np.any(lf_mask):
+        lf_peak_idx = np.argmax(psd[lf_mask])
+        lf_peak_freq = freqs[lf_mask][lf_peak_idx]
+        lf_peak_power = psd_db[lf_mask][lf_peak_idx]
+        ax.scatter([lf_peak_freq], [lf_peak_power], color='blue', s=150,
+                  marker='o', zorder=5, edgecolors='white', linewidths=2, label='LF Peak')
+
+    if np.any(hf_mask):
+        hf_peak_idx = np.argmax(psd[hf_mask])
+        hf_peak_freq = freqs[hf_mask][hf_peak_idx]
+        hf_peak_power = psd_db[hf_mask][hf_peak_idx]
+        ax.scatter([hf_peak_freq], [hf_peak_power], color='green', s=150,
+                  marker='o', zorder=5, edgecolors='white', linewidths=2, label='HF Peak')
+
+    # 軸スタイル設定（共通関数を使用）
+    style_frequency_plot(ax, freq_max, title='HRV Frequency Analysis')
+
+    # テキスト注釈（HRV指標）
+    text_str = f'LF Power: {lf_power:.2f} ms²\nHF Power: {hf_power:.2f} ms²\nLF/HF: {lf_hf_ratio:.2f}'
+    ax.text(0.02, 0.98, text_str, transform=ax.transAxes,
+           fontsize=10, verticalalignment='top',
+           bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.3))
+
+    plt.tight_layout()
+
+    if img_path:
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+
+    return fig

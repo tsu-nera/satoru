@@ -30,7 +30,7 @@ class HRVResult:
             'lfhf_ratio': pd.Series  # LF/HF ratio時系列（インデックス: datetime）
         }
     statistics : pd.DataFrame
-        統計テーブル（Domain, Metric, Value, Unit, Interpretation列）
+        統計テーブル（Domain, Metric, Value, Unit列）
     metadata : dict
         メタデータ（window_seconds, step_seconds, session_start等）
     full_metrics : pd.DataFrame
@@ -293,7 +293,7 @@ def _create_hrv_statistics_table(
     Returns
     -------
     pd.DataFrame
-        列: ['Domain', 'Metric', 'Value', 'Unit', 'Interpretation']
+        列: ['Domain', 'Metric', 'Value', 'Unit']
     """
     stats_rows = []
 
@@ -311,13 +311,11 @@ def _create_hrv_statistics_table(
     for col_name, metric_name, unit in time_metrics:
         if col_name in full_metrics.columns:
             value = full_metrics[col_name].iloc[0]
-            interpretation = _interpret_hrv_metric(col_name, value)
             stats_rows.append({
                 'Domain': 'Time Domain',
                 'Metric': metric_name,
                 'Value': value,
                 'Unit': unit,
-                'Interpretation': interpretation,
             })
 
     # 周波数領域指標
@@ -332,13 +330,11 @@ def _create_hrv_statistics_table(
     for col_name, metric_name, unit in freq_metrics:
         if col_name in full_metrics.columns:
             value = full_metrics[col_name].iloc[0]
-            interpretation = _interpret_hrv_metric(col_name, value)
             stats_rows.append({
                 'Domain': 'Frequency Domain',
                 'Metric': metric_name,
                 'Value': value,
                 'Unit': unit,
-                'Interpretation': interpretation,
             })
 
     # 非線形指標
@@ -351,13 +347,11 @@ def _create_hrv_statistics_table(
     for col_name, metric_name, unit in nonlinear_metrics:
         if col_name in full_metrics.columns:
             value = full_metrics[col_name].iloc[0]
-            interpretation = _interpret_hrv_metric(col_name, value)
             stats_rows.append({
                 'Domain': 'Nonlinear',
                 'Metric': metric_name,
                 'Value': value,
                 'Unit': unit,
-                'Interpretation': interpretation,
             })
 
     return pd.DataFrame(stats_rows)

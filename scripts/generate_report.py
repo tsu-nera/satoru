@@ -518,25 +518,36 @@ def generate_markdown_report(data_path, output_dir, results):
     # ========================================
     # 自律神経系分析(ECG)
     # ========================================
-    if "hrv_stats" in results or "hrv_img" in results:
+    if "hrv_stats" in results or "hrv_img" in results or "hrv_freq_img" in results:
         report += "## 🫀 自律神経系分析(ECG)\n\n"
 
+        # 時間領域解析
         if "hrv_img" in results:
-            report += "### HRV時系列\n\n"
+            report += "### 時間領域解析\n\n"
             report += f"![HRV時系列](img/{results['hrv_img']})\n\n"
             report += "> **時系列の見方**:\n"
             report += "> - **RMSSD**: 副交感神経活動の指標。高いほどリラックス状態。\n"
             report += "> - **LF/HF Ratio**: 自律神経バランス。1.0未満は副交感神経優位（リラックス）、1.0以上は交感神経優位（緊張）。\n\n"
 
+        # 周波数領域解析
+        if "hrv_freq_img" in results:
+            report += "### 周波数領域解析\n\n"
+            report += f"![HRV周波数解析](img/{results['hrv_freq_img']})\n\n"
+            report += "> **周波数帯域の説明**:\n"
+            report += "> - **VLF (0.0-0.04 Hz)**: Very Low Frequency - 長期的な調節機構\n"
+            report += "> - **LF (0.04-0.15 Hz)**: Low Frequency - 交感神経＋副交感神経活動（圧受容体反射）\n"
+            report += "> - **HF (0.15-0.4 Hz)**: High Frequency - 副交感神経活動（呼吸性洞性不整脈）\n\n"
+
+        # 統計指標
         if "hrv_stats" in results:
-            report += "### HRV統計指標\n\n"
+            report += "### 統計指標\n\n"
 
             stats_df = results["hrv_stats"]
             for domain in ['Time Domain', 'Frequency Domain', 'Nonlinear']:
                 domain_stats = stats_df[stats_df['Domain'] == domain]
                 if not domain_stats.empty:
                     report += f"#### {domain}\n\n"
-                    display_df = domain_stats[['Metric', 'Value', 'Unit', 'Interpretation']].copy()
+                    display_df = domain_stats[['Metric', 'Value', 'Unit']].copy()
 
                     # 周波数領域は値が非常に小さい場合があるため、適切にフォーマット
                     if domain == 'Frequency Domain':
@@ -561,7 +572,24 @@ def generate_markdown_report(data_path, output_dir, results):
             report += "> - **時間領域（Time Domain）**: R-R間隔の変動を時間で評価。SDNN/RMSSDが高いほど心拍変動が大きく、リラックス状態。\n"
             report += "> - **周波数領域（Frequency Domain）**: 心拍変動を周波数解析。HFは副交感神経、LFは交感神経＋副交感神経の混合。\n"
             report += "> - **非線形（Nonlinear）**: Poincaréプロットによる複雑性評価。SD1は短期変動、SD2は長期変動。\n"
-            report += "> - **LF/HF Ratio**: 1.0未満で副交感神経優位（リラックス）、1.0以上で交感神経優位（ストレス・緊張）が示唆されます。\n\n"
+
+            # 呼吸数による補足説明
+            if "respiration_result" in results:
+                breathing_rate = results["respiration_result"].breathing_rate
+                if breathing_rate < 9:
+                    report += ">\n"
+                    report += f"> **⚠️ LF/HF比の解釈について**: 呼吸数が{breathing_rate:.1f}回/分と非常に遅いため、"
+                    report += "呼吸性変動がLF帯域（2.4-9回/分）に集中しています。"
+                    report += "この場合、LF/HF比の従来解釈（>2.5=交感神経優位）は**適用できません**。"
+                    report += "むしろ深い瞑想状態を示唆しています。\n"
+                else:
+                    report += ">\n"
+                    report += "> - **LF/HF Ratio**: 1.0未満で副交感神経優位（リラックス）、1.0以上で交感神経優位（ストレス・緊張）が示唆されます。\n"
+            else:
+                report += ">\n"
+                report += "> - **LF/HF Ratio**: 1.0未満で副交感神経優位（リラックス）、1.0以上で交感神経優位（ストレス・緊張）が示唆されます。\n"
+
+            report += "\n"
 
         # 呼吸指標（ECG-Derived Respiration）
         if "respiration_result" in results:
@@ -985,7 +1013,8 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
                 results['hrv_result'] = hrv_result  # 時系列データ用に保存
 
                 print('プロット中: HRV時系列...')
-                from lib.sensors.ecg.visualization.hrv_plot import plot_hrv_time_series
+                from lib.sensors.ecg.visualization.hrv_plot import plot_hrv_time_series, plot_hrv_frequency
+                from lib.sensors.ecg.analysis import analyze_hrv
 
                 hrv_img_name = 'hrv_time_series.png'
                 plot_hrv_time_series(
@@ -995,6 +1024,17 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
                     hr_data=hr_data
                 )
                 results['hrv_img'] = hrv_img_name
+
+                # HRV周波数解析
+                print('プロット中: HRV周波数解析...')
+                hrv_freq_img_name = 'hrv_frequency.png'
+                hrv_indices = analyze_hrv(hrv_data, show=False)
+                plot_hrv_frequency(
+                    hrv_data,
+                    hrv_indices=hrv_indices,
+                    img_path=str(img_dir / hrv_freq_img_name)
+                )
+                results['hrv_freq_img'] = hrv_freq_img_name
 
     except Exception as e:
         print(f'⚠️  HRV解析エラー: {e}')
