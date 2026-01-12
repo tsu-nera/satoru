@@ -83,25 +83,20 @@ jobs:
           # 一時ディレクトリ作成
           mkdir -p /tmp/data/selfloops
 
-          # SelfLoopsデータをダウンロード（Muse日付ベース）
-          if [ -z "$MUSE_DATE" ]; then
-            echo "⚠️  Muse日付が取得できないため、SelfLoopsダウンロードをスキップ"
-            echo "SELFLOOPS_AVAILABLE=false" >> $GITHUB_ENV
-            exit 0
-          fi
-
-          echo "SelfLoopsデータをダウンロード中（日付: $MUSE_DATE）..."
+          # SelfLoopsデータをダウンロード（最新ファイル）
+          # 注: SelfLoopsファイル名には日付が含まれていないため、全ファイルから検索
+          echo "SelfLoopsデータをダウンロード中（最新ファイル）..."
           python scripts/fetch_from_gdrive.py \
             --folder-id "$FOLDER_ID_SELFLOOPS" \
-            --download "$MUSE_DATE" \
+            --download latest \
             --output /tmp/data/selfloops || {
               echo "⚠️  SelfLoopsデータが見つかりません。EEG分析のみ実行します。"
               echo "SELFLOOPS_AVAILABLE=false" >> $GITHUB_ENV
               exit 0
             }
 
-          # ダウンロードしたSelfLoopsファイルを確認
-          SELFLOOPS_FILE=$(ls /tmp/data/selfloops/*.txt 2>/dev/null | head -n 1)
+          # ダウンロードしたSelfLoopsファイルを確認（.txtまたは.csv）
+          SELFLOOPS_FILE=$(ls /tmp/data/selfloops/*.txt /tmp/data/selfloops/*.csv 2>/dev/null | head -n 1)
           if [ -z "$SELFLOOPS_FILE" ]; then
             echo "⚠️  SelfLoopsデータファイルが見つかりません。EEG分析のみ実行します。"
             echo "SELFLOOPS_AVAILABLE=false" >> $GITHUB_ENV
@@ -109,26 +104,31 @@ jobs:
           fi
 
           echo "SELFLOOPS_FILE_PATH=$SELFLOOPS_FILE" >> $GITHUB_ENV
-          echo "SELFLOOPS_AVAILABLE=true" >> $GITHUB_ENV
           echo "✅ SelfLoopsダウンロード完了: $SELFLOOPS_FILE"
 
       - name: タイムスタンプ検証（Muse vs SelfLoops）
-        if: env.SELFLOOPS_AVAILABLE == 'true'
         run: |
           echo "同一セッション判定中..."
 
-          # Python で簡易的なタイムスタンプ比較を実行
+          # Python でタイムスタンプ比較を実行
           python3 << 'EOF'
           import os
           import pandas as pd
           from pathlib import Path
           import sys
 
+          # プロジェクトルートをパスに追加
+          sys.path.insert(0, str(Path.cwd()))
+
+          from lib.loaders.selfloops import parse_selfloops_timestamp
+
           muse_csv = os.environ['MUSE_CSV_PATH']
           selfloops_file = os.environ.get('SELFLOOPS_FILE_PATH')
 
           if not selfloops_file:
               print("⚠️  SelfLoopsファイルが設定されていません")
+              with open(os.environ['GITHUB_ENV'], 'a') as env:
+                  env.write('SELFLOOPS_AVAILABLE=false\n')
               sys.exit(0)
 
           # Museデータの開始/終了時刻を取得
@@ -136,22 +136,43 @@ jobs:
               muse_df = pd.read_csv(muse_csv)
               muse_start = pd.to_datetime(muse_df['TimeStamp'].iloc[0])
               muse_end = pd.to_datetime(muse_df['TimeStamp'].iloc[-1])
-              print(f"Muse測定: {muse_start} ~ {muse_end}")
+              muse_duration = (muse_end - muse_start).total_seconds() / 60.0
+              print(f"Muse測定: {muse_start} ~ {muse_end} ({muse_duration:.1f}分)")
 
-              # SelfLoopsファイルの1行目から日時を取得（例: "10 1月 2026 16:08:50"）
-              # 注: SelfLoopsファイル形式によって調整が必要
-              with open(selfloops_file, 'r') as f:
+              # SelfLoopsファイルの1行目から日時を取得
+              with open(selfloops_file, 'r', encoding='utf-8') as f:
                   first_line = f.readline().strip()
-                  # 簡易判定: ファイルが存在すればOKとする
-                  print(f"SelfLoopsファイル: {selfloops_file}")
-                  print(f"SelfLoops 1行目: {first_line}")
 
-              # 時間差が30分以内であれば同一セッションと判定
-              # （実装を簡略化するため、ファイルの存在のみで判定）
-              print("✅ SelfLoopsデータが利用可能です")
+              selfloops_start = parse_selfloops_timestamp(first_line)
+
+              if selfloops_start is None:
+                  print(f"⚠️  SelfLoopsタイムスタンプのパースに失敗: {first_line}")
+                  print("EEG分析のみ実行します")
+                  with open(os.environ['GITHUB_ENV'], 'a') as env:
+                      env.write('SELFLOOPS_AVAILABLE=false\n')
+                  sys.exit(0)
+
+              print(f"SelfLoops測定開始: {selfloops_start}")
+
+              # 時間差を計算（絶対値、分単位）
+              time_diff = abs((muse_start - selfloops_start).total_seconds() / 60.0)
+              print(f"時間差: {time_diff:.1f}分")
+
+              # 30分以内であれば同一セッションと判定
+              if time_diff <= 30:
+                  print(f"✅ 同一セッションと判定されました（時間差: {time_diff:.1f}分 ≤ 30分）")
+                  with open(os.environ['GITHUB_ENV'], 'a') as env:
+                      env.write('SELFLOOPS_AVAILABLE=true\n')
+              else:
+                  print(f"⚠️  時間差が大きすぎます（{time_diff:.1f}分 > 30分）")
+                  print("EEG分析のみ実行します")
+                  with open(os.environ['GITHUB_ENV'], 'a') as env:
+                      env.write('SELFLOOPS_AVAILABLE=false\n')
 
           except Exception as e:
               print(f"⚠️  タイムスタンプ検証エラー: {e}")
+              import traceback
+              traceback.print_exc()
               print("EEG分析のみ実行します")
               with open(os.environ['GITHUB_ENV'], 'a') as env:
                   env.write('SELFLOOPS_AVAILABLE=false\n')
