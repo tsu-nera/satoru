@@ -1,0 +1,43 @@
+{% extends "meditation/base.md.j2" %}
+
+{% block header %}
+{% include "meditation/sections/header.md.j2" %}
+{% endblock %}
+
+{% block content %}
+{% if hsi %}
+{% include "meditation/sections/connection_quality.md.j2" %}
+{% endif %}
+
+{% if raw_preview_img %}
+{% include "meditation/sections/raw_preview.md.j2" %}
+{% endif %}
+
+{% if summary %}
+{% include "meditation/sections/analysis_summary.md.j2" %}
+{% endif %}
+
+{% if frequency %}
+{% include "meditation/sections/frequency_band.md.j2" %}
+{% endif %}
+
+{% if indicators %}
+{% include "meditation/sections/characteristic_indicators.md.j2" %}
+{% endif %}
+
+{% if fnirs %}
+{% include "meditation/sections/fnirs.md.j2" %}
+{% endif %}
+
+{% if ecg %}
+{% include "meditation/sections/ecg_ans.md.j2" %}
+{% endif %}
+
+{% if posture %}
+{% include "meditation/sections/posture.md.j2" %}
+{% endif %}
+
+{% if segments %}
+{% include "meditation/sections/time_segment.md.j2" %}
+{% endif %}
+{% endblock %}

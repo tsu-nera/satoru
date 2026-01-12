@@ -1,0 +1,57 @@
+## 🩸 血流動態分析 (fNIRS)
+
+{% if fnirs.img %}
+### HbO/HbR時系列
+
+![fNIRS時系列](img/{{ fnirs.img }})
+
+{% endif %}
+{% if fnirs.stats is not none %}
+### 統計サマリー
+
+{{ fnirs.stats|df_to_markdown(floatfmt='.2f') }}
+
+> **指標の説明**:
+> - **HbO**: 酸素化ヘモグロビン（脳活動で増加）
+> - **HbR**: 脱酸素化ヘモグロビン（脳活動で減少）
+> - **HbT**: 総ヘモグロビン (HbO + HbR)、総血液量の変化を示す
+> - **HbD**: ヘモグロビン差分 (HbO - HbR)、酸素化の程度を示す
+
+{% endif %}
+{% if fnirs.laterality %}
+### Laterality Index (左右差)
+
+{% set li_table = [] %}
+{% if fnirs.laterality.li_hbo is not none %}
+{% set li_hbo = fnirs.laterality.li_hbo %}
+{% if li_hbo > 0.1 %}
+{% set interp_hbo = "右半球優位" %}
+{% elif li_hbo < -0.1 %}
+{% set interp_hbo = "左半球優位" %}
+{% else %}
+{% set interp_hbo = "均衡" %}
+{% endif %}
+{% set _ = li_table.append({"指標": "LI (HbO)", "値": "%.3f"|format(li_hbo), "解釈": interp_hbo}) %}
+{% endif %}
+{% if fnirs.laterality.li_hbd is not none %}
+{% set li_hbd = fnirs.laterality.li_hbd %}
+{% if li_hbd > 0.1 %}
+{% set interp_hbd = "右半球優位" %}
+{% elif li_hbd < -0.1 %}
+{% set interp_hbd = "左半球優位" %}
+{% else %}
+{% set interp_hbd = "均衡" %}
+{% endif %}
+{% set _ = li_table.append({"指標": "LI (HbD)", "値": "%.3f"|format(li_hbd), "解釈": interp_hbd}) %}
+{% endif %}
+{% if li_table %}
+| 指標 | 値 | 解釈 |
+|:-----|---:|:-----|
+{% for row in li_table %}
+| {{ row['指標'] }} | {{ row['値'] }} | {{ row['解釈'] }} |
+{% endfor %}
+
+> **LI (Laterality Index)**: LI = (右 - 左) / (右 + 左)。範囲は-1～+1で、正値は右半球優位、負値は左半球優位を示します。
+
+{% endif %}
+{% endif %}

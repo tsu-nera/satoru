@@ -1,0 +1,15 @@
+## 📡 接続品質
+
+{% if hsi.overall_quality is not none %}
+- **総合品質スコア**: {{ hsi.overall_quality|number_format(2) }}
+- **Good品質率**: {{ hsi.good_ratio|format_percent }}
+
+{% endif %}
+{% if hsi.statistics is not none and not hsi.statistics.empty %}
+### チャネル別詳細
+
+{{ hsi.statistics|df_to_markdown(floatfmt='.2f', index=False) }}
+
+> **注**: 1.0=Good, 2.0=Medium, 4.0=Bad
+
+{% endif %}

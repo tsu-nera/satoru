@@ -1,0 +1,22 @@
+## ⏱️ 時間経過分析
+
+{% if segments.plot_img %}
+### セグメント別パフォーマンス
+
+![時間セグメント比較](img/{{ segments.plot_img }})
+
+{% endif %}
+{% if segments.band_power_table is not none %}
+### バンドパワー詳細
+
+{{ segments.band_power_table|df_to_markdown(floatfmt='.2f', index=False) }}
+
+> **注**: min = 経過時間（分）、dB = 絶対パワー、% = 相対パワー（全バンド合計に対する割合）
+
+{% endif %}
+{% if segments.metrics_table is not none %}
+### 比率と特徴指標
+
+{{ segments.metrics_table|df_to_markdown(index=False) }}
+
+{% endif %}

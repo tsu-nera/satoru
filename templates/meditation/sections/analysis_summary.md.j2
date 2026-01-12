@@ -1,0 +1,54 @@
+## 📊 分析サマリー
+
+{% if summary.session_score is defined %}
+### 総合評価
+
+- **総合スコア**: {{ summary.session_score|format_score(100, 1) }}
+
+{% if summary.score_breakdown %}
+**スコア内訳**
+
+{% set score_labels = {
+    'fmtheta': '瞑想深度 (Fmθ)',
+    'spectral_entropy': '集中度 (SE)',
+    'theta_alpha_ratio': '瞑想深度 (θ/α)',
+    'beta_alpha_ratio': '覚醒度 (β/α)',
+    'iaf_stability': '周波数安定性 (IAF)'
+} %}
+{% for key, label in score_labels.items() %}
+{% if key in summary.score_breakdown %}
+- {{ label }}: {{ (summary.score_breakdown[key] * 100)|number_format(1) }}/100
+{% endif %}
+{% endfor %}
+{% endif %}
+
+{% endif %}
+
+{% if summary.mean_metrics and summary.best_metrics %}
+### 主要指標サマリー
+
+| 指標 | Mean | Best | 単位 |
+|:-----|-----:|-----:|:-----|
+{% set metrics_config = [
+    ('Fmθ', 'fm_theta_mean', 'fm_theta_best', 'dB'),
+    ('IAF', 'iaf_mean', 'iaf_best', 'Hz'),
+    ('Alpha', 'alpha_mean', 'alpha_best', 'dB'),
+    ('Beta', 'beta_mean', 'beta_best', 'dB'),
+    ('θ/α', 'theta_alpha_mean', 'theta_alpha_best', 'ratio'),
+    ('HRV', 'hrv_mean', 'hrv_best', 'ms')
+] %}
+{% for label, mean_key, best_key, unit in metrics_config %}
+| {{ label }} | {{ summary.mean_metrics.get(mean_key)|number_format(3) }} | {{ summary.best_metrics.get(best_key)|number_format(3) }} | {{ unit }} |
+{% endfor %}
+
+{% endif %}
+
+{% if summary.peak_time_range %}
+### ピークパフォーマンス
+
+- **最高パフォーマンス区間**: {{ summary.peak_time_range }}
+{% if summary.peak_score is not none %}
+- **スコア**: {{ summary.peak_score|format_score(100, 1) }}
+{% endif %}
+
+{% endif %}

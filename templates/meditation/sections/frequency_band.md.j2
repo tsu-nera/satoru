@@ -1,0 +1,37 @@
+## 🧠 周波数帯域分析
+
+{% if frequency.band_power_img %}
+### バンドパワー時系列
+
+![バンドパワー時系列](img/{{ frequency.band_power_img }})
+
+{% endif %}
+{% if frequency.psd_img %}
+### パワースペクトル密度（PSD）
+
+![PSD](img/{{ frequency.psd_img }})
+
+{% endif %}
+{% if frequency.spectrogram_img %}
+### スペクトログラム
+
+![スペクトログラム](img/{{ frequency.spectrogram_img }})
+
+{% endif %}
+{% if frequency.harmonics_table_display is not none and not frequency.harmonics_table_display.empty %}
+### PSDピーク分析
+
+{% if frequency.harmonics_img %}
+![ハーモニクス分析](img/{{ frequency.harmonics_img }})
+
+{% endif %}
+{{ frequency.harmonics_table_display|df_to_markdown(index=False) }}
+
+{% endif %}
+> **帯域の説明**:
+> - **IAF**: Individual Alpha Frequency（個人のアルファ波ピーク周波数）
+> - **FMT**: Frontal Midline Theta（前頭部中心線シータ、4-8Hz）、瞑想深度に関連
+> - **SMR**: 感覚運動リズム（12-15Hz）、身体の静止と落ち着きに関連
+>
+> **注意**: 4Hzの整数倍（4, 8, 12, 16, 20, 24, 28, 32 Hz等）はMuse/Mind Monitor由来の
+> アーチファクトの可能性があるため、テーブルから除外しています（グラフではグレーの×印で表示）。
