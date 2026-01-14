@@ -244,10 +244,20 @@ class MeditationReportRenderer:
             ecg['hrv_img'] = results['hrv_img']
         if 'hrv_freq_img' in results:
             ecg['hrv_freq_img'] = results['hrv_freq_img']
-        if 'hrv_time_stats' in results:
-            ecg['hrv_time_stats'] = results['hrv_time_stats']
-        if 'hrv_freq_stats' in results:
-            ecg['hrv_freq_stats'] = results['hrv_freq_stats']
+
+        # hrv_statsを時間領域と周波数領域に分割
+        if 'hrv_stats' in results:
+            hrv_stats_df = results['hrv_stats']
+            if not hrv_stats_df.empty and 'Domain' in hrv_stats_df.columns:
+                time_domain_df = hrv_stats_df[hrv_stats_df['Domain'] == 'Time Domain']
+                freq_domain_df = hrv_stats_df[hrv_stats_df['Domain'] == 'Frequency Domain']
+
+                # Domain列を除外してテーブル表示
+                if not time_domain_df.empty:
+                    ecg['hrv_time_stats'] = time_domain_df.drop(columns=['Domain'])
+                if not freq_domain_df.empty:
+                    ecg['hrv_freq_stats'] = freq_domain_df.drop(columns=['Domain'])
+
         if 'respiratory_period' in results:
             ecg['respiratory_period'] = results['respiratory_period']
         if 'rbp_stats' in results:
