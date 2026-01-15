@@ -2,11 +2,11 @@
 #
 # Muse脳波データ基本分析 実行スクリプト
 #
-# Usage: ./run_analysis.sh [--download] [CSV_FILE_PATH] [OUTPUT_DIR] [SAVE_TO]
+# Usage: ./run_analysis.sh [--fetch] [CSV_FILE_PATH] [OUTPUT_DIR] [SAVE_TO]
 #        SAVE_TO=sheets ./run_analysis.sh
 #
 # Arguments:
-#   --download     : Google Driveから最新データをダウンロード（オプション）
+#   --fetch     : Google Driveから最新データをダウンロード（オプション）
 #   CSV_FILE_PATH  : 分析するCSVファイルのパス（省略時は最新ファイル）
 #   OUTPUT_DIR     : 出力先ディレクトリ（デフォルト: tmp/）
 #   SAVE_TO        : セッションログ保存先（none/csv/sheets、デフォルト: none）
@@ -24,11 +24,11 @@ if [ -f "$PROJECT_ROOT/.env" ]; then
     export $(grep -v '^#' "$PROJECT_ROOT/.env" | xargs)
 fi
 
-# --downloadオプションの処理
-DOWNLOAD_DATA=false
-if [ "$1" = "--download" ]; then
-    DOWNLOAD_DATA=true
-    shift  # --downloadを引数リストから削除
+# --fetchオプションの処理
+FETCH_DATA=false
+if [ "$1" = "--fetch" ]; then
+    FETCH_DATA=true
+    shift  # --fetchを引数リストから削除
 fi
 
 # 仮想環境のチェック
@@ -46,7 +46,7 @@ fi
 source "$PROJECT_ROOT/venv/bin/activate"
 
 # データダウンロード処理
-if [ "$DOWNLOAD_DATA" = true ]; then
+if [ "$FETCH_DATA" = true ]; then
     echo "============================================================"
     echo "Google Driveから最新データをダウンロードします"
     echo "============================================================"
@@ -68,13 +68,13 @@ if [ $# -eq 0 ]; then
     if [ -z "$CSV_FILE" ]; then
         echo "エラー: data/muse/ ディレクトリにCSVファイルが見つかりません"
         echo ""
-        echo "Usage: $0 [--download] [CSV_FILE_PATH] [OUTPUT_DIR] [SAVE_TO]"
+        echo "Usage: $0 [--fetch] [CSV_FILE_PATH] [OUTPUT_DIR] [SAVE_TO]"
         echo ""
         echo "例："
         echo "  $0                                                              # 最新CSVをtmp/に出力（セッションログ保存なし）"
-        echo "  $0 --download                                                   # Google Driveから最新データをダウンロードして分析"
+        echo "  $0 --fetch                                                   # Google Driveから最新データをダウンロードして分析"
         echo "  SAVE_TO=csv $0                                                  # 最新CSVをtmp/に出力＆ローカルCSVに保存"
-        echo "  SAVE_TO=sheets $0 --download                                    # ダウンロード＆Google Sheetsに保存"
+        echo "  SAVE_TO=sheets $0 --fetch                                    # ダウンロード＆Google Sheetsに保存"
         echo "  $0 data/muse/mindMonitor_2025-11-04--16-59-52.csv                   # 指定CSVをtmp/に出力"
         echo "  $0 data/muse/mindMonitor_2025-11-04--16-59-52.csv tmp sheets        # Google Sheetsに保存（本番用）"
         exit 1

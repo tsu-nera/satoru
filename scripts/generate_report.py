@@ -243,7 +243,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         motion_result = analyze_motion(df, interval='10s')
 
         # 統計情報をDataFrame化（心拍数情報を含む）
-        results['motion_stats'] = create_motion_stats_table(motion_result, hr_data=hr_data)
+        motion_stats = create_motion_stats_table(motion_result, hr_data=hr_data)
 
         # 時系列プロット（動作検出のみ、心拍数は含まない）
         print('プロット中: 動作検出時系列...')
@@ -251,7 +251,14 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         fig_motion, _ = plot_motion_heart_rate(motion_result, hr_data=None, df=df)
         fig_motion.savefig(img_dir / motion_img_name, dpi=150, bbox_inches='tight')
         plt.close(fig_motion)
-        results['motion_only_img'] = motion_img_name
+
+        # postureネスト構造で保存（テンプレート用）
+        results['posture'] = {
+            'motion_img': motion_img_name,
+            'summary_table': motion_stats,
+        }
+
+        # 内部処理用データ
         results['motion_ratio'] = motion_result['motion_ratio']
 
     except Exception as exc:
@@ -323,10 +330,9 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
                 bin_width=0.5
             )
 
-            # 結果を保存
+            # 結果を保存（内部処理用）
             results['respiration_result'] = respiration_result
-            if rbp_result is not None:
-                results['rbp_result'] = rbp_result
+            results['rbp_result'] = rbp_result
 
             print(f'  平均BR: {respiration_result.breathing_rate:.1f} bpm')
             if rbp_result:
@@ -577,9 +583,10 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
                 posture_analyzer = PostureAnalyzer()
                 posture_summary = posture_analyzer.compute_summary(df)
 
-                # 結果を保存
-                results['posture_df'] = posture_df
-                results['posture_summary'] = posture_summary
+                # posture詳細テーブルを追加
+                if 'posture' not in results:
+                    results['posture'] = {}
+                results['posture']['detail_table'] = posture_df
             else:
                 print('  警告: Statistical DataFrame に posture が含まれていません')
 

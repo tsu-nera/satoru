@@ -258,21 +258,20 @@ class MeditationReportRenderer:
                 if not freq_domain_df.empty:
                     ecg['hrv_freq_stats'] = freq_domain_df.drop(columns=['Domain'])
 
-        if 'respiratory_period' in results:
-            ecg['respiratory_period'] = results['respiratory_period']
-        if 'rbp_stats' in results:
-            ecg['rbp_stats'] = results['rbp_stats']
+        # 呼吸データ
+        if 'respiration_result' in results:
+            ecg['respiratory_period'] = results['respiration_result']
+        if 'rbp_result' in results and results['rbp_result'] is not None:
+            rbp = results['rbp_result']
+            if hasattr(rbp, 'bin_statistics') and rbp.bin_statistics is not None:
+                ecg['rbp_stats'] = rbp.bin_statistics
 
         if ecg:
             context['ecg'] = ecg
 
-        # 姿勢分析
-        if 'motion_img' in results or 'posture_summary' in results:
-            context['posture'] = {
-                'motion_img': results.get('motion_img'),
-                'summary_table': results.get('posture_summary'),
-                'detail_table': results.get('posture_detail'),
-            }
+        # 姿勢分析（ネスト構造をそのままコピー）
+        if 'posture' in results:
+            context['posture'] = results['posture']
 
         # 時間セグメント分析
         if 'segment_plot' in results or 'segment_table' in results:
