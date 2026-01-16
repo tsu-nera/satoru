@@ -428,7 +428,7 @@ def calculate_segment_analysis(
             'HbR': row['hbr_mean'],
             'HR': row['hr_mean'],
             'HRV': row['rmssd_mean'],
-            'RP (bpm)': row['br_mean'],
+            'RP (s)': 60 / row['br_mean'] if pd.notna(row['br_mean']) and row['br_mean'] > 0 else None,
             'Yaw RMS': row['yaw_rms'],
             '備考': note,
         }

@@ -6,6 +6,7 @@ from typing import Dict, Optional, Tuple, Union
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.patches import Ellipse
 import numpy as np
 import pandas as pd
 from scipy import signal
@@ -347,3 +348,260 @@ def plot_hrv_frequency(
         plt.close(fig)
 
     return fig
+
+
+def plot_hrv_nonlinear(
+    hrv_data: Dict,
+    result: Optional[HRVResult] = None,
+    img_path: Optional[Union[str, Path]] = None
+) -> plt.Figure:
+    """
+    HRV非線形解析をプロット（Poincaré + DFA）
+
+    左: Poincaréプロット（SD1/SD2の可視化）
+    右: DFAプロット（スケーリング指数の可視化）
+
+    Parameters
+    ----------
+    hrv_data : dict
+        HRVデータ（rr_intervals_clean等）
+        get_hrv_data()の戻り値
+    result : HRVResult, optional
+        HRV解析結果（統計値の表示用）
+    img_path : str or Path, optional
+        保存先パス
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        生成された図
+
+    Examples
+    --------
+    >>> from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
+    >>> df = load_selfloops_csv('data.csv')
+    >>> hrv_data = get_hrv_data(df)
+    >>> plot_hrv_nonlinear(hrv_data, img_path='hrv_nonlinear.png')
+    """
+    import neurokit2 as nk
+
+    rr_intervals = hrv_data['rr_intervals_clean']
+    sampling_rate = hrv_data.get('sampling_rate', 1000)
+
+    # NeuroKit2でPeaksに変換
+    peaks = nk.intervals_to_peaks(rr_intervals, sampling_rate=sampling_rate)
+
+    # 非線形解析
+    hrv_nonlinear = nk.hrv_nonlinear(peaks, sampling_rate=sampling_rate, show=False)
+
+    # 統計値を取得
+    sd1 = hrv_nonlinear['HRV_SD1'].values[0]
+    sd2 = hrv_nonlinear['HRV_SD2'].values[0]
+    sd1_sd2 = hrv_nonlinear['HRV_SD1SD2'].values[0]
+    dfa_alpha1 = hrv_nonlinear['HRV_DFA_alpha1'].values[0]
+    dfa_alpha2 = hrv_nonlinear['HRV_DFA_alpha2'].values[0]
+
+    # 図を作成（2列）
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+
+    # ========================================
+    # 左：Poincaréプロット
+    # ========================================
+    rr_n = rr_intervals[:-1]
+    rr_n1 = rr_intervals[1:]
+
+    ax1.scatter(rr_n, rr_n1, alpha=0.5, s=20, c='#1f77b4', edgecolors='none')
+
+    # SD1/SD2楕円を描画
+    mean_rr = np.mean(rr_intervals)
+    angle = 45  # 45度回転
+
+    # SD1楕円（短軸）
+    ellipse_sd1 = Ellipse(
+        (mean_rr, mean_rr),
+        width=2 * sd1 * np.sqrt(2),
+        height=2 * sd1 * np.sqrt(2),
+        angle=angle,
+        facecolor='none',
+        edgecolor='red',
+        linewidth=2,
+        linestyle='--',
+        label=f'SD1={sd1:.1f} ms'
+    )
+    ax1.add_patch(ellipse_sd1)
+
+    # SD2楕円（長軸）
+    ellipse_sd2 = Ellipse(
+        (mean_rr, mean_rr),
+        width=2 * sd2 * np.sqrt(2),
+        height=2 * sd2 * np.sqrt(2),
+        angle=angle,
+        facecolor='none',
+        edgecolor='green',
+        linewidth=2,
+        linestyle='--',
+        label=f'SD2={sd2:.1f} ms'
+    )
+    ax1.add_patch(ellipse_sd2)
+
+    # 対角線（y=x）
+    lims = [
+        np.min([ax1.get_xlim(), ax1.get_ylim()]),
+        np.max([ax1.get_xlim(), ax1.get_ylim()]),
+    ]
+    ax1.plot(lims, lims, 'k--', alpha=0.3, zorder=0)
+
+    ax1.set_xlabel('RR(n) [ms]', fontsize=12)
+    ax1.set_ylabel('RR(n+1) [ms]', fontsize=12)
+    ax1.set_title(f'Poincaré Plot (SD1/SD2={sd1_sd2:.3f})', fontsize=12, fontweight='bold')
+    ax1.grid(True, alpha=0.3, linestyle='--')
+    ax1.legend(loc='upper left', fontsize=10)
+    ax1.set_aspect('equal')
+
+    # ========================================
+    # 右：DFAプロット（スケール vs ゆらぎ）
+    # ========================================
+    # DFA計算を実行してスケールとゆらぎのデータを取得
+    scales, fluctuations = _compute_dfa(rr_intervals)
+
+    if len(scales) > 0 and len(fluctuations) > 0:
+        # ログログプロット
+        ax2.loglog(scales, fluctuations, 'o-', color='#1f77b4',
+                   markersize=6, linewidth=2, alpha=0.7, label='DFA')
+
+        # α1とα2の領域を分けて線形フィッティング
+        # α1: 短期スケール（4-11拍）
+        # α2: 長期スケール（>11拍）
+        short_mask = (scales >= 4) & (scales <= 11)
+        long_mask = scales > 11
+
+        if np.sum(short_mask) >= 2:
+            # α1のフィッティング線
+            log_scales_short = np.log10(scales[short_mask])
+            log_fluct_short = np.log10(fluctuations[short_mask])
+            z1 = np.polyfit(log_scales_short, log_fluct_short, 1)
+            p1 = np.poly1d(z1)
+            ax2.loglog(scales[short_mask], 10**p1(log_scales_short),
+                      'r--', linewidth=2.5, label=f'α1={dfa_alpha1:.3f}')
+
+        if np.sum(long_mask) >= 2:
+            # α2のフィッティング線
+            log_scales_long = np.log10(scales[long_mask])
+            log_fluct_long = np.log10(fluctuations[long_mask])
+            z2 = np.polyfit(log_scales_long, log_fluct_long, 1)
+            p2 = np.poly1d(z2)
+            ax2.loglog(scales[long_mask], 10**p2(log_scales_long),
+                      'g--', linewidth=2.5, label=f'α2={dfa_alpha2:.3f}')
+
+        # 領域境界線
+        ax2.axvline(11, color='gray', linestyle=':', alpha=0.5, linewidth=1.5)
+
+        ax2.set_xlabel('Scale (beats)', fontsize=12)
+        ax2.set_ylabel('Fluctuation (ms)', fontsize=12)
+        ax2.set_title('DFA (Detrended Fluctuation Analysis)', fontsize=12, fontweight='bold')
+        ax2.grid(True, alpha=0.3, which='both', linestyle='--')
+        ax2.legend(loc='lower right', fontsize=10)
+
+        # 解釈テキスト
+        if dfa_alpha1 < 0.5:
+            interpretation = 'Anti-correlated'
+            color = 'red'
+        elif dfa_alpha1 < 0.6:
+            interpretation = 'Random walk\n(Experienced meditator)'
+            color = 'green'
+        elif dfa_alpha1 < 0.9:
+            interpretation = 'Moderate correlation'
+            color = 'blue'
+        else:
+            interpretation = 'Strong correlation'
+            color = 'orange'
+
+        ax2.text(0.05, 0.95, interpretation, transform=ax2.transAxes,
+                fontsize=10, verticalalignment='top', color=color,
+                bbox=dict(boxstyle='round', facecolor='white', alpha=0.7))
+
+    # 全体タイトル
+    fig.suptitle('HRV Nonlinear Analysis', fontsize=14, fontweight='bold')
+
+    plt.tight_layout()
+
+    if img_path:
+        plt.savefig(img_path, dpi=150, bbox_inches='tight')
+        plt.close(fig)
+
+    return fig
+
+
+def _compute_dfa(rr_intervals, min_scale=4, max_scale=None, num_scales=20):
+    """
+    DFA（Detrended Fluctuation Analysis）を計算
+
+    Parameters
+    ----------
+    rr_intervals : np.ndarray
+        RR間隔（ms）
+    min_scale : int
+        最小スケール（拍数）
+    max_scale : int, optional
+        最大スケール（拍数）。Noneの場合はデータ長の1/4
+    num_scales : int
+        スケール数
+
+    Returns
+    -------
+    scales : np.ndarray
+        スケール配列
+    fluctuations : np.ndarray
+        各スケールでのゆらぎ
+    """
+    # RR間隔の累積和（積分）
+    y = np.cumsum(rr_intervals - np.mean(rr_intervals))
+
+    # 最大スケールの設定
+    if max_scale is None:
+        max_scale = len(rr_intervals) // 4
+
+    # スケール配列（対数スケールで均等）
+    scales = np.unique(np.logspace(
+        np.log10(min_scale),
+        np.log10(max_scale),
+        num_scales
+    ).astype(int))
+
+    fluctuations = []
+
+    for scale in scales:
+        # データをウィンドウに分割
+        n_windows = len(y) // scale
+        if n_windows < 1:
+            continue
+
+        # 各ウィンドウでトレンド除去
+        residuals = []
+        for i in range(n_windows):
+            start = i * scale
+            end = (i + 1) * scale
+            segment = y[start:end]
+
+            # 線形トレンドをフィット
+            x = np.arange(len(segment))
+            coeffs = np.polyfit(x, segment, 1)
+            trend = np.polyval(coeffs, x)
+
+            # デトレンド後の残差
+            detrended = segment - trend
+            residuals.extend(detrended)
+
+        # ゆらぎ（RMS）を計算
+        if len(residuals) > 0:
+            fluctuation = np.sqrt(np.mean(np.array(residuals)**2))
+            fluctuations.append(fluctuation)
+        else:
+            fluctuations.append(np.nan)
+
+    # 有効な値のみ返す
+    valid_mask = ~np.isnan(fluctuations)
+    scales = scales[valid_mask]
+    fluctuations = np.array(fluctuations)[valid_mask]
+
+    return scales, fluctuations

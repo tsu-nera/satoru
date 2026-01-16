@@ -6,14 +6,27 @@ ECGのR-R間隔データから呼吸系指標を計算する分析ディレク�
 
 NeuroKit2のECG-Derived Respiration (EDR)機能を使用して、心拍変動データから呼吸数や呼吸パターンを推定します。
 
+## 🚨 重要な発見（2026-01-16）
+
+**深い瞑想状態における呼吸数推定の問題が判明しました。**
+
+- **Spectral BR (9.4 bpm)** は実際の呼吸ではなく、Mayer波などの別の生理現象
+- **Mean BR (3.8 bpm)** が実際の呼吸周期（15-30秒/回）と一致
+- 詳細: [INVESTIGATION_2026-01-16.md](INVESTIGATION_2026-01-16.md)
+
 ## ファイル構成
 
 ```
 011_br_analysis/
-├── analyze_breathing.py          # 呼吸分析メインスクリプト（NeuroKit2使用）
-├── BREATHING_REPORT.md            # 分析結果レポート
-├── breathing_analysis.png         # 可視化プロット
-└── README.md                      # このファイル
+├── analyze_breathing.py                # 呼吸分析メインスクリプト（NeuroKit2使用）
+├── verify_breathing_rate.py            # 呼吸数妥当性検証スクリプト（NEW 2026-01-16）
+├── BREATHING_REPORT.md                 # 分析結果レポート（2026-01-12）
+├── BREATHING_VALIDATION_REPORT.md      # 検証結果レポート（NEW 2026-01-16）
+├── INVESTIGATION_2026-01-16.md         # 詳細調査レポート（NEW）
+├── breathing_analysis.png              # 可視化プロット
+├── breathing_rate_validation.png       # 検証可視化（NEW）
+├── breathing_hrv_correlation.png       # HRV相関図
+└── README.md                           # このファイル
 ```
 
 ## 使用方法
@@ -24,7 +37,13 @@ NeuroKit2のECG-Derived Respiration (EDR)機能を使用して、心拍変動デ
 # プロジェクトルートから実行
 cd /home/tsu-nera/repo/satoru
 source venv/bin/activate
+
+# 呼吸分析（従来）
 python issues/011_br_analysis/analyze_breathing.py
+
+# 呼吸数妥当性検証（NEW 2026-01-16）
+python issues/011_br_analysis/verify_breathing_rate.py
+python issues/011_br_analysis/verify_breathing_rate.py data/selfloops/your_file.csv
 ```
 
 デフォルトでは以下のデータを使用：

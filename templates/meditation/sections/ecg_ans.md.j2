@@ -49,18 +49,10 @@
 {% endif %}
 
 {% endif %}
-{% if ecg.respiratory_period %}
+{% if ecg.respiratory_stats is not none %}
 ### 呼吸指標
 
-| 指標 | 値 | 単位 |
-|:-----|-----:|:-----|
-| 平均呼吸数 | {{ ecg.respiratory_period.breathing_rate|number_format(1) }} | bpm |
-| 呼吸数（標準偏差） | {{ ecg.respiratory_period.breathing_rate_std|number_format(1) }} | bpm |
-{% if ecg.respiratory_period.spectral_breathing_rate is not none %}
-| 呼吸数（スペクトル法） | {{ ecg.respiratory_period.spectral_breathing_rate|number_format(1) }} | bpm |
-{% endif %}
-| 検出ピーク数 | {{ ecg.respiratory_period.peak_count }} | 回 |
-| 検出トラフ数 | {{ ecg.respiratory_period.trough_count }} | 回 |
+{{ ecg.respiratory_stats|df_to_markdown(floatfmt='.1f', index=False, standardize_columns=True) }}
 
 {% endif %}
 {% if ecg.rbp_stats is not none and not ecg.rbp_stats.empty %}

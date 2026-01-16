@@ -11,6 +11,8 @@ import logging
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 import pandas as pd
 
+from lib.templates.formatters import format_respiratory_stats
+
 logger = logging.getLogger(__name__)
 
 
@@ -261,6 +263,8 @@ class MeditationReportRenderer:
         # 呼吸データ
         if 'respiration_result' in results:
             ecg['respiratory_period'] = results['respiration_result']
+            # 呼吸統計テーブル（標準フォーマット）
+            ecg['respiratory_stats'] = format_respiratory_stats(results['respiration_result'])
         if 'rbp_result' in results and results['rbp_result'] is not None:
             rbp = results['rbp_result']
             if hasattr(rbp, 'bin_statistics') and rbp.bin_statistics is not None:

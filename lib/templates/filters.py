@@ -233,7 +233,7 @@ def format_change(value, unit='', decimals=1, positive_is_good=True):
         return formatted
 
 
-def df_to_markdown(df, floatfmt='.2f', index=True):
+def df_to_markdown(df, floatfmt='.2f', index=True, standardize_columns=False):
     """
     DataFrameをMarkdown表形式に変換
 
@@ -245,6 +245,8 @@ def df_to_markdown(df, floatfmt='.2f', index=True):
         浮動小数点のフォーマット
     index : bool
         インデックスを表示するか
+    standardize_columns : bool
+        カラム名を標準形式（Metric/Value/Unit）に変換するか
 
     Returns
     -------
@@ -256,6 +258,9 @@ def df_to_markdown(df, floatfmt='.2f', index=True):
     >>> df = pd.DataFrame({'A': [1.234, 2.567]})
     >>> df_to_markdown(df, floatfmt='.2f', index=False)
     '|   A |\n|----:|\n| 1.23|\n| 2.57|'
+    >>> df = pd.DataFrame({'指標': ['A'], '値': [1.23], '単位': ['ms']})
+    >>> df_to_markdown(df, index=False, standardize_columns=True)
+    '| Metric | Value | Unit |\n...'
     """
     if df is None:
         return ''
@@ -264,6 +269,22 @@ def df_to_markdown(df, floatfmt='.2f', index=True):
         return ''
     if df.empty:
         return ''
+
+    # カラム名の標準化
+    if standardize_columns:
+        # 標準カラム名マッピング（日本語 → 英語）
+        column_mapping = {
+            '指標': 'Metric',
+            'Metric': 'Metric',
+            '値': 'Value',
+            'Value': 'Value',
+            '単位': 'Unit',
+            'Unit': 'Unit',
+        }
+
+        # カラム名をリネーム
+        df = df.rename(columns=column_mapping)
+
     return df.to_markdown(floatfmt=floatfmt, index=index)
 
 
