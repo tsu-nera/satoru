@@ -569,6 +569,8 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
                 hr_data=hr_data,
                 df_timestamps=df['TimeStamp'],
                 df=df,  # Posture統計量計算用
+                hrv_result=hrv_result,  # HRVデータを追加
+                respiration_result=respiration_result,  # 呼吸データを追加
             )
             results['statistical_df'] = statistical_df
             print(f'  バンドパワー: {len(statistical_df["band_powers"])} セグメント')

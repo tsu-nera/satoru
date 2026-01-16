@@ -124,6 +124,8 @@ def calculate_segment_analysis(
     fnirs_df = statistical_df.get('fnirs')
     hr_df = statistical_df.get('hr')
     posture_df = statistical_df.get('posture')
+    hrv_df = statistical_df.get('hrv')
+    respiration_df = statistical_df.get('respiration')
 
     if 'TimeStamp' not in df_clean.columns:
         raise ValueError('TimeStamp列が存在しません。')
@@ -239,6 +241,16 @@ def calculate_segment_analysis(
         if hr_df is not None and start in hr_df.index:
             hr_mean = hr_df.loc[start, 'hr_mean']
 
+        # HRV値を取得（オプション）
+        rmssd_mean = np.nan
+        if hrv_df is not None and start in hrv_df.index:
+            rmssd_mean = hrv_df.loc[start, 'rmssd_mean']
+
+        # 呼吸数を取得（オプション）
+        br_mean = np.nan
+        if respiration_df is not None and start in respiration_df.index:
+            br_mean = respiration_df.loc[start, 'br_mean']
+
         # Yaw RMS値を取得（オプション）
         yaw_rms = np.nan
         if posture_df is not None and start in posture_df.index:
@@ -318,6 +330,8 @@ def calculate_segment_analysis(
             'hbo_mean': hbo_mean,
             'hbr_mean': hbr_mean,
             'hr_mean': hr_mean,
+            'rmssd_mean': rmssd_mean,
+            'br_mean': br_mean,
             'yaw_rms': yaw_rms,
             'meditation_score': meditation_score,
         })
@@ -399,7 +413,7 @@ def calculate_segment_analysis(
         }
         band_power_rows.append(band_power_row)
 
-        # テーブル2: 比率と特徴指標（14列）
+        # テーブル2: 比率と特徴指標（16列）
         metrics_row = {
             'min': row['elapsed_label'],
             'θ/α': row['theta_alpha_ratio'],
@@ -413,6 +427,8 @@ def calculate_segment_analysis(
             'HbO': row['hbo_mean'],
             'HbR': row['hbr_mean'],
             'HR': row['hr_mean'],
+            'HRV': row['rmssd_mean'],
+            'RP (bpm)': row['br_mean'],
             'Yaw RMS': row['yaw_rms'],
             '備考': note,
         }

@@ -36,6 +36,8 @@ def create_statistical_dataframe(
     hr_data: Optional[Dict] = None,
     df_timestamps: Optional[pd.Series] = None,
     df: Optional[pd.DataFrame] = None,
+    hrv_result: Optional[object] = None,
+    respiration_result: Optional[object] = None,
 ) -> Dict[str, pd.DataFrame]:
     """
     統一的なStatistical DataFrameを生成する。
@@ -62,6 +64,10 @@ def create_statistical_dataframe(
         元データのTimeStamp列（fNIRS/HR計算に必要）
     df : pd.DataFrame, optional
         Mind Monitor形式の元データ（Posture統計量計算に必要）
+    hrv_result : HRVResult, optional
+        calculate_hrv_standard_set()の戻り値（HRVデータ）
+    respiration_result : RespirationResult, optional
+        calculate_breathing_rate()の戻り値（呼吸データ）
 
     Returns
     -------
@@ -74,6 +80,8 @@ def create_statistical_dataframe(
             'fnirs': DataFrame,            # セグメント別fNIRS時系列（HbO/HbR平均）
             'hr': DataFrame,               # セグメント別心拍数時系列
             'posture': DataFrame,          # セグメント別Posture統計量時系列
+            'hrv': DataFrame,              # セグメント別HRV時系列（RMSSD）
+            'respiration': DataFrame,      # セグメント別呼吸時系列（BR）
             'statistics': DataFrame        # 統計サマリー（縦長形式）
         }
 
@@ -603,6 +611,68 @@ def create_statistical_dataframe(
 
     statistics_df = pd.DataFrame(statistics_rows)
 
+    # HRVデータのセグメント別集計
+    hrv_df = pd.DataFrame()
+    if hrv_result is not None and hasattr(hrv_result, 'time_series'):
+        try:
+            hrv_ts = hrv_result.time_series
+            # time_seriesは辞書形式で、'rmssd'キーがpd.Series（indexはdatetime）
+            if isinstance(hrv_ts, dict) and 'rmssd' in hrv_ts:
+                rmssd_series = hrv_ts['rmssd']
+                # ウォームアップ期間を除外
+                rmssd_series = rmssd_series[rmssd_series.index >= session_start + pd.Timedelta(minutes=warmup_minutes)]
+
+                # セグメント別に集計（timestampsを使用）
+                hrv_rows = []
+                for start_ts in timestamps:
+                    end_ts = start_ts + pd.Timedelta(minutes=segment_minutes)
+                    mask = (rmssd_series.index >= start_ts) & (rmssd_series.index < end_ts)
+                    segment_data = rmssd_series.loc[mask]
+
+                    if len(segment_data) > 0:
+                        hrv_rows.append({
+                            'timestamp': start_ts,
+                            'rmssd_mean': segment_data.mean(),
+                            'rmssd_std': segment_data.std(),
+                        })
+
+                if hrv_rows:
+                    hrv_df = pd.DataFrame(hrv_rows).set_index('timestamp')
+        except Exception as e:
+            print(f'警告: HRV統計量の計算に失敗しました ({e})')
+
+    # 呼吸データのセグメント別集計
+    respiration_df = pd.DataFrame()
+    if respiration_result is not None and hasattr(respiration_result, 'time_series'):
+        try:
+            resp_ts = respiration_result.time_series
+            # time_seriesはDataFrame形式で、'Time (min)'列と'BR (bpm)'列を持つ
+            if isinstance(resp_ts, pd.DataFrame) and 'Time (min)' in resp_ts.columns and 'BR (bpm)' in resp_ts.columns:
+                # 時刻をDatetimeIndexに変換（Time (min)は経過時間（分）なので、session_startからの経過時間として変換）
+                resp_ts_indexed = resp_ts.copy()
+                resp_ts_indexed.index = session_start + pd.to_timedelta(resp_ts_indexed['Time (min)'], unit='m')
+                # ウォームアップ期間を除外
+                resp_ts_indexed = resp_ts_indexed[resp_ts_indexed.index >= session_start + pd.Timedelta(minutes=warmup_minutes)]
+
+                # セグメント別に集計（timestampsを使用）
+                resp_rows = []
+                for start_ts in timestamps:
+                    end_ts = start_ts + pd.Timedelta(minutes=segment_minutes)
+                    mask = (resp_ts_indexed.index >= start_ts) & (resp_ts_indexed.index < end_ts)
+                    segment_data = resp_ts_indexed.loc[mask, 'BR (bpm)']
+
+                    if len(segment_data) > 0:
+                        resp_rows.append({
+                            'timestamp': start_ts,
+                            'br_mean': segment_data.mean(),
+                            'br_std': segment_data.std(),
+                        })
+
+                if resp_rows:
+                    respiration_df = pd.DataFrame(resp_rows).set_index('timestamp')
+        except Exception as e:
+            print(f'警告: 呼吸統計量の計算に失敗しました ({e})')
+
     return {
         'band_powers': band_powers_df,
         'band_ratios': band_ratios_df,
@@ -611,6 +681,8 @@ def create_statistical_dataframe(
         'fnirs': fnirs_df,
         'hr': hr_df,
         'posture': posture_df,
+        'hrv': hrv_df,
+        'respiration': respiration_df,
         'statistics': statistics_df,
     }
 

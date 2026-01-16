@@ -53,18 +53,17 @@
 ### 呼吸指標
 
 | 指標 | 値 | 単位 |
-|:-----|---:|:-----|
-| 最大呼吸周期 | {{ ecg.respiratory_period.max_period|number_format(1) }} | 秒 |
-| 最小呼吸数 | {{ ecg.respiratory_period.min_br|number_format(1) }} | bpm |
-| 平均呼吸周期 | {{ ecg.respiratory_period.avg_period|number_format(1) }} | 秒 |
+|:-----|-----:|:-----|
 | 平均呼吸数 | {{ ecg.respiratory_period.breathing_rate|number_format(1) }} | bpm |
 | 呼吸数（標準偏差） | {{ ecg.respiratory_period.breathing_rate_std|number_format(1) }} | bpm |
 {% if ecg.respiratory_period.spectral_breathing_rate is not none %}
 | 呼吸数（スペクトル法） | {{ ecg.respiratory_period.spectral_breathing_rate|number_format(1) }} | bpm |
 {% endif %}
+| 検出ピーク数 | {{ ecg.respiratory_period.peak_count }} | 回 |
+| 検出トラフ数 | {{ ecg.respiratory_period.trough_count }} | 回 |
 
 {% endif %}
-{% if ecg.rbp_stats %}
+{% if ecg.rbp_stats is not none and not ecg.rbp_stats.empty %}
 #### 共鳴呼吸回数（Resonance Breathing Pace）
 
 {{ ecg.rbp_stats|df_to_markdown(index=False) }}

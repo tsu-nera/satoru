@@ -7,11 +7,12 @@ EEG/瞑想分析レポートテンプレート用のフォーマット関数を�
 from datetime import datetime
 import pandas as pd
 import numpy as np
+from jinja2 import Undefined
 
 
 def number_format(value, decimals=2):
     """
-    数値をフォーマット（NaN/None対応）
+    数値をフォーマット（NaN/None/Undefined対応）
 
     Parameters
     ----------
@@ -23,7 +24,7 @@ def number_format(value, decimals=2):
     Returns
     -------
     str
-        フォーマットされた数値。NaN/Noneの場合は'N/A'
+        フォーマットされた数値。NaN/None/Undefinedの場合は'N/A'
 
     Examples
     --------
@@ -34,7 +35,7 @@ def number_format(value, decimals=2):
     >>> number_format(float('nan'), 2)
     'N/A'
     """
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    if isinstance(value, Undefined) or value is None or (isinstance(value, float) and np.isnan(value)):
         return 'N/A'
     return f"{value:.{decimals}f}"
 
@@ -62,7 +63,7 @@ def format_percent(value, decimals=1):
     >>> format_percent(75.3, 1)
     '75.3%'
     """
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    if isinstance(value, Undefined) or value is None or (isinstance(value, float) and np.isnan(value)):
         return 'N/A'
 
     # 0-1の範囲の場合は100倍する
@@ -97,7 +98,7 @@ def format_db(value, decimals=2, with_sign=False):
     >>> format_db(2.5, 2, with_sign=True)
     '+2.50 dB'
     """
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    if isinstance(value, Undefined) or value is None or (isinstance(value, float) and np.isnan(value)):
         return 'N/A'
 
     sign = '+' if with_sign and value > 0 else ''
@@ -125,7 +126,7 @@ def format_hz(value, decimals=2):
     >>> format_hz(10.5, 2)
     '10.50 Hz'
     """
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    if isinstance(value, Undefined) or value is None or (isinstance(value, float) and np.isnan(value)):
         return 'N/A'
     return f"{value:.{decimals}f} Hz"
 
@@ -149,7 +150,7 @@ def format_timestamp(value):
     >>> format_timestamp(datetime(2025, 1, 13, 10, 30, 45))
     '2025-01-13 10:30:45'
     """
-    if value is None:
+    if isinstance(value, Undefined) or value is None:
         return 'N/A'
     if isinstance(value, (pd.Timestamp, datetime)):
         return value.strftime('%Y-%m-%d %H:%M:%S')
@@ -179,7 +180,7 @@ def format_duration(seconds):
     >>> format_duration(None)
     'N/A'
     """
-    if seconds is None:
+    if isinstance(seconds, Undefined) or seconds is None:
         return 'N/A'
     try:
         minutes = float(seconds) / 60.0
@@ -215,7 +216,7 @@ def format_change(value, unit='', decimals=1, positive_is_good=True):
     >>> format_change(-1.3, '%', 1, False)
     '**-1.3%**'
     """
-    if value is None or (isinstance(value, float) and np.isnan(value)):
+    if isinstance(value, Undefined) or value is None or (isinstance(value, float) and np.isnan(value)):
         return 'N/A'
     if value == 0:
         return f"±0{unit}"
@@ -289,6 +290,6 @@ def format_score(score, max_score=100, decimals=1):
     >>> format_score(75.234, 100, 1)
     '75.2/100'
     """
-    if score is None or (isinstance(score, float) and np.isnan(score)):
+    if isinstance(score, Undefined) or score is None or (isinstance(score, float) and np.isnan(score)):
         return 'N/A'
     return f"{score:.{decimals}f}/{max_score}"
