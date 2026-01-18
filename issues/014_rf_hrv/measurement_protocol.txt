@@ -1,0 +1,22 @@
+# このコードをrf_hrv_analysis.pyのtrials変数に貼り付けてください
+
+trials = [
+    {'trial': 1, 'rate': 5.0, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
+     'inhale': 4.8, 'exhale': 7.2},
+    {'trial': 2, 'rate': 6.5, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
+     'inhale': 3.7, 'exhale': 5.5},
+    {'trial': 3, 'rate': 7.0, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
+     'inhale': 3.4, 'exhale': 5.1},
+    {'trial': 4, 'rate': 5.5, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
+     'inhale': 4.4, 'exhale': 6.5},
+    {'trial': 5, 'rate': 5.0, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
+     'inhale': 4.8, 'exhale': 7.2},
+    {'trial': 6, 'rate': 4.5, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
+     'inhale': 5.3, 'exhale': 8.0},
+    {'trial': 7, 'rate': 6.0, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
+     'inhale': 4.0, 'exhale': 6.0},
+    {'trial': 8, 'rate': 3.5, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
+     'inhale': 6.9, 'exhale': 10.3},
+    {'trial': 9, 'rate': 4.0, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
+     'inhale': 6.0, 'exhale': 9.0},
+]

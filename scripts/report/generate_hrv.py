@@ -27,7 +27,8 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from jinja2 import Environment, FileSystemLoader
 
-from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data, get_heart_rate_data_from_selfloops
+from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
+from lib.loaders.base import get_heart_rate_data
 from lib.sensors.ecg.hrv import calculate_hrv_standard_set
 from lib.sensors.ecg.segment_analysis_hrv import calculate_segment_hrv_analysis
 from lib.sensors.ecg.visualization.hrv_plot import plot_hrv_time_series, plot_hrv_frequency, plot_hrv_nonlinear
@@ -141,7 +142,7 @@ def analyze_hrv_session(data_path, output_dir, warmup_seconds=60.0):
     hrv_data = get_hrv_data(sl_df, clean_artifacts=True)
 
     # 心拍数データ取得
-    hr_data = get_heart_rate_data_from_selfloops(sl_df)
+    hr_data = get_heart_rate_data(sl_df)
 
     # セッション時間チェック
     total_duration = hrv_data['time'][-1] - hrv_data['time'][0]

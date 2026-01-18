@@ -227,9 +227,10 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         if selfloops_data and selfloops_data.exists():
             # Selfloopsデータから心拍数を取得
             print(f'Loading Selfloops HR data: {selfloops_data}')
-            from lib.loaders.selfloops import load_selfloops_csv, get_heart_rate_data_from_selfloops
+            from lib.loaders.selfloops import load_selfloops_csv
+            from lib.loaders.base import get_heart_rate_data
             sl_df = load_selfloops_csv(str(selfloops_data), warmup_seconds=0.0)
-            hr_data = get_heart_rate_data_from_selfloops(sl_df)
+            hr_data = get_heart_rate_data(sl_df)
             hr_data_source = 'Selfloops'
         else:
             # Museデータから心拍数を取得

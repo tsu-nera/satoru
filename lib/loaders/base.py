@@ -5,8 +5,9 @@
 """
 
 import pandas as pd
+import numpy as np
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 
 
 def add_timestamp_column(
@@ -334,3 +335,121 @@ def resample_to_common_timebase(
         resampled_dfs.append(df_resampled)
 
     return resampled_dfs
+
+
+def clean_rr_intervals(
+    rr_intervals: np.ndarray,
+    min_rr: float = 300,
+    max_rr: float = 2000,
+    max_diff_percent: float = 20
+) -> np.ndarray:
+    """
+    R-R間隔の外れ値を検出・補正
+
+    HRV Task Force (1996) の基準に基づく外れ値除外：
+    - 生理学的に不可能な値を除外
+    - 急激な変化を補間
+
+    Parameters
+    ----------
+    rr_intervals : np.ndarray
+        R-R間隔配列（ms）
+    min_rr : float, default 300
+        最小R-R間隔（ms）これより小さい値は外れ値
+        300ms = 200 bpm
+    max_rr : float, default 2000
+        最大R-R間隔（ms）これより大きい値は外れ値
+        2000ms = 30 bpm
+    max_diff_percent : float, default 20
+        前の値との最大変化率（%）
+        これを超える変化は外れ値の可能性
+
+    Returns
+    -------
+    rr_clean : np.ndarray
+        クリーニング済みR-R間隔配列
+
+    References
+    ----------
+    Task Force of the European Society of Cardiology and the North American
+    Society of Pacing and Electrophysiology (1996). Heart rate variability:
+    standards of measurement, physiological interpretation and clinical use.
+    Circulation, 93(5), 1043-1065.
+    """
+    rr_clean = rr_intervals.copy()
+
+    # 1. 絶対的な閾値による外れ値除外
+    outliers = (rr_clean < min_rr) | (rr_clean > max_rr)
+
+    # 2. 前の値との変化率による外れ値検出
+    if len(rr_clean) > 1:
+        diff_percent = np.abs(np.diff(rr_clean) / rr_clean[:-1]) * 100
+        # 最初の要素はチェックできないので、2番目以降にTrueを追加
+        sudden_change = np.concatenate([[False], diff_percent > max_diff_percent])
+        outliers = outliers | sudden_change
+
+    # 3. 外れ値を補間
+    if np.any(outliers):
+        # 線形補間で外れ値を置き換え
+        valid_indices = np.where(~outliers)[0]
+        if len(valid_indices) > 1:
+            # 有効な値のみで補間
+            rr_clean[outliers] = np.interp(
+                np.where(outliers)[0],
+                valid_indices,
+                rr_clean[valid_indices]
+            )
+        elif len(valid_indices) == 1:
+            # 有効な値が1つだけの場合、その値で埋める
+            rr_clean[outliers] = rr_clean[valid_indices[0]]
+        else:
+            # すべて外れ値の場合、中央値で埋める
+            median_rr = np.median(rr_intervals)
+            if min_rr <= median_rr <= max_rr:
+                rr_clean[:] = median_rr
+            else:
+                # 中央値も外れ値の場合、安全な値を使用
+                rr_clean[:] = (min_rr + max_rr) / 2
+
+    return rr_clean
+
+
+def get_heart_rate_data(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    HRVデータから心拍数データを抽出（Muse形式互換）
+
+    lib/loaders/mind_monitor.py:get_heart_rate_data()と同じ形式で返す。
+    Elite HRV、Selfloops等のHRVデータに対応。
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        HRVデータフレーム（TimeStamp列とHR (bpm)列を含む）
+
+    Returns
+    -------
+    hr_dict : dict
+        {
+            'heart_rate': np.ndarray,   # 心拍数（bpm）
+            'time': np.ndarray,         # 相対時間（秒）
+            'timestamps': np.ndarray    # 絶対時刻（pandas Timestamp）
+        }
+
+    Examples
+    --------
+    >>> df = load_elite_hrv_txt('data/2026-01-17 17-47-13.txt')
+    >>> hr_data = get_heart_rate_data(df)
+    >>> print(hr_data['heart_rate'].mean())
+    75.5
+    """
+    if 'HR (bpm)' not in df.columns:
+        raise ValueError("'HR (bpm)' column not found")
+
+    # 心拍数が0より大きいデータのみ抽出
+    df_hr = df[df['HR (bpm)'] > 0].copy()
+
+    return {
+        'heart_rate': df_hr['HR (bpm)'].values,
+        'time': df_hr['Time_sec'].values,
+        'timestamps': df_hr['TimeStamp'].values
+    }
