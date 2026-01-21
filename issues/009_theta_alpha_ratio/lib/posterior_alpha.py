@@ -61,7 +61,7 @@ def calculate_posterior_alpha(
     df: pd.DataFrame,
     channels: Optional[Iterable[str]] = None,
     band: Tuple[float, float] = (8.0, 13.0),
-    resample_interval: str = '10S',
+    resample_interval: str = '10s',
     smoothing_seconds: float = 6.0,
     rolling_window_seconds: float = 8.0,
     raw: Optional[mne.io.BaseRaw] = None,

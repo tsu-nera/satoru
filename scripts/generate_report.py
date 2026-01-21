@@ -352,7 +352,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         df_for_band,
         img_path=img_dir / 'band_power_time_series.png',
         rolling_window=200,
-        resample_interval='10S',
+        resample_interval='10s',
         smooth_window=5,
         clip_percentile=98.0
     )

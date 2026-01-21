@@ -78,7 +78,7 @@ def calculate_smr(
     channels: Optional[Iterable[str]] = None,
     band: Optional[Tuple[float, float]] = None,
     band_key: Optional[str] = None,
-    resample_interval: str = '10S',
+    resample_interval: str = '10s',
     smoothing_seconds: float = 6.0,
     rolling_window_seconds: float = 8.0,
     raw: Optional[mne.io.BaseRaw] = None,

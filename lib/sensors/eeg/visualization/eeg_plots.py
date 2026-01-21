@@ -126,7 +126,7 @@ def plot_band_power_time_series(
     bands=None,
     img_path=None,
     rolling_window=50,
-    resample_interval='10S',
+    resample_interval='10s',
     smooth_window=5,
     clip_percentile=None
 ):
@@ -144,7 +144,7 @@ def plot_band_power_time_series(
     rolling_window : int
         Window size for moving average
     resample_interval : str, optional
-        Resampling interval (e.g., '2S') for smoothing
+        Resampling interval (e.g., '2s') for smoothing
     smooth_window : int, optional
         Rolling window size (samples) for additional smoothing (centered)
     clip_percentile : float, optional

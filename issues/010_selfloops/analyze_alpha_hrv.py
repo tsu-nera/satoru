@@ -31,7 +31,7 @@ from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
 from lib.sensors.ecg.hrv import calculate_hrv_standard_set
 
 
-def create_aligned_timeseries(alpha_result, hrv_result, eeg_start, hrv_start, resample_interval='30S'):
+def create_aligned_timeseries(alpha_result, hrv_result, eeg_start, hrv_start, resample_interval='30s'):
     """
     Alpha波とHRVの時系列データを同期
 
@@ -86,8 +86,8 @@ def create_aligned_timeseries(alpha_result, hrv_result, eeg_start, hrv_start, re
     }).set_index('timestamp')
 
     # インデックスを統一してマージ
-    aligned_df['rmssd'] = rmssd_filtered.reindex(aligned_df.index, method='nearest', tolerance='30S')
-    aligned_df['lfhf_ratio'] = lfhf_filtered.reindex(aligned_df.index, method='nearest', tolerance='30S')
+    aligned_df['rmssd'] = rmssd_filtered.reindex(aligned_df.index, method='nearest', tolerance='30s')
+    aligned_df['lfhf_ratio'] = lfhf_filtered.reindex(aligned_df.index, method='nearest', tolerance='30s')
 
     # 欠損値を含む行を削除
     aligned_df = aligned_df.dropna()
@@ -605,7 +605,7 @@ def main():
     # 3. Alpha波解析
     print('Analyzing: Alpha Power...')
     try:
-        alpha_result = calculate_alpha_power(eeg_df, resample_interval='10S')
+        alpha_result = calculate_alpha_power(eeg_df, resample_interval='10s')
         print(f'  Alpha Power: {alpha_result.alpha_db:.2f} dB')
         print(f'  Alpha Score: {alpha_result.score:.1f} dBx')
     except Exception as e:

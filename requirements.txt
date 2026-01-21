@@ -3,7 +3,7 @@
 
 # Core Data Processing
 numpy>=1.25,<2.0  # NeuroKit2がnp.trapzを使用するため2.0未満に制限
-pandas>=2.0
+pandas>=3.0
 
 # Visualization
 matplotlib>=3.7

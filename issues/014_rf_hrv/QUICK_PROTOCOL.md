@@ -51,7 +51,7 @@
 # rf_hrv_analysis.pyのtrials変数を以下に更新
 
 trials = [
-    {'trial': 1, 'rate': 5.0, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
+    {'trial': 1, git 'rate': 5.0, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
      'inhale': 4.8, 'exhale': 7.2},
     {'trial': 2, 'rate': 3.5, 'file': 'YYYY-MM-DD HH-MM-SS.txt',
      'inhale': 6.9, 'exhale': 10.3},

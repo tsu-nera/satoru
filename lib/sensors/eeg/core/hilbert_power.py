@@ -24,7 +24,7 @@ def calculate_hilbert_band_power(
     band: Tuple[float, float],
     channels: Sequence[str],
     start_time: pd.Timestamp,
-    resample_interval: str = '10S',
+    resample_interval: str = '10s',
     smoothing_seconds: float = 6.0,
     rolling_window_seconds: float = 8.0,
     outlier_percentile: float = 0.90,
@@ -43,7 +43,7 @@ def calculate_hilbert_band_power(
     start_time : pd.Timestamp
         セッション開始時刻（タイムインデックス生成用）。
     resample_interval : str
-        リサンプル間隔（例: '10S'）。Noneの場合はリサンプルしない。
+        リサンプル間隔（例: '10s'）。Noneの場合はリサンプルしない。
     smoothing_seconds : float
         ローリング平均による平滑化時定数（秒）。0以下で無効。
     rolling_window_seconds : float
@@ -126,7 +126,7 @@ def calculate_channel_average_power(
     band: Tuple[float, float],
     channels: Sequence[str],
     start_time: pd.Timestamp,
-    resample_interval: str = '10S',
+    resample_interval: str = '10s',
     smoothing_seconds: float = 6.0,
     rolling_window_seconds: float = 8.0,
     outlier_percentile: float = 0.90,
