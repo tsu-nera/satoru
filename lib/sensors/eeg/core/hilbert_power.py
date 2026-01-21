@@ -110,12 +110,12 @@ def calculate_hilbert_band_power(
 
     # 平滑化（ローリング平均）
     if smoothing_seconds and smoothing_seconds > 0:
-        window = f'{max(int(smoothing_seconds), 1)}S'
+        window = f'{max(int(smoothing_seconds), 1)}s'
         power_df = power_df.rolling(window=window, min_periods=1).mean()
 
     # メディアンフィルタ（ローリングウィンドウ）
     if rolling_window_seconds and rolling_window_seconds > 0:
-        window = f'{max(int(rolling_window_seconds), 1)}S'
+        window = f'{max(int(rolling_window_seconds), 1)}s'
         power_df = power_df.rolling(window=window, min_periods=1).median()
 
     return power_df.dropna()
