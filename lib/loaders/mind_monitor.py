@@ -51,6 +51,17 @@ def load_mind_monitor_csv(csv_path, filter_headband=True, warmup_seconds=60.0):
     # 相対時間 (秒) を計算
     df['Time_sec'] = (df['TimeStamp'] - df['TimeStamp'].iloc[0]).dt.total_seconds()
 
+    # センサーカラムを数値型に変換（文字列混入対策）
+    # Mind Monitorはイベントログをセンサーカラムに誤記録する場合がある
+    # 例: Gyro_Zに '/muse/event/disconnected UNKNOWN' が混入
+    sensor_columns = [
+        'Accelerometer_X', 'Accelerometer_Y', 'Accelerometer_Z',
+        'Gyro_X', 'Gyro_Y', 'Gyro_Z'
+    ]
+    for col in sensor_columns:
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce')
+
     # HeadBandOnフィルタリング（全センサー共通）
     if filter_headband:
         df = df[df['HeadBandOn'] == 1].copy()

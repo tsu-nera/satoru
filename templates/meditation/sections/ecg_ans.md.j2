@@ -21,32 +21,31 @@
 > - **HF (0.15-0.4 Hz)**: High Frequency - 副交感神経活動（呼吸性洞性不整脈）
 
 {% endif %}
-{% if ecg.hrv_time_stats is not none or ecg.hrv_freq_stats is not none %}
+{% if ecg.hrv_time_stats is not none or ecg.hrv_freq_stats is not none or ecg.hrv_nonlinear_stats is not none %}
 ### 統計指標
 
 {% if ecg.hrv_time_stats is not none %}
 #### Time Domain
 
-{{ ecg.hrv_time_stats|df_to_markdown(floatfmt='.2f', index=False) }}
+{{ ecg.hrv_time_stats|df_to_markdown(floatfmt='.2f', index=False, standardize_columns=True) }}
 
 {% endif %}
 {% if ecg.hrv_freq_stats is not none %}
 #### Frequency Domain
 
-{{ ecg.hrv_freq_stats|df_to_markdown(index=False) }}
+{{ ecg.hrv_freq_stats|df_to_markdown(floatfmt='.4f', index=False, standardize_columns=True) }}
+
+{% endif %}
+{% if ecg.hrv_nonlinear_stats is not none %}
+#### Nonlinear
+
+{{ ecg.hrv_nonlinear_stats|df_to_markdown(floatfmt='.3f', index=False, standardize_columns=True) }}
 
 {% endif %}
 > **指標の説明**:
 > - **時間領域（Time Domain）**: R-R間隔の変動を時間で評価。SDNN/RMSSDが高いほど心拍変動が大きく、リラックス状態。
 > - **周波数領域（Frequency Domain）**: 心拍変動を周波数解析。HFは副交感神経、LFは交感神経＋副交感神経の混合。
-> - **非線形（Nonlinear）**: Poincaréプロットによる複雑性評価。SD1は短期変動、SD2は長期変動。
-{% if ecg.respiratory_period %}
->
-> **⚠️ LF/HF比の解釈について**: 呼吸数が{{ ecg.respiratory_period.breathing_rate|number_format(1) }}回/分と非常に遅いため、呼吸性変動がLF帯域（2.4-9回/分）に集中しています。この場合、LF/HF比の従来解釈（>2.5=交感神経優位）は**適用できません**。むしろ深い瞑想状態を示唆しています。
-{% else %}
->
-> - **LF/HF Ratio**: 1.0未満で副交感神経優位（リラックス）、1.0以上で交感神経優位（ストレス・緊張）が示唆されます。
-{% endif %}
+> - **非線形（Nonlinear）**: Poincaréプロットによる複雑性評価。SD1は短期変動、SD2は長期変動。DFAは心拍変動の長期相関、1/f βはゆらぎの特性を示す。
 
 {% endif %}
 {% if ecg.respiratory_stats is not none %}

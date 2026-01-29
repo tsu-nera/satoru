@@ -77,6 +77,7 @@ def calculate_hrv_standard_set(
     - SD1/SD2: 非線形バランス指標
     - DFA α1: 短期スケールのDFA指数（4-11拍）
     - DFA α2: 長期スケールのDFA指数（>11拍）
+    - 1/f β: パワースペクトルの傾き（ゆらぎ指数）
 
     Parameters
     ----------
@@ -378,7 +379,6 @@ def _create_hrv_statistics_table(
         ('HRV_HFPeak', 'HF Peak', 'Hz'),
         ('HRV_LFHF', 'LF/HF', '-'),
         ('HRV_TP', 'Total Power', 'ms²'),
-        ('HRV_1f_beta', '1/f β (Exponent)', '-'),
     ]
 
     for col_name, metric_name, unit in freq_metrics:
@@ -398,6 +398,7 @@ def _create_hrv_statistics_table(
         ('HRV_SD1SD2', 'SD1/SD2', '-'),
         ('HRV_DFA_alpha1', 'DFA α1', '-'),
         ('HRV_DFA_alpha2', 'DFA α2', '-'),
+        ('HRV_1f_beta', '1/f β (Exponent)', '-'),
     ]
 
     for col_name, metric_name, unit in nonlinear_metrics:
