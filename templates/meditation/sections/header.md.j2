@@ -1,4 +1,5 @@
 - **生成日時**: {{ generated_at }}
-- **データファイル**: `{{ data_file }}`
-- **記録時間**: {{ start_time|format_timestamp }} ~ {{ end_time|format_timestamp }}
+- **EEGデータ**: `{{ data_file }}`
+{% if selfloops_file %}- **ECGデータ**: `{{ selfloops_file }}`
+{% endif %}- **記録時間**: {{ start_time|format_timestamp }} ~ {{ end_time|format_timestamp }}
 - **計測時間**: {{ duration_sec|format_duration }}

@@ -18,6 +18,9 @@ from .statistics import calculate_band_statistics, calculate_hsi_statistics
 # PAF解析
 from .paf import calculate_paf
 
+# ITF解析
+from .itf import calculate_itf
+
 # ユーティリティ
 from .utils import get_psd_peak_frequencies
 
@@ -82,6 +85,8 @@ __all__ = [
     'calculate_hsi_statistics',
     # PAF解析
     'calculate_paf',
+    # ITF解析
+    'calculate_itf',
     # ユーティリティ
     'get_psd_peak_frequencies',
     # Fmθ解析

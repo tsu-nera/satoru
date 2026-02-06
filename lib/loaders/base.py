@@ -341,8 +341,9 @@ def clean_rr_intervals(
     rr_intervals: np.ndarray,
     min_rr: float = 300,
     max_rr: float = 2000,
-    max_diff_percent: float = 20
-) -> np.ndarray:
+    max_diff_percent: float = 20,
+    return_quality: bool = False
+):
     """
     R-R間隔の外れ値を検出・補正
 
@@ -363,11 +364,21 @@ def clean_rr_intervals(
     max_diff_percent : float, default 20
         前の値との最大変化率（%）
         これを超える変化は外れ値の可能性
+    return_quality : bool, default False
+        True: 品質統計も返す (rr_clean, quality_stats)
+        False: クリーニング済み配列のみ返す (rr_clean)
 
     Returns
     -------
     rr_clean : np.ndarray
         クリーニング済みR-R間隔配列
+    quality_stats : dict (return_quality=True時のみ)
+        {
+            'total_intervals': int,
+            'outliers_count': int,
+            'outliers_percent': float,
+            'quality_rate': float  (1.0 - outliers_percent)
+        }
 
     References
     ----------
@@ -387,6 +398,18 @@ def clean_rr_intervals(
         # 最初の要素はチェックできないので、2番目以降にTrueを追加
         sudden_change = np.concatenate([[False], diff_percent > max_diff_percent])
         outliers = outliers | sudden_change
+
+    # 品質統計の計算
+    if return_quality:
+        total = len(rr_intervals)
+        outliers_count = int(np.sum(outliers))
+        outliers_percent = (outliers_count / total * 100) if total > 0 else 0.0
+        quality_stats = {
+            'total_intervals': total,
+            'outliers_count': outliers_count,
+            'outliers_percent': outliers_percent,
+            'quality_rate': 100.0 - outliers_percent
+        }
 
     # 3. 外れ値を補間
     if np.any(outliers):
@@ -411,6 +434,8 @@ def clean_rr_intervals(
                 # 中央値も外れ値の場合、安全な値を使用
                 rr_clean[:] = (min_rr + max_rr) / 2
 
+    if return_quality:
+        return rr_clean, quality_stats
     return rr_clean
 
 

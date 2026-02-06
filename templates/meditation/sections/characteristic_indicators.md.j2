@@ -1,57 +1,5 @@
 ## 🎯 特徴的指標分析
 
-{% if indicators.fmtheta %}
-### Frontal Midline Theta (Fmθ)
-
-{% if indicators.fmtheta.img %}
-![Frontal Midline Theta](img/{{ indicators.fmtheta.img }})
-
-{% endif %}
-{% if indicators.fmtheta.stats is not none %}
-{% if 'Unit' in indicators.fmtheta.stats.columns %}
-{% set stats_df = indicators.fmtheta.stats.drop(columns=['Unit']) %}
-{% else %}
-{% set stats_df = indicators.fmtheta.stats %}
-{% endif %}
-{{ stats_df|df_to_markdown(floatfmt='.3f', index=False) }}
-
-> 単位: dB (10×log₁₀(μV²))
-
-{% endif %}
-{% if indicators.fmtheta.increase is not none %}
-セッション後半の平均Fmθは前半比で {{ indicators.fmtheta.increase|format_change('%', 1) }} 変化しました。
-
-{% endif %}
-{% endif %}
-
-{% if indicators.smr %}
-### SMR-band Power (AF)
-
-{% if indicators.smr.img %}
-![SMR](img/{{ indicators.smr.img }})
-
-{% endif %}
-{% if indicators.smr.stats is not none %}
-{% if 'Unit' in indicators.smr.stats.columns %}
-{% set stats_df = indicators.smr.stats.drop(columns=['Unit']) %}
-{% else %}
-{% set stats_df = indicators.smr.stats %}
-{% endif %}
-{{ stats_df|df_to_markdown(floatfmt='.3f', index=False) }}
-
-> 単位: dB (10×log₁₀(μV²))
-
-{% endif %}
-{% if indicators.smr.increase is not none %}
-セッション後半の平均SMRは前半比で {{ indicators.smr.increase|format_change('%', 1) }} 変化しました。
-
-{% endif %}
-> **解釈**: SMR帯域（12-15Hz）は身体の静止と穏やかな集中に関連します。
-> - 増加: 身体静止・運動抑制・集中状態
-> - 注意: AF領域での測定のため、本来のSMR（C3/C4）の代替指標として扱います。
-
-{% endif %}
-
 {% if indicators.paf %}
 ### Individual Alpha Frequency (IAF)
 
@@ -89,43 +37,6 @@
 {% endif %}
 > **解釈**: Brain Recharge ScoreはAlpha波パワーに基づく精神的回復度の指標です。高い値はリラックス・回復状態を示唆します。
 > 単位: Score=dBx, Alpha Power=dB
-
-{% endif %}
-
-{% if indicators.faa %}
-### Frontal Alpha Asymmetry (FAA)
-
-{% if indicators.faa.img %}
-![Frontal Alpha Asymmetry](img/{{ indicators.faa.img }})
-
-{% endif %}
-{% if indicators.faa.stats is not none %}
-{{ indicators.faa.stats|df_to_markdown(floatfmt='.3f', index=False) }}
-
-> **解釈**: FAA = 10×log₁₀(右Alpha) - 10×log₁₀(左Alpha) [dB単位]。
-> Alpha波パワーは脳活動と逆相関（パワー↑=活動↓）するため、
-> 正値（右Alpha > 左Alpha）は左半球優位（接近動機・ポジティブ感情）、
-> 負値（左Alpha > 右Alpha）は右半球優位（回避動機・ネガティブ感情）を示唆します。
-
-{% endif %}
-{% endif %}
-
-{% if indicators.spectral_entropy %}
-### Spectral Entropy (SE)
-
-{{ indicators.spectral_entropy.stats|df_to_markdown(floatfmt='.3f', index=False) }}
-
-{% if indicators.spectral_entropy.change is not none %}
-{% if indicators.spectral_entropy.change < 0 %}
-{% set interpretation = "低下（注意集中）" %}
-{% else %}
-{% set interpretation = "上昇（注意散漫）" %}
-{% endif %}
-セッション後半のエントロピーは前半比で {{ indicators.spectral_entropy.change|format_change('%', 1) }} 変化しました。
-**解釈**: {{ interpretation }}
-
-{% endif %}
-> **解釈**: Spectral Entropyは周波数成分の多様性を示します。低い値は特定の周波数帯に集中（集中状態）、高い値は広帯域に分散（散漫状態）を示唆します。
 
 {% endif %}
 

@@ -113,7 +113,7 @@ def calculate_segment_analysis(
     レポートのテーブルには全セグメントが表示されます。
     """
     # Statistical DFのバリデーション
-    required_keys = ['band_powers', 'band_ratios', 'spectral_entropy', 'iaf']
+    required_keys = ['band_powers', 'band_ratios', 'spectral_entropy', 'iaf', 'itf']
     missing_keys = [k for k in required_keys if k not in statistical_df]
     if missing_keys:
         raise ValueError(f'statistical_dfには{missing_keys}キーが必要です。')
@@ -162,6 +162,10 @@ def calculate_segment_analysis(
     # IAF時系列をStatistical DFから取得
     iaf_series = statistical_df['iaf'].sort_index()
     iaf_series = iaf_series[iaf_series.index >= session_start]
+
+    # ITF時系列をStatistical DFから取得
+    itf_series = statistical_df['itf'].sort_index()
+    itf_series = itf_series[itf_series.index >= session_start]
 
     # セグメント開始時刻のリストを取得（band_powersから）
     # band_powersのindexがセグメント開始タイムスタンプ
@@ -229,6 +233,11 @@ def calculate_segment_analysis(
             if pd.notna(iaf_val) and iaf_val != 0:
                 iaf_cv = iaf_std / iaf_val
 
+        # ITF平均（Statistical DFから自動取得済み）
+        itf_mean = np.nan
+        itf_slice = itf_series.loc[(itf_series.index >= start) & (itf_series.index < end)]
+        itf_mean = itf_slice.mean()
+
         # fNIRS値を取得（オプション）
         hbo_mean = np.nan
         hbr_mean = np.nan
@@ -255,14 +264,6 @@ def calculate_segment_analysis(
         yaw_rms = np.nan
         if posture_df is not None and start in posture_df.index:
             yaw_rms = posture_df.loc[start, 'yaw_rms']
-
-        # FMT/α比率の計算
-        # FMT (dB) / Alpha (dB) → 線形比率
-        fmt_alpha_ratio = np.nan
-        fmt_alpha_ratio_db = np.nan
-        if pd.notna(fm_mean) and pd.notna(alpha_mean):
-            fmt_alpha_ratio_db = fm_mean - alpha_mean
-            fmt_alpha_ratio = 10 ** (fmt_alpha_ratio_db / 10)
 
         # 相対パワー（%）の計算
         # dB → パワーに変換（10^(dB/10)）
@@ -309,6 +310,7 @@ def calculate_segment_analysis(
             'smr_mean': smr_mean,
             'spectral_entropy': se_mean,
             'iaf_mean': iaf_mean,
+            'itf_mean': itf_mean,
             'delta_mean': delta_mean,
             'theta_mean': theta_mean,
             'alpha_mean': alpha_mean,
@@ -325,8 +327,6 @@ def calculate_segment_analysis(
             'beta_alpha_ratio_db': beta_alpha_ratio_db,
             'beta_theta_ratio': beta_theta_ratio,
             'beta_theta_ratio_db': beta_theta_ratio_db,
-            'fmt_alpha_ratio': fmt_alpha_ratio,
-            'fmt_alpha_ratio_db': fmt_alpha_ratio_db,
             'hbo_mean': hbo_mean,
             'hbr_mean': hbr_mean,
             'hr_mean': hr_mean,
@@ -420,10 +420,10 @@ def calculate_segment_analysis(
             'β/α': row['beta_alpha_ratio'],
             'β/θ': row['beta_theta_ratio'],
             'Fmθ (dB)': row['fmtheta_mean'],
-            'FMT/α': row['fmt_alpha_ratio'],
             'SMR (dB)': row['smr_mean'],
             'SE': row['spectral_entropy'],
             'IAF (Hz)': row['iaf_mean'],
+            'ITF (Hz)': row['itf_mean'],
             'HbO': row['hbo_mean'],
             'HbR': row['hbr_mean'],
             'HR': row['hr_mean'],

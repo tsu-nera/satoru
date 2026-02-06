@@ -6,10 +6,23 @@
 
 {% endif %}
 {% if hsi.statistics is not none and not hsi.statistics.empty %}
-### チャネル別詳細
+### チャネル別詳細（EEG）
 
 {{ hsi.statistics|df_to_markdown(floatfmt='.2f', index=False) }}
 
 > **注**: 1.0=Good, 2.0=Medium, 4.0=Bad
+
+{% endif %}
+{% if hsi.rr_quality_stats %}
+### R-R間隔データ品質（ECG）
+
+| Metric | Value | Unit |
+|:-------|------:|:-----|
+| Total Intervals | {{ hsi.rr_quality_stats.total_intervals }} | count |
+| Valid Intervals | {{ hsi.rr_quality_stats.total_intervals - hsi.rr_quality_stats.outliers_count }} | count |
+| Outliers | {{ hsi.rr_quality_stats.outliers_count }} | count |
+| Quality Rate | {{ hsi.rr_quality_stats.quality_rate|number_format(1) }} | % |
+
+> **品質基準**: HRV Task Force (1996) に基づき、生理学的に不可能な値（300ms未満、2000ms超）および前の値との変化率が20%を超える値を外れ値として検出・補正しています。
 
 {% endif %}

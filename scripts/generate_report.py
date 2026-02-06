@@ -36,6 +36,7 @@ from lib import (
     calculate_spectrogram,
     calculate_spectrogram_all_channels,
     calculate_paf,
+    calculate_itf,
     get_psd_peak_frequencies,
     calculate_frontal_theta,
     calculate_frontal_asymmetry,
@@ -66,10 +67,7 @@ from lib.sensors.eeg.visualization import (
     plot_band_ratios,
     plot_paf,
     plot_raw_preview,
-    plot_frontal_theta,
-    plot_frontal_asymmetry,
     plot_psd_peaks,
-    plot_smr,
 )
 
 from lib.visualization import (
@@ -274,8 +272,17 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
             from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
             from lib.sensors.ecg.hrv import calculate_hrv_standard_set
 
+            # Selfloopsファイルパスを保存（レポート表示用）
+            results['selfloops_file'] = selfloops_data.name
+
             sl_df = load_selfloops_csv(str(selfloops_data), warmup_seconds=60.0)
             hrv_data = get_hrv_data(sl_df, clean_artifacts=True)
+
+            # R-R間隔の品質情報を保存
+            if 'quality_stats' in hrv_data:
+                results['rr_quality_stats'] = hrv_data['quality_stats']
+                print(f"  R-R間隔品質: {hrv_data['quality_stats']['quality_rate']:.1f}% "
+                      f"({hrv_data['quality_stats']['outliers_count']}/{hrv_data['quality_stats']['total_intervals']} outliers)")
 
             # セッション時間チェック
             total_duration = hrv_data['time'][-1] - hrv_data['time'][0]
@@ -452,6 +459,16 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
             'cog': paf_dict['iaf_cog']
         }
 
+        # ITF分析
+        print('計算中: Individual Theta Frequency...')
+        itf_dict = calculate_itf(psd_dict)
+        results['itf'] = {
+            'value': itf_dict['itf'],
+            'std': itf_dict['itf_std'],
+            'peak': itf_dict['itf_peak'],
+            'cog': itf_dict['itf_cog']
+        }
+
         # PSDピーク分析（SMR含む）
         try:
             print('計算中: PSDピーク分析...')
@@ -493,12 +510,6 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         try:
             print('計算中: Frontal Alpha Asymmetry...')
             faa_result = calculate_frontal_asymmetry(df, raw=raw_unfiltered)
-            print('プロット中: Frontal Alpha Asymmetry...')
-            plot_frontal_asymmetry(
-                faa_result,
-                img_path=img_dir / 'frontal_alpha_asymmetry.png'
-            )
-            results['faa_img'] = 'frontal_alpha_asymmetry.png'
             results['faa_stats'] = faa_result.statistics
         except Exception as exc:
             print(f'警告: FAA解析に失敗しました ({exc})')
@@ -528,12 +539,6 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
     try:
         print('計算中: Frontal Midline Theta...')
         fmtheta_result = calculate_frontal_theta(df, raw=raw_unfiltered if raw_unfiltered else None)
-        print('プロット中: Frontal Midline Theta...')
-        plot_frontal_theta(
-            fmtheta_result,
-            img_path=img_dir / 'frontal_midline_theta.png'
-        )
-        results['frontal_theta_img'] = 'frontal_midline_theta.png'
         results['frontal_theta_stats'] = fmtheta_result.statistics
         results['frontal_theta_increase'] = fmtheta_result.metadata.get('increase_rate_percent')
     except Exception as exc:
@@ -544,12 +549,6 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
     try:
         print('計算中: SMR (12-15Hz, AF領域)...')
         smr_result = calculate_smr(df, raw=raw_unfiltered if raw_unfiltered else None)
-        print('プロット中: SMR...')
-        plot_smr(
-            smr_result,
-            img_path=img_dir / 'smr.png'
-        )
-        results['smr_img'] = 'smr.png'
         results['smr_stats'] = smr_result.statistics
         results['smr_increase'] = smr_result.metadata.get('increase_rate_percent')
     except Exception as exc:

@@ -77,6 +77,7 @@ def create_statistical_dataframe(
             'band_ratios': DataFrame,      # セグメント別バンド比率時系列
             'spectral_entropy': DataFrame, # セグメント別Spectral Entropy時系列（正規化済み）
             'iaf': Series,                 # Individual Alpha Frequency時系列（Hz）
+            'itf': Series,                 # Individual Theta Frequency時系列（Hz）
             'fnirs': DataFrame,            # セグメント別fNIRS時系列（HbO/HbR平均）
             'hr': DataFrame,               # セグメント別心拍数時系列
             'posture': DataFrame,          # セグメント別Posture統計量時系列
@@ -215,6 +216,30 @@ def create_statistical_dataframe(
 
     # IAF時系列をSeriesに変換
     iaf_series = pd.Series(iaf_values, index=timestamps)
+
+    # ITF（Individual Theta Frequency）計算
+    # Epochsごとにシータ帯域のピーク周波数を計算
+    itf_values = []
+    theta_range = (5.0, 7.0)
+
+    for epoch_idx in range(len(epochs)):
+        # このエポックのPSD (n_channels, n_freqs)
+        psd_epoch = psds[epoch_idx]
+
+        # シータ帯域のマスク
+        theta_mask = (freqs >= theta_range[0]) & (freqs <= theta_range[1])
+        theta_freqs = freqs[theta_mask]
+
+        # 全チャネルの平均PSD（シータ帯域）
+        psd_theta_avg = psd_epoch[:, theta_mask].mean(axis=0)
+
+        # ピーク周波数を検出
+        peak_idx = psd_theta_avg.argmax()
+        itf = theta_freqs[peak_idx]
+        itf_values.append(itf)
+
+    # ITF時系列をSeriesに変換
+    itf_series = pd.Series(itf_values, index=timestamps)
 
     # バンド比率計算
     ratios_dict = {}
@@ -428,6 +453,47 @@ def create_statistical_dataframe(
                 'Value': iaf_clean.std() / iaf_clean.mean() if iaf_clean.mean() > 0 else np.nan,
                 'Unit': 'ratio',
                 'DisplayName': 'IAF変動係数',
+            },
+        ])
+
+    # ITF統計
+    itf_clean = itf_series.dropna()
+    if len(itf_clean) > 0:
+        # Z-score外れ値除去（閾値3.0）
+        if len(itf_clean) > 3:
+            z_scores = np.abs(stats.zscore(itf_clean))
+            filtered_itf = itf_clean[z_scores < 3.0]
+            if len(filtered_itf) > 0:
+                itf_clean = filtered_itf
+
+        statistics_rows.extend([
+            {
+                'Category': 'ITF',
+                'Metric': 'itf_Mean',
+                'Value': itf_clean.mean(),
+                'Unit': 'Hz',
+                'DisplayName': 'ITF平均 (Hz)',
+            },
+            {
+                'Category': 'ITF',
+                'Metric': 'itf_Median',
+                'Value': itf_clean.median(),
+                'Unit': 'Hz',
+                'DisplayName': 'ITF中央値 (Hz)',
+            },
+            {
+                'Category': 'ITF',
+                'Metric': 'itf_Std',
+                'Value': itf_clean.std(),
+                'Unit': 'Hz',
+                'DisplayName': 'ITF標準偏差 (Hz)',
+            },
+            {
+                'Category': 'ITF',
+                'Metric': 'itf_CV',
+                'Value': itf_clean.std() / itf_clean.mean() if itf_clean.mean() > 0 else np.nan,
+                'Unit': 'ratio',
+                'DisplayName': 'ITF変動係数',
             },
         ])
 
@@ -678,6 +744,7 @@ def create_statistical_dataframe(
         'band_ratios': band_ratios_df,
         'spectral_entropy': se_df,
         'iaf': iaf_series,
+        'itf': itf_series,
         'fnirs': fnirs_df,
         'hr': hr_df,
         'posture': posture_df,

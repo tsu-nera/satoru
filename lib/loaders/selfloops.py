@@ -214,7 +214,8 @@ def get_hrv_data(df: pd.DataFrame,
             'hr': np.ndarray,               # 心拍数（bpm）
             'time': np.ndarray,             # 相対時間（秒）
             'session_start': datetime,      # セッション開始時刻
-            'sampling_rate': int            # 仮想サンプリングレート（Hz）
+            'sampling_rate': int,           # 仮想サンプリングレート（Hz）
+            'quality_stats': dict           # R-R間隔の品質統計（clean_artifacts=Trueのみ）
         }
 
     Examples
@@ -224,6 +225,8 @@ def get_hrv_data(df: pd.DataFrame,
     >>> hrv_data = get_hrv_data(df)
     >>> print(hrv_data['hr'].mean())  # 外れ値除外済みの心拍数
     75.5
+    >>> print(hrv_data['quality_stats']['quality_rate'])  # 品質率
+    98.5
 
     >>> # 生データのまま（外れ値含む）
     >>> hrv_data = get_hrv_data(df, clean_artifacts=False)
@@ -242,6 +245,7 @@ def get_hrv_data(df: pd.DataFrame,
       理由: NeuroKit2の外れ値処理は学術研究で検証済みの標準手法
     """
     rr_intervals = df['R-R (ms)'].values
+    quality_stats = None
 
     if use_device_hr:
         # 後方互換性のため残す（非推奨）
@@ -253,11 +257,12 @@ def get_hrv_data(df: pd.DataFrame,
         if clean_artifacts:
             # R-R間隔の外れ値を検出・補正
             # HRV Task Force (1996) の基準に基づく
-            rr_intervals_clean = clean_rr_intervals(
+            rr_intervals_clean, quality_stats = clean_rr_intervals(
                 rr_intervals,
                 min_rr=300,   # 最小R-R間隔 (ms) → 200 bpm上限
                 max_rr=2000,  # 最大R-R間隔 (ms) → 30 bpm下限
-                max_diff_percent=20  # 前の値との最大変化率 (%)
+                max_diff_percent=20,  # 前の値との最大変化率 (%)
+                return_quality=True
             )
 
             # クリーニング済みR-R間隔から心拍数を計算
@@ -267,7 +272,7 @@ def get_hrv_data(df: pd.DataFrame,
             rr_intervals_clean = rr_intervals
             hr = 60000.0 / rr_intervals
 
-    return {
+    result = {
         'rr_intervals': rr_intervals,           # 生データ
         'rr_intervals_clean': rr_intervals_clean,  # クリーニング済み
         'hr': hr,
@@ -275,3 +280,8 @@ def get_hrv_data(df: pd.DataFrame,
         'session_start': df.attrs.get('session_start'),
         'sampling_rate': 1000  # R-R間隔はms単位なので1000Hz相当
     }
+
+    if quality_stats is not None:
+        result['quality_stats'] = quality_stats
+
+    return result

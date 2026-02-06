@@ -116,6 +116,7 @@ class MeditationReportRenderer:
         context = {
             'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'data_file': data_path.name,
+            'selfloops_file': results.get('selfloops_file'),  # Selfloopsファイルパス（あれば）
             'start_time': info.get('start_time'),
             'end_time': info.get('end_time'),
             'duration_sec': info.get('duration_sec'),
@@ -128,6 +129,7 @@ class MeditationReportRenderer:
                 'overall_quality': hsi_data.get('overall_quality'),
                 'good_ratio': hsi_data.get('good_ratio', 0.0),
                 'statistics': hsi_data.get('statistics'),
+                'rr_quality_stats': results.get('rr_quality_stats'),  # R-R間隔品質統計を追加
             }
 
         # 生データプレビュー
@@ -177,22 +179,6 @@ class MeditationReportRenderer:
         # 特徴的指標
         indicators = {}
 
-        # Frontal Midline Theta
-        if 'frontal_theta_img' in results or 'frontal_theta_stats' in results:
-            indicators['fmtheta'] = {
-                'img': results.get('frontal_theta_img'),
-                'stats': results.get('frontal_theta_stats'),
-                'increase': results.get('frontal_theta_increase'),
-            }
-
-        # SMR
-        if 'smr_img' in results or 'smr_stats' in results:
-            indicators['smr'] = {
-                'img': results.get('smr_img'),
-                'stats': results.get('smr_stats'),
-                'increase': results.get('smr_increase'),
-            }
-
         # IAF/PAF
         if 'paf_img' in results or 'paf_summary' in results or 'iaf' in results:
             indicators['paf'] = {
@@ -207,20 +193,6 @@ class MeditationReportRenderer:
                 'score': results.get('alpha_power_score'),
                 'db': results.get('alpha_power_db'),
                 'stats': results.get('alpha_power_stats'),
-            }
-
-        # FAA
-        if 'faa_img' in results or 'faa_stats' in results:
-            indicators['faa'] = {
-                'img': results.get('faa_img'),
-                'stats': results.get('faa_stats'),
-            }
-
-        # Spectral Entropy
-        if 'spectral_entropy_stats' in results:
-            indicators['spectral_entropy'] = {
-                'stats': results.get('spectral_entropy_stats'),
-                'change': results.get('spectral_entropy_change'),
             }
 
         # Band Ratios
