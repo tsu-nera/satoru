@@ -324,27 +324,22 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
 
     # 呼吸分析（ECG-Derived Respiration）
     respiration_result = None
-    rbp_result = None
     try:
         if hrv_data is not None:
             print('計算中: 呼吸分析（ECG-Derived Respiration）...')
-            from lib.sensors.ecg.respiration import estimate_resonance_breathing_pace
+            from lib.sensors.ecg.respiration import calculate_breathing_rate
 
-            respiration_result, rbp_result = estimate_resonance_breathing_pace(
+            respiration_result = calculate_breathing_rate(
                 hrv_data,
                 target_fs=8.0,
                 peak_distance=8.0,
-                window_minutes=3.0,
-                bin_width=0.5
+                window_minutes=3.0
             )
 
             # 結果を保存（内部処理用）
             results['respiration_result'] = respiration_result
-            results['rbp_result'] = rbp_result
 
             print(f'  平均BR: {respiration_result.breathing_rate:.1f} bpm')
-            if rbp_result:
-                print(f'  共鳴呼吸回数（RMSSD基準）: {rbp_result.optimal_rmssd["range"]} bpm')
 
     except Exception as e:
         print(f'⚠️  呼吸分析エラー: {e}')

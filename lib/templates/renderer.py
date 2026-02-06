@@ -240,10 +240,6 @@ class MeditationReportRenderer:
             ecg['respiratory_period'] = results['respiration_result']
             # 呼吸統計テーブル（標準フォーマット）
             ecg['respiratory_stats'] = format_respiratory_stats(results['respiration_result'])
-        if 'rbp_result' in results and results['rbp_result'] is not None:
-            rbp = results['rbp_result']
-            if hasattr(rbp, 'bin_statistics') and rbp.bin_statistics is not None:
-                ecg['rbp_stats'] = rbp.bin_statistics
 
         if ecg:
             context['ecg'] = ecg

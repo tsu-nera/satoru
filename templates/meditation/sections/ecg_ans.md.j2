@@ -54,11 +54,3 @@
 {{ ecg.respiratory_stats|df_to_markdown(floatfmt='.1f', index=False, standardize_columns=True) }}
 
 {% endif %}
-{% if ecg.rbp_stats is not none and not ecg.rbp_stats.empty %}
-#### 共鳴呼吸回数（Resonance Breathing Pace）
-
-{{ ecg.rbp_stats|df_to_markdown(index=False) }}
-
-> **共鳴呼吸（Resonance Breathing）**: 呼吸のペースと心拍の周期が共鳴し、HRV（特にRMSSD）が最大化される呼吸回数。通常4.5-6.5回/分が最適値。
-
-{% endif %}
