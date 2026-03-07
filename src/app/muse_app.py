@@ -71,6 +71,22 @@ AUDIO_DURATION = 0.5
 AUDIO_FREQUENCY = 528
 AUDIO_COOLDOWN = 30.0
 
+# 連続音階フィードバック (C4〜C5)
+SCALE_NOTES = [
+    ('C4', 261.63),
+    ('D4', 293.66),
+    ('E4', 329.63),
+    ('F4', 349.23),
+    ('G4', 392.00),
+    ('A4', 440.00),
+    ('B4', 493.88),
+    ('C5', 523.25),
+]
+SCALE_Z_MIN = -1.8   # C4 に対応する Z-score
+SCALE_Z_MAX = 2.4    # C5 に対応する Z-score
+SCALE_TONE_DURATION = 0.2  # 各トーンの長さ（秒）
+SCALE_INTERVAL = 1.0       # トーン再生間隔（秒）
+
 # コンソール更新間隔
 CONSOLE_UPDATE_INTERVAL = 1.0
 
@@ -177,16 +193,111 @@ class AudioFeedback:
 
 
 # --------------------------------------------------------------------------- #
+# ContinuousAudioFeedback - Z-scoreに応じた音階フィードバック
+# --------------------------------------------------------------------------- #
+
+class ContinuousAudioFeedback:
+    """Z-scoreを音階にマッピングし、1秒ごとにトーンを再生する。"""
+
+    def __init__(self, enabled: bool = True):
+        self.enabled = enabled
+        self._use_aplay = AudioFeedback(enabled=False)._use_aplay
+        self._lock = threading.Lock()
+        self._current_z: Optional[float] = None
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+
+    def _z_to_note(self, z: float) -> tuple[str, float]:
+        """Z-scoreを最も近い音階にスナップする。"""
+        z_clamped = max(SCALE_Z_MIN, min(SCALE_Z_MAX, z))
+        z_range = SCALE_Z_MAX - SCALE_Z_MIN
+        idx = (z_clamped - SCALE_Z_MIN) / z_range * (len(SCALE_NOTES) - 1)
+        idx = int(round(idx))
+        idx = max(0, min(len(SCALE_NOTES) - 1, idx))
+        return SCALE_NOTES[idx]
+
+    def _generate_tone(self, frequency: float) -> bytes:
+        """指定周波数の短いトーンをWAVで生成。"""
+        duration = SCALE_TONE_DURATION
+        t = np.linspace(0, duration, int(AUDIO_SAMPLE_RATE * duration), endpoint=False)
+        fade_samples = int(AUDIO_SAMPLE_RATE * 0.02)
+        envelope = np.ones(len(t))
+        envelope[:fade_samples] = np.linspace(0, 1, fade_samples)
+        envelope[-fade_samples:] = np.linspace(1, 0, fade_samples)
+        wave_data = (np.sin(2 * np.pi * frequency * t) * envelope * 32767 * 0.5).astype(np.int16)
+        wav_buf = io.BytesIO()
+        with wave.open(wav_buf, 'wb') as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(AUDIO_SAMPLE_RATE)
+            wf.writeframes(wave_data.tobytes())
+        return wav_buf.getvalue()
+
+    def _play_tone(self, frequency: float) -> None:
+        """トーンを再生。"""
+        try:
+            if self._use_aplay:
+                wav_bytes = self._generate_tone(frequency)
+                with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as f:
+                    f.write(wav_bytes)
+                    tmp_path = f.name
+                try:
+                    subprocess.run(
+                        ['aplay', '-q', tmp_path],
+                        timeout=SCALE_TONE_DURATION + 2,
+                        capture_output=True,
+                    )
+                finally:
+                    try:
+                        os.unlink(tmp_path)
+                    except OSError:
+                        pass
+            else:
+                sys.stdout.write('\a')
+                sys.stdout.flush()
+        except Exception as e:
+            print(f"[Audio] Error: {e}", file=sys.stderr)
+
+    def update_z(self, z: float) -> None:
+        """現在のZ-scoreを更新する。"""
+        with self._lock:
+            self._current_z = z
+
+    def _loop(self) -> None:
+        """1秒ごとにトーンを再生するループ。"""
+        while self._running:
+            with self._lock:
+                z = self._current_z
+            if z is not None:
+                note_name, freq = self._z_to_note(z)
+                self._play_tone(freq)
+            time.sleep(SCALE_INTERVAL)
+
+    def start(self) -> None:
+        if not self.enabled:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._loop, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._running = False
+
+
+# --------------------------------------------------------------------------- #
 # MuseAppState - メインロジック
 # --------------------------------------------------------------------------- #
 
 class MuseAppState:
     """OSCデータの受信、α/β比計算、キャリブレーション、Mind State分類、Recoveries検出。"""
 
-    def __init__(self, calibration_sec: int = DEFAULT_CALIBRATION_SEC, audio: Optional[AudioFeedback] = None):
+    def __init__(self, calibration_sec: int = DEFAULT_CALIBRATION_SEC,
+                 audio: Optional[AudioFeedback] = None,
+                 continuous_audio: Optional[ContinuousAudioFeedback] = None):
         self._lock = threading.Lock()
         self.calibration_sec = calibration_sec
         self.audio = audio
+        self.continuous_audio = continuous_audio
 
         # 最新のOSC値（4ch）
         self._alpha_raw: Optional[List[float]] = None
@@ -305,6 +416,8 @@ class MuseAppState:
                     print("=" * 50)
                     print("Mind State tracking started!")
                     print("=" * 50)
+                    if self.continuous_audio:
+                        self.continuous_audio.start()
                 return
 
             # --- アクティブフェーズ ---
@@ -330,6 +443,10 @@ class MuseAppState:
             # Z-score履歴に追加
             self._z_history.append(z)
 
+            # 連続音階フィードバックにZ-scoreを送信
+            if self.continuous_audio:
+                self.continuous_audio.update_z(z)
+
             # Recoveries検出
             self._check_recovery(now)
 
@@ -338,7 +455,11 @@ class MuseAppState:
                 self._last_console_update = now
                 ts = datetime.now().strftime('%H:%M:%S')
                 state_str = f"{new_state.value:7s}"
-                print(f"[{ts}] {state_str}  Z:{z:+.2f}  Ratio:{smoothed:.2f}")
+                note_str = ""
+                if self.continuous_audio and self.continuous_audio.enabled:
+                    note_name, _ = self.continuous_audio._z_to_note(z)
+                    note_str = f"  {note_name}"
+                print(f"[{ts}] {state_str}  Z:{z:+.2f}  Ratio:{smoothed:.2f}{note_str}")
 
     def _check_recovery(self, now: float) -> None:
         """Recoveries検出: セッション内Z-score分布に対する相対percentileで判定。"""
@@ -369,7 +490,7 @@ class MuseAppState:
         pre_mean = float(np.mean(pre_z))
         post_mean = float(np.mean(post_z))
 
-        if pre_mean <= drop_threshold and post_mean >= rise_threshold:
+        if pre_mean <= drop_threshold and post_mean >= rise_threshold and post_mean >= CALM_Z_THRESHOLD:
             self.recovery_count += 1
             self._last_recovery_time = now
             ts = datetime.now().strftime('%H:%M:%S')
@@ -427,10 +548,19 @@ def main() -> None:
     parser.add_argument('--calibration', type=int, default=DEFAULT_CALIBRATION_SEC,
                         help=f'Calibration seconds (default: {DEFAULT_CALIBRATION_SEC})')
     parser.add_argument('--no-audio', action='store_true', help='Disable audio feedback')
+    parser.add_argument('--feedback', choices=['recovery', 'continuous'], default='recovery',
+                        help='Feedback mode: recovery (chime on recovery) or continuous (scale tones)')
     args = parser.parse_args()
 
-    audio = AudioFeedback(enabled=not args.no_audio)
-    state = MuseAppState(calibration_sec=args.calibration, audio=audio)
+    audio = None
+    continuous_audio = None
+    if not args.no_audio:
+        if args.feedback == 'recovery':
+            audio = AudioFeedback(enabled=True)
+        else:
+            continuous_audio = ContinuousAudioFeedback(enabled=True)
+
+    state = MuseAppState(calibration_sec=args.calibration, audio=audio, continuous_audio=continuous_audio)
 
     # OSC Dispatcher
     disp = dispatcher.Dispatcher()
@@ -443,9 +573,10 @@ def main() -> None:
     print("=" * 50)
     print("  Muse App Prototype v1: Recoveries Chime")
     print("=" * 50)
+    feedback_str = 'disabled' if args.no_audio else args.feedback
     print(f"Listen:       {args.ip}:{args.port}")
     print(f"Calibration:  {args.calibration}s")
-    print(f"Audio:        {'disabled' if args.no_audio else 'enabled'}")
+    print(f"Feedback:     {feedback_str}")
     print()
     print("Mind Monitor settings:")
     print(f"  Host: <your PC IP>  Port: {args.port}")
@@ -461,6 +592,8 @@ def main() -> None:
             time.sleep(0.1)
     except KeyboardInterrupt:
         print("\nShutting down...")
+        if continuous_audio:
+            continuous_audio.stop()
         state.print_summary()
     finally:
         server.shutdown()
