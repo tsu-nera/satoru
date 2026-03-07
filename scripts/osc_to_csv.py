@@ -7,7 +7,7 @@ Muse App / Mind Monitor 両対応。
 
 使い方:
     source venv/bin/activate
-    python scripts/osc_to_csv.py --source muse_app --port 5000
+    python scripts/osc_to_csv.py --source muse_app_osc --port 5000
     python scripts/osc_to_csv.py --source mind_monitor --port 5000
 """
 
@@ -27,8 +27,8 @@ def main():
         description='Muse OSC → Mind Monitor CSV 変換'
     )
     parser.add_argument(
-        '--source', choices=['muse_app', 'mind_monitor'], default='muse_app',
-        help='データソース (default: muse_app)'
+        '--source', choices=['muse_app_osc', 'mind_monitor_osc'], default='muse_app_osc',
+        help='データソース (default: muse_app_osc)'
     )
     parser.add_argument(
         '--port', type=int, default=5000,

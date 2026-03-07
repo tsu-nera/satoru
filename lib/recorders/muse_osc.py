@@ -2,8 +2,8 @@
 Muse OSC Recorder - Muse App / Mind Monitor 両対応
 
 --source パラメータで切り替え:
-- muse_app: Muse App の OSC Output（RAW EEG のみ、バンドパワーは後計算）
-- mind_monitor: Mind Monitor の OSC（バンドパワー, HSI, Battery, Elements 含む）
+- muse_app_osc: Muse App の OSC Output（RAW EEG のみ、バンドパワーは後計算）
+- mind_monitor_osc_osc: Mind Monitor の OSC（バンドパワー, HSI, Battery, Elements 含む）
 """
 
 from datetime import datetime
@@ -49,13 +49,13 @@ class MuseOSCRecorder:
     """
     Muse App / Mind Monitor 両対応 OSC レコーダー
 
-    source='muse_app':
+    source='muse_app_osc':
         /eeg, /acc, /gyro, /optics を受信
-    source='mind_monitor':
+    source='mind_monitor_osc':
         /muse/eeg, /muse/acc, /muse/gyro + band power, HSI, battery, elements を受信
     """
 
-    def __init__(self, output_dir: Path, source: str = 'muse_app'):
+    def __init__(self, output_dir: Path, source: str = 'muse_app_osc'):
         self.source = source
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -153,11 +153,11 @@ class MuseOSCRecorder:
             'HeadBandOn': 1,
         }
 
-        if self.source == 'muse_app':
+        if self.source == 'muse_app_osc':
             # Optics (8チャンネル)
             for i in range(8):
                 row[f'Optics{i + 1}'] = self.last_optics[i]
-        elif self.source == 'mind_monitor':
+        elif self.source == 'mind_monitor_osc':
             # Band Power (20列)
             for band in BAND_NAMES:
                 for i, sensor in enumerate(SENSOR_NAMES):
@@ -201,12 +201,12 @@ class MuseOSCRecorder:
         """OSCサーバーを起動"""
         disp = dispatcher.Dispatcher()
 
-        if self.source == 'muse_app':
+        if self.source == 'muse_app_osc':
             disp.map("/eeg", self.on_eeg)
             disp.map("/acc", self.on_acc)
             disp.map("/gyro", self.on_gyro)
             disp.map("/optics", self.on_optics)
-        elif self.source == 'mind_monitor':
+        elif self.source == 'mind_monitor_osc':
             disp.map("/muse/eeg", self.on_eeg)
             disp.map("/muse/acc", self.on_acc)
             disp.map("/muse/gyro", self.on_gyro)
@@ -221,13 +221,13 @@ class MuseOSCRecorder:
 
         self._server = osc_server.ThreadingOSCUDPServer((ip, port), disp)
 
-        source_label = 'Muse App' if self.source == 'muse_app' else 'Mind Monitor'
+        source_label = 'Muse App' if self.source == 'muse_app_osc' else 'Mind Monitor'
         print("=" * 60)
         print(f"Muse OSC Recorder ({source_label})")
         print("=" * 60)
         print(f"Listening on {ip}:{port}")
         print()
-        if self.source == 'muse_app':
+        if self.source == 'muse_app_osc':
             print("Muse Appの設定:")
             print(f"  - IP: このPCのIPアドレス")
             print(f"  - Port: {port}")
