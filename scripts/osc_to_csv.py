@@ -1,18 +1,14 @@
 #!/usr/bin/env python
 """
-Muse App OSC → Mind Monitor CSV 変換スクリプト
+Muse OSC → Mind Monitor CSV 変換スクリプト
 
-Muse AppのOSC Output機能からデータを受信し、
-Mind Monitor互換のCSV形式で保存する。
+Muse App / Mind Monitor 両対応。
+--source で切り替え。
 
 使い方:
     source venv/bin/activate
-    python scripts/osc_to_csv.py --port 5000 --output data
-
-Muse Appの設定:
-    - IP: このPCのIPアドレス
-    - Port: 5000
-    - Streaming Enabled: ON
+    python scripts/osc_to_csv.py --source muse_app --port 5000
+    python scripts/osc_to_csv.py --source mind_monitor --port 5000
 """
 
 import argparse
@@ -28,7 +24,11 @@ from lib.recorders import MuseOSCRecorder
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Muse App OSC → Mind Monitor CSV 変換'
+        description='Muse OSC → Mind Monitor CSV 変換'
+    )
+    parser.add_argument(
+        '--source', choices=['muse_app', 'mind_monitor'], default='muse_app',
+        help='データソース (default: muse_app)'
     )
     parser.add_argument(
         '--port', type=int, default=5000,
@@ -39,12 +39,13 @@ def main():
         help='リッスンするIP (default: 0.0.0.0 = all interfaces)'
     )
     parser.add_argument(
-        '--output', type=Path, default=Path('data'),
-        help='CSV出力先ディレクトリ (default: data)'
+        '--output', type=Path, default=None,
+        help='CSV出力先ディレクトリ (default: data/{source})'
     )
     args = parser.parse_args()
 
-    recorder = MuseOSCRecorder(args.output)
+    output_dir = args.output if args.output else Path(f'data/{args.source}')
+    recorder = MuseOSCRecorder(output_dir, source=args.source)
 
     try:
         recorder.start_server(args.ip, args.port)

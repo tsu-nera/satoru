@@ -1,16 +1,9 @@
 """
-Muse App OSC Recorder - Mind Monitor互換CSV出力
+Muse OSC Recorder - Muse App / Mind Monitor 両対応
 
-Muse AppのOSC Output機能からデータを受信し、
-Mind Monitor互換のCSV形式で保存する。
-
-⚠️ 保留中: この機能は開発を一時中断しています。
-既知の問題:
-- バンドパワー列（Delta/Theta/Alpha/Beta/Gamma）が空のまま出力される
-  → Muse AppはRAW EEGのみ送信、FFT計算が必要
-- Opticsデータの送信頻度が低い（8.6Hz、期待値64Hz）
-  → fNIRSグラフが平行線になる
-- generate_report.pyはMind Monitorの事前計算されたバンドパワー列を期待している
+--source パラメータで切り替え:
+- muse_app: Muse App の OSC Output（RAW EEG のみ、バンドパワーは後計算）
+- mind_monitor: Mind Monitor の OSC（バンドパワー, HSI, Battery, Elements 含む）
 """
 
 from datetime import datetime
@@ -22,7 +15,7 @@ from pythonosc import dispatcher, osc_server
 # Mind Monitor CSV列順序（59列）
 MIND_MONITOR_COLUMNS = [
     'TimeStamp',
-    # 周波数帯パワー (20列) - 空欄
+    # 周波数帯パワー (20列)
     'Delta_TP9', 'Delta_AF7', 'Delta_AF8', 'Delta_TP10',
     'Theta_TP9', 'Theta_AF7', 'Theta_AF8', 'Theta_TP10',
     'Alpha_TP9', 'Alpha_AF7', 'Alpha_AF8', 'Alpha_TP10',
@@ -48,25 +41,22 @@ MIND_MONITOR_COLUMNS = [
     'Elements',
 ]
 
+BAND_NAMES = ['delta', 'theta', 'alpha', 'beta', 'gamma']
+SENSOR_NAMES = ['TP9', 'AF7', 'AF8', 'TP10']
+
 
 class MuseOSCRecorder:
     """
-    Muse App OSC受信 → Mind Monitor互換CSV出力
+    Muse App / Mind Monitor 両対応 OSC レコーダー
 
-    Muse AppのOSCパス:
-    - /eeg: (TP9, AF7, AF8, TP10) float×4 @ 256Hz
-    - /acc: (x, y, z) float×3 @ 52Hz
-    - /gyro: (x, y, z) float×3 @ 52Hz
-    - /optics: float×8 @ 64Hz
+    source='muse_app':
+        /eeg, /acc, /gyro, /optics を受信
+    source='mind_monitor':
+        /muse/eeg, /muse/acc, /muse/gyro + band power, HSI, battery, elements を受信
     """
 
-    def __init__(self, output_dir: Path):
-        """
-        Parameters
-        ----------
-        output_dir : Path
-            CSV出力先ディレクトリ
-        """
+    def __init__(self, output_dir: Path, source: str = 'muse_app'):
+        self.source = source
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -78,46 +68,70 @@ class MuseOSCRecorder:
         self.last_gyro = [0.0, 0.0, 0.0]
         self.last_optics = [0.0] * 8
 
+        # Mind Monitor 固有データ
+        self.last_band_power: dict[str, list[float]] = {
+            band: [0.0] * 4 for band in BAND_NAMES
+        }
+        self.last_hsi = [0.0] * 4
+        self.last_battery = 0.0
+        self.last_elements = ''
+
         self._server = None
 
     def on_eeg(self, address: str, *args) -> None:
-        """
-        EEGデータ受信ハンドラー（256Hz）
-
-        EEGは最高頻度なので、これをトリガーに1行作成する。
-        """
+        """EEGデータ受信ハンドラー（256Hz）"""
         if self.start_time is None:
             self.start_time = datetime.now()
 
         row = self._create_row(args)
         self.rows.append(row)
 
+        count = len(self.rows)
+        if count % 256 == 0:
+            elapsed = (datetime.now() - self.start_time).seconds
+            m, s = divmod(elapsed, 60)
+            print(f"[{m:02d}:{s:02d}] {count} samples | EEG: TP9={args[0]:.1f}, AF7={args[1]:.1f}, AF8={args[2]:.1f}, TP10={args[3]:.1f}")
+
     def on_acc(self, address: str, *args) -> None:
-        """加速度データ受信ハンドラー（52Hz）"""
+        """加速度データ受信ハンドラー"""
         self.last_acc = list(args[:3])
 
     def on_gyro(self, address: str, *args) -> None:
-        """ジャイロデータ受信ハンドラー（52Hz）"""
+        """ジャイロデータ受信ハンドラー"""
         self.last_gyro = list(args[:3])
 
     def on_optics(self, address: str, *args) -> None:
-        """Opticsデータ受信ハンドラー（64Hz）"""
+        """Opticsデータ受信ハンドラー"""
         self.last_optics = list(args[:8])
 
+    # --- Mind Monitor 固有ハンドラー ---
+
+    def on_band_power(self, address: str, *args) -> None:
+        """バンドパワー受信ハンドラー（/muse/elements/delta_absolute 等）"""
+        # address: /muse/elements/{band}_absolute
+        band = address.split('/')[-1].replace('_absolute', '')
+        if band in self.last_band_power:
+            self.last_band_power[band] = list(args[:4])
+
+    def on_horseshoe(self, address: str, *args) -> None:
+        """HSI（Horseshoe Indicator）受信ハンドラー"""
+        self.last_hsi = list(args[:4])
+
+    def on_battery(self, address: str, *args) -> None:
+        """バッテリー受信ハンドラー"""
+        if args:
+            self.last_battery = args[0]
+
+    def on_blink(self, address: str, *args) -> None:
+        """Blink イベント受信ハンドラー"""
+        self.last_elements = 'blink'
+
+    def on_jaw_clench(self, address: str, *args) -> None:
+        """Jaw Clench イベント受信ハンドラー"""
+        self.last_elements = 'jaw_clench'
+
     def _create_row(self, eeg_args: tuple) -> dict:
-        """
-        Mind Monitor互換の行データを作成
-
-        Parameters
-        ----------
-        eeg_args : tuple
-            (TP9, AF7, AF8, TP10) のEEG値
-
-        Returns
-        -------
-        dict
-            Mind Monitor CSV互換の行データ
-        """
+        """Mind Monitor互換の行データを作成"""
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]
 
         row = {
@@ -135,37 +149,39 @@ class MuseOSCRecorder:
             'Gyro_X': self.last_gyro[0],
             'Gyro_Y': self.last_gyro[1],
             'Gyro_Z': self.last_gyro[2],
-            # Optics (8チャンネル)
-            'Optics1': self.last_optics[0],
-            'Optics2': self.last_optics[1],
-            'Optics3': self.last_optics[2],
-            'Optics4': self.last_optics[3],
-            'Optics5': self.last_optics[4],
-            'Optics6': self.last_optics[5],
-            'Optics7': self.last_optics[6],
-            'Optics8': self.last_optics[7],
             # 固定値
             'HeadBandOn': 1,
         }
 
+        if self.source == 'muse_app':
+            # Optics (8チャンネル)
+            for i in range(8):
+                row[f'Optics{i + 1}'] = self.last_optics[i]
+        elif self.source == 'mind_monitor':
+            # Band Power (20列)
+            for band in BAND_NAMES:
+                for i, sensor in enumerate(SENSOR_NAMES):
+                    col = f'{band.capitalize()}_{sensor}'
+                    row[col] = self.last_band_power[band][i]
+            # HSI
+            for i, sensor in enumerate(SENSOR_NAMES):
+                row[f'HSI_{sensor}'] = self.last_hsi[i]
+            # Battery & Elements
+            row['Battery'] = self.last_battery
+            row['Elements'] = self.last_elements
+            # Elements はイベントなので1回記録したらクリア
+            self.last_elements = ''
+
         return row
 
     def save(self) -> Path | None:
-        """
-        バッファをCSVファイルに保存
-
-        Returns
-        -------
-        Path or None
-            保存したファイルパス。データがない場合はNone。
-        """
+        """バッファをCSVファイルに保存"""
         if not self.rows:
             return None
 
         if self.start_time is None:
             self.start_time = datetime.now()
 
-        # DataFrameを作成し、Mind Monitor列順序に合わせる
         df = pd.DataFrame(self.rows)
 
         # 存在しない列を空欄で追加
@@ -173,46 +189,53 @@ class MuseOSCRecorder:
             if col not in df.columns:
                 df[col] = ''
 
-        # 列順序を Mind Monitor 形式に合わせる
         df = df[MIND_MONITOR_COLUMNS]
 
-        # ファイル名はMind Monitor形式に近づける
-        filename = f"muse_app_{self.start_time:%Y-%m-%d--%H-%M-%S}.csv"
+        filename = f"{self.source}_{self.start_time:%Y-%m-%d--%H-%M-%S}.csv"
         path = self.output_dir / filename
         df.to_csv(path, index=False)
 
         return path
 
     def start_server(self, ip: str = '0.0.0.0', port: int = 5000) -> None:
-        """
-        OSCサーバーを起動
-
-        Parameters
-        ----------
-        ip : str
-            リッスンするIPアドレス（デフォルト: 0.0.0.0 = 全インターフェース）
-        port : int
-            リッスンするポート（デフォルト: 5000）
-        """
+        """OSCサーバーを起動"""
         disp = dispatcher.Dispatcher()
 
-        # Muse App OSCパス（/muse/プレフィックスなし）
-        disp.map("/eeg", self.on_eeg)
-        disp.map("/acc", self.on_acc)
-        disp.map("/gyro", self.on_gyro)
-        disp.map("/optics", self.on_optics)
+        if self.source == 'muse_app':
+            disp.map("/eeg", self.on_eeg)
+            disp.map("/acc", self.on_acc)
+            disp.map("/gyro", self.on_gyro)
+            disp.map("/optics", self.on_optics)
+        elif self.source == 'mind_monitor':
+            disp.map("/muse/eeg", self.on_eeg)
+            disp.map("/muse/acc", self.on_acc)
+            disp.map("/muse/gyro", self.on_gyro)
+            # Band Power
+            for band in BAND_NAMES:
+                disp.map(f"/muse/elements/{band}_absolute", self.on_band_power)
+            # HSI, Battery, Elements
+            disp.map("/muse/elements/horseshoe", self.on_horseshoe)
+            disp.map("/muse/elements/blink", self.on_blink)
+            disp.map("/muse/elements/jaw_clench", self.on_jaw_clench)
+            disp.map("/muse/batt", self.on_battery)
 
         self._server = osc_server.ThreadingOSCUDPServer((ip, port), disp)
 
+        source_label = 'Muse App' if self.source == 'muse_app' else 'Mind Monitor'
         print("=" * 60)
-        print("Muse App OSC Recorder")
+        print(f"Muse OSC Recorder ({source_label})")
         print("=" * 60)
         print(f"Listening on {ip}:{port}")
         print()
-        print("Muse Appの設定:")
-        print(f"  - IP: このPCのIPアドレス")
-        print(f"  - Port: {port}")
-        print(f"  - Streaming Enabled: ON")
+        if self.source == 'muse_app':
+            print("Muse Appの設定:")
+            print(f"  - IP: このPCのIPアドレス")
+            print(f"  - Port: {port}")
+            print(f"  - Streaming Enabled: ON")
+        else:
+            print("Mind Monitorの設定:")
+            print(f"  - OSC Stream Target IP: このPCのIPアドレス")
+            print(f"  - OSC Stream Target Port: {port}")
         print()
         print("Ctrl+C で記録終了・CSV保存")
         print("=" * 60)
