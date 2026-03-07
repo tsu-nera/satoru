@@ -437,6 +437,15 @@ def calculate_segment_analysis(
     band_power_table = pd.DataFrame(band_power_rows)
     metrics_table = pd.DataFrame(metrics_rows)
 
+    # 全NaN列を除外（データが存在しない指標を非表示にする）
+    # 'min' と '備考' は常に表示
+    keep_cols = ['min', '備考']
+    all_nan_cols = [
+        col for col in metrics_table.columns
+        if col not in keep_cols and metrics_table[col].isna().all()
+    ]
+    metrics_table = metrics_table.drop(columns=all_nan_cols)
+
     # 後方互換性のため、tableはmetrics_tableと同じ内容にする
     table = metrics_table.copy()
 

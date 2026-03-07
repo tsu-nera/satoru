@@ -34,5 +34,8 @@ google-api-python-client>=2.100.0
 # Environment Variables
 python-dotenv>=1.0.0
 
+# OSC (Open Sound Control) - Mind Monitor / Muse integration
+python-osc>=1.8
+
 # Optional: Japanese Font Support
 # Install system font: sudo apt install fonts-noto-cjk

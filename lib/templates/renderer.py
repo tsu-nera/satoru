@@ -125,12 +125,18 @@ class MeditationReportRenderer:
         # 接続品質 (HSI)
         if 'hsi_stats' in results:
             hsi_data = results['hsi_stats']
-            context['hsi'] = {
-                'overall_quality': hsi_data.get('overall_quality'),
-                'good_ratio': hsi_data.get('good_ratio', 0.0),
-                'statistics': hsi_data.get('statistics'),
-                'rr_quality_stats': results.get('rr_quality_stats'),  # R-R間隔品質統計を追加
-            }
+            has_hsi_data = (
+                hsi_data.get('overall_quality') is not None
+                or (hsi_data.get('statistics') is not None and not hsi_data['statistics'].empty)
+                or results.get('rr_quality_stats') is not None
+            )
+            if has_hsi_data:
+                context['hsi'] = {
+                    'overall_quality': hsi_data.get('overall_quality'),
+                    'good_ratio': hsi_data.get('good_ratio', 0.0),
+                    'statistics': hsi_data.get('statistics'),
+                    'rr_quality_stats': results.get('rr_quality_stats'),
+                }
 
         # 生データプレビュー
         if 'raw_preview_img' in results:

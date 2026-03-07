@@ -1,6 +1,6 @@
 ## 🏃 姿勢・体動分析（IMU）
 
-{% if posture.motion_img %}
+{% if posture.motion_img is defined and posture.motion_img %}
 ### 体動・心拍数時系列
 
 ![体動・心拍数時系列](img/{{ posture.motion_img }})
@@ -11,7 +11,7 @@
 > - **Heart Rate**: 心拍数（BPM）
 
 {% endif %}
-{% if posture.summary_table is not none %}
+{% if posture.summary_table is defined and posture.summary_table is not none %}
 ### サマリー統計
 
 {{ posture.summary_table|df_to_markdown(index=False) }}
@@ -24,7 +24,7 @@
 > - **Yaw RMS**: 水平方向の回転運動（脳波との相関実証済、小さいほど安定）
 
 {% endif %}
-{% if posture.detail_table is not none %}
+{% if posture.detail_table is defined and posture.detail_table is not none %}
 ### 時系列詳細（3分ごと）
 
 {{ posture.detail_table|df_to_markdown(index=False) }}

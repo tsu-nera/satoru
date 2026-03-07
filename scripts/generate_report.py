@@ -57,6 +57,7 @@ from lib import (
 )
 from lib.session_log import write_to_csv, write_to_google_sheets
 from lib.sensors.ecg.respiration import calculate_respiratory_period
+from lib.sensors.eeg.band_power import compute_band_powers_from_raw, needs_band_power_computation
 
 # 可視化関数をインポート
 from lib.sensors.eeg.visualization import (
@@ -158,6 +159,12 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
     }
 
     print(f'データ形状: {df.shape[0]} 行 × {df.shape[1]} 列')
+
+    # バンドパワー列が空の場合、RAW EEGから計算（OSC CSV対応）
+    if needs_band_power_computation(df):
+        print('計算中: バンドパワー（RAW EEGから計算）...')
+        df = compute_band_powers_from_raw(df)
+        print('✓ バンドパワー列を付与しました')
 
     # タイムスタンプ表示用
     start_time = results["data_info"]["start_time"]

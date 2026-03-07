@@ -1,0 +1,68 @@
+{
+  "calib_median": 0.6622016573606893,
+  "calib_mad": 0.14880498471574033,
+  "calib_mean": 0.7074139350109964,
+  "calib_std": 0.21393043653251653,
+  "best_ms_mad": {
+    "error": 16,
+    "kc": 1.3500000000000032,
+    "ka": 1.9999999999999996,
+    "calm_th": 0.8630883867269392,
+    "active_th": 0.36459168792920865,
+    "active": 7,
+    "neutral": 262,
+    "calm": 903
+  },
+  "best_ms_z": {
+    "error": 16,
+    "zc": 0.7499999999999867,
+    "za": 1.6,
+    "active": 7,
+    "neutral": 263,
+    "calm": 902
+  },
+  "best_birds_A": {
+    "error": 11,
+    "pct": 64,
+    "th": 1.4792101608055557,
+    "dur": 1.0,
+    "n": 76
+  },
+  "best_birds_B": {
+    "error": 14,
+    "k": 4.700000000000006,
+    "th": 1.3615850855246698,
+    "dur": 1.0,
+    "n": 73
+  },
+  "best_birds_Bz": {
+    "error": 11,
+    "z": 3.600000000000006,
+    "dur": 1.0,
+    "n": 76
+  },
+  "best_birds_D": {
+    "error": 1,
+    "base": 8.5,
+    "n": 88
+  },
+  "recoveries_common_n": 0,
+  "best_rec_z": {
+    "error": 0,
+    "lb": 3,
+    "lf": 3,
+    "d_z": -0.3999999999999977,
+    "r_z": 0.4,
+    "n": 8
+  },
+  "target": {
+    "birds": 87,
+    "recoveries": 8,
+    "active_sec": 5,
+    "neutral_sec": 261,
+    "calm_sec": 890,
+    "calm_pct": 76,
+    "score": 76,
+    "duration_min": 20
+  }
+}
