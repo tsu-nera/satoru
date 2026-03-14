@@ -276,7 +276,7 @@ const STATE_PRESETS = {
   calm: {
     label: 'CALM', cssClass: 'state-calm',
     drone: { freq: 110 },
-    noise: { type: 'lowpass',  freq: 400, Q: 1.0 },
+    noise: { type: 'bandpass', freq: 400, Q: 1.0 },
     chord: [65.4, 98.0, 130.8, 196.0],     // C2-G2-C3-G3: 深い開放五度、瞑想的
   },
   neutral: {
@@ -288,7 +288,7 @@ const STATE_PRESETS = {
   active: {
     label: 'ACTIVE', cssClass: 'state-active',
     drone: { freq: 164.8 },
-    noise: { type: 'highpass', freq: 900, Q: 0.8 },
+    noise: { type: 'bandpass', freq: 900, Q: 0.8 },
     chord: [196.0, 246.9, 293.7, 370.0],   // Gmaj7
   },
 };
@@ -298,6 +298,43 @@ const DRONE_HARMONICS = [
   [2.0, 0.30],
   [3.0, 0.15],
 ];
+
+// ============================================================
+// CONTINUOUS PARAMETER RANGES  (t=0: Active, t=1: Calm)
+// ============================================================
+const PARAM_RANGE = {
+  droneFreq:    [164.8, 110.0],          // Active → Calm base frequency
+  noiseCutoff:  [900,   400],            // Active → Calm filter cutoff (Hz)
+  noiseQ:       [0.8,   1.0],            // Active → Calm filter Q
+  chordActive:  [196.0, 246.9, 293.7, 370.0],  // Gmaj7
+  chordCalm:    [ 65.4,  98.0, 130.8, 196.0],  // C2-G2-C3-G3
+};
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+// ============================================================
+// Ratio → t mapping (running percentile, no server calibration needed)
+// Higher ratio = more alpha = calmer → t closer to 1
+// Lower ratio = more beta = more active → t closer to 0
+// ============================================================
+const ratioHistory = [];
+const RATIO_WINDOW = 240;  // ~120s at 0.5s interval
+
+function ratioToT(ratio) {
+  ratioHistory.push(ratio);
+  if (ratioHistory.length > RATIO_WINDOW) ratioHistory.shift();
+
+  if (ratioHistory.length < 6) {
+    return 0.5;  // Not enough data yet, start in the middle
+  }
+
+  // Percentile rank: what fraction of recent values is this ratio above?
+  const below = ratioHistory.filter(v => v < ratio).length;
+  const t = below / (ratioHistory.length - 1);
+  return t;
+}
 
 // ============================================================
 // Audio graph state
@@ -466,39 +503,17 @@ function switchState(stateName) {
     param.linearRampToValueAtTime(dronePreset.freq * mult, endTime);
   });
 
-  // Noise filter
+  // Noise filter: continuous ramp (type stays bandpass)
   const np = preset.noise;
-  if (noiseFilter.type !== np.type) {
-    const switchMs = transitionTime * 400;
-    noiseGain.gain.cancelScheduledValues(now);
-    noiseGain.gain.setValueAtTime(noiseGain.gain.value, now);
-    noiseGain.gain.linearRampToValueAtTime(0, now + transitionTime * 0.4);
+  const fParam = noiseFilter.frequency;
+  fParam.cancelScheduledValues(now);
+  fParam.setValueAtTime(fParam.value, now);
+  fParam.linearRampToValueAtTime(np.freq, endTime);
 
-    setTimeout(() => {
-      if (!audioCtx) return;
-      const t = audioCtx.currentTime;
-      noiseFilter.type = np.type;
-      noiseFilter.frequency.cancelScheduledValues(t);
-      noiseFilter.frequency.setValueAtTime(np.freq, t);
-      noiseFilter.Q.cancelScheduledValues(t);
-      noiseFilter.Q.setValueAtTime(np.Q, t);
-
-      const target = getEffectiveLayerVol('noise');
-      noiseGain.gain.cancelScheduledValues(t);
-      noiseGain.gain.setValueAtTime(0, t);
-      noiseGain.gain.linearRampToValueAtTime(target, t + transitionTime * 0.5);
-    }, switchMs);
-  } else {
-    const fParam = noiseFilter.frequency;
-    fParam.cancelScheduledValues(now);
-    fParam.setValueAtTime(fParam.value, now);
-    fParam.linearRampToValueAtTime(np.freq, endTime);
-
-    const qParam = noiseFilter.Q;
-    qParam.cancelScheduledValues(now);
-    qParam.setValueAtTime(qParam.value, now);
-    qParam.linearRampToValueAtTime(np.Q, endTime);
-  }
+  const qParam = noiseFilter.Q;
+  qParam.cancelScheduledValues(now);
+  qParam.setValueAtTime(qParam.value, now);
+  qParam.linearRampToValueAtTime(np.Q, endTime);
 
   // Chord: ramp each oscillator frequency
   preset.chord.forEach((freq, i) => {
@@ -509,6 +524,49 @@ function switchState(stateName) {
   });
 
   updateStateDisplay(stateName);
+}
+
+// ============================================================
+// Continuous t → audio parameter mapping (t=0: Active, t=1: Calm)
+// ============================================================
+function applyFromT(t) {
+  if (!isPlaying || !audioCtx) return;
+
+  const now = audioCtx.currentTime;
+  const end = now + transitionTime;
+
+  // Drone: interpolate each harmonic frequency
+  const baseFreq = lerp(PARAM_RANGE.droneFreq[0], PARAM_RANGE.droneFreq[1], t);
+  DRONE_HARMONICS.forEach(([mult], i) => {
+    const param = droneOscs[i].frequency;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(param.value, now);
+    param.linearRampToValueAtTime(baseFreq * mult, end);
+  });
+
+  // Noise filter: continuous cutoff and Q (filter type stays bandpass)
+  const targetCutoff = lerp(PARAM_RANGE.noiseCutoff[0], PARAM_RANGE.noiseCutoff[1], t);
+  const targetQ      = lerp(PARAM_RANGE.noiseQ[0],      PARAM_RANGE.noiseQ[1],      t);
+
+  const fParam = noiseFilter.frequency;
+  fParam.cancelScheduledValues(now);
+  fParam.setValueAtTime(fParam.value, now);
+  fParam.linearRampToValueAtTime(targetCutoff, end);
+
+  const qParam = noiseFilter.Q;
+  qParam.cancelScheduledValues(now);
+  qParam.setValueAtTime(qParam.value, now);
+  qParam.linearRampToValueAtTime(targetQ, end);
+
+  // Chord: interpolate each oscillator frequency individually
+  PARAM_RANGE.chordActive.forEach((activeFreq, i) => {
+    const calmFreq = PARAM_RANGE.chordCalm[i];
+    const targetFreq = lerp(activeFreq, calmFreq, t);
+    const param = chordOscs[i].frequency;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(param.value, now);
+    param.linearRampToValueAtTime(targetFreq, end);
+  });
 }
 
 // ============================================================
@@ -686,17 +744,9 @@ function disconnectWs() {
 
 function handleMessage(data) {
   console.log('[WS]', data);
-  if (data.mind_state) {
-    const stateName = data.mind_state.toLowerCase();
-    document.getElementById('dataState').textContent = data.mind_state;
-    if (STATE_PRESETS[stateName] && stateName !== currentState) {
-      switchState(stateName);
-    }
-  }
 
-  if (data.z_score !== undefined) {
-    const zStr = data.z_score >= 0 ? '+' + data.z_score.toFixed(2) : data.z_score.toFixed(2);
-    document.getElementById('dataZ').textContent = zStr;
+  if (data.mind_state) {
+    document.getElementById('dataState').textContent = data.mind_state;
   }
   if (data.ratio !== undefined) {
     document.getElementById('dataRatio').textContent = data.ratio.toFixed(3);
@@ -704,6 +754,27 @@ function handleMessage(data) {
   if (data.phase) {
     document.getElementById('dataPhase').textContent = data.phase;
   }
+
+  if (data.ratio === undefined) return;
+
+  const t = ratioToT(data.ratio);
+
+  // Debug display
+  document.getElementById('dataZ').textContent = `t=${t.toFixed(2)} r=${data.ratio.toFixed(3)} n=${ratioHistory.length}`;
+
+  applyFromT(t);
+  updateContinuousStateDisplay(t);
+}
+
+function updateContinuousStateDisplay(t) {
+  const el = document.getElementById('stateDisplay');
+  // Continuous color blend: active(red) → neutral(blue) → calm(green)
+  const r = Math.round(lerp(255, 107, t));
+  const g = Math.round(lerp(128, 255, t));
+  const b = Math.round(lerp(128, 176, t));
+  el.style.color = `rgb(${r},${g},${b})`;
+  el.style.background = `rgba(${Math.round(r*0.2)},${Math.round(g*0.15)},${Math.round(b*0.15)},0.8)`;
+  el.textContent = `t = ${t.toFixed(2)}`;
 }
 
 function setStatus(cls, text) {
