@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Adaptive Ambient - Neurofeedback</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    min-height: 100vh;
+    padding: 1.5rem;
+  }
+  .container { max-width: 700px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin-bottom: 0.4rem; color: #a0c4ff; text-align: center; }
+  .subtitle { text-align: center; color: #666; font-size: 0.8rem; margin-bottom: 1rem; }
+
+  .status {
+    padding: 0.7rem 1rem;
+    border-radius: 8px;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    text-align: center;
+  }
+  .status.disconnected { background: #4a1a1a; border: 1px solid #ff6b6b; }
+  .status.connected    { background: #1a4a1a; border: 1px solid #6bff6b; }
+  .status.connecting   { background: #4a4a1a; border: 1px solid #ffff6b; }
+
+  .state-display {
+    font-size: 2.5rem;
+    font-weight: bold;
+    padding: 1.5rem;
+    border-radius: 16px;
+    margin-bottom: 0.8rem;
+    text-align: center;
+    transition: background 0.5s, color 0.5s;
+  }
+  .state-calm    { background: #1a3a2a; color: #6bffb0; }
+  .state-neutral { background: #2a2a3a; color: #a0a0ff; }
+  .state-active  { background: #3a1a1a; color: #ff8080; }
+  .state-stopped { background: #252540; color: #555; }
+
+  .timer {
+    text-align: center;
+    font-size: 1.1rem;
+    color: #888;
+    margin-bottom: 1.2rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.05em;
+  }
+
+  .control-row {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    justify-content: center;
+    margin-bottom: 1.2rem;
+    flex-wrap: wrap;
+  }
+  button.btn-start { background: #4caf50; color: white; border: none; padding: 0.7rem 1.8rem; font-size: 1rem; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; }
+  button.btn-stop  { background: #f44336; color: white; border: none; padding: 0.7rem 1.8rem; font-size: 1rem; border-radius: 8px; cursor: pointer; transition: opacity 0.2s; }
+  button:hover:not(:disabled) { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .slider-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .slider-group label { font-size: 0.85rem; color: #888; white-space: nowrap; }
+  .slider-group input[type=range] { width: 120px; }
+  .slider-group span { font-size: 0.85rem; min-width: 40px; font-variant-numeric: tabular-nums; }
+
+  h2 { font-size: 1rem; color: #a0c4ff; margin-bottom: 0.8rem; }
+
+  .layers { display: flex; flex-direction: column; gap: 0.8rem; margin-bottom: 1.5rem; }
+  .layer-card {
+    background: #252540;
+    border-radius: 10px;
+    padding: 1rem;
+    border: 1px solid #333;
+  }
+  .layer-header {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    margin-bottom: 0.7rem;
+  }
+  .layer-name { font-weight: bold; font-size: 0.95rem; min-width: 60px; }
+  .layer-header .slider-group { flex: 1; }
+
+  .layer-params { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .param-chip {
+    background: #1a1a2e;
+    padding: 0.3rem 0.6rem;
+    border-radius: 5px;
+    font-size: 0.75rem;
+    color: #aaa;
+    font-variant-numeric: tabular-nums;
+  }
+  .param-chip .lbl { color: #666; margin-right: 0.3rem; }
+
+  input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+
+  .data-panel {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.6rem;
+    margin-bottom: 1.2rem;
+  }
+  .data-cell {
+    background: #252540;
+    padding: 0.8rem;
+    border-radius: 8px;
+    text-align: center;
+  }
+  .data-label { font-size: 0.7rem; color: #666; text-transform: uppercase; letter-spacing: 0.05em; }
+  .data-value { font-size: 1.3rem; font-weight: bold; margin-top: 0.2rem; font-variant-numeric: tabular-nums; }
+
+  .ws-section {
+    background: #1e1e38;
+    border-radius: 10px;
+    padding: 1rem;
+    border: 1px solid #333;
+    font-size: 0.85rem;
+  }
+  .ws-section h3 { font-size: 0.9rem; color: #a0c4ff; margin-bottom: 0.6rem; }
+  .ws-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+  }
+  .ws-row label { color: #888; }
+  .ws-row input[type=text] {
+    background: #252540;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 0.4rem 0.6rem;
+    border-radius: 4px;
+    width: 240px;
+    font-size: 0.8rem;
+  }
+  .btn-connect {
+    padding: 0.4rem 0.9rem;
+    font-size: 0.8rem;
+    background: #555;
+    color: #e0e0e0;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+  }
+  .btn-connect:hover { opacity: 0.85; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Adaptive Ambient Neurofeedback</h1>
+  <p class="subtitle">WebSocket → Mind State → Ambient Sound</p>
+
+  <div id="status" class="status disconnected">Disconnected</div>
+
+  <div id="stateDisplay" class="state-display state-stopped">STOPPED</div>
+  <div class="timer" id="timer">00:00:00</div>
+
+  <div class="data-panel">
+    <div class="data-cell">
+      <div class="data-label">Z-Score</div>
+      <div class="data-value" id="dataZ">--</div>
+    </div>
+    <div class="data-cell">
+      <div class="data-label">Ratio</div>
+      <div class="data-value" id="dataRatio">--</div>
+    </div>
+    <div class="data-cell">
+      <div class="data-label">Phase</div>
+      <div class="data-value" id="dataPhase">--</div>
+    </div>
+    <div class="data-cell">
+      <div class="data-label">State</div>
+      <div class="data-value" id="dataState">--</div>
+    </div>
+  </div>
+
+  <div class="control-row">
+    <button class="btn-start" id="btnStart" onclick="startAudio()">Start Audio</button>
+    <button class="btn-stop"  id="btnStop"  onclick="stopAudio()" disabled>Stop Audio</button>
+    <div class="slider-group">
+      <label>Master Vol</label>
+      <input type="range" id="masterVol" min="0" max="100" value="30" oninput="setMasterVol(this.value)">
+      <span id="masterVolLabel">30%</span>
+    </div>
+    <div class="slider-group">
+      <label>Transition</label>
+      <input type="range" id="transTime" min="0.1" max="10" step="0.1" value="2.0" oninput="setTransTime(this.value)">
+      <span id="transTimeLabel">2.0s</span>
+    </div>
+  </div>
+
+  <h2>Layers</h2>
+  <div class="layers">
+
+    <div class="layer-card">
+      <div class="layer-header">
+        <input type="checkbox" id="droneEnabled" checked onchange="toggleLayer('drone')">
+        <span class="layer-name">Drone</span>
+        <div class="slider-group">
+          <label>Vol</label>
+          <input type="range" id="droneVol" min="0" max="100" value="60" oninput="setLayerVol('drone', this.value)">
+          <span id="droneVolLabel">60%</span>
+        </div>
+      </div>
+      <div class="layer-params" id="droneParams">
+        <span class="param-chip"><span class="lbl">f1</span>--</span>
+        <span class="param-chip"><span class="lbl">f2</span>--</span>
+        <span class="param-chip"><span class="lbl">f3</span>--</span>
+      </div>
+    </div>
+
+    <div class="layer-card">
+      <div class="layer-header">
+        <input type="checkbox" id="noiseEnabled" checked onchange="toggleLayer('noise')">
+        <span class="layer-name">Noise</span>
+        <div class="slider-group">
+          <label>Vol</label>
+          <input type="range" id="noiseVol" min="0" max="100" value="40" oninput="setLayerVol('noise', this.value)">
+          <span id="noiseVolLabel">40%</span>
+        </div>
+      </div>
+      <div class="layer-params" id="noiseParams">
+        <span class="param-chip"><span class="lbl">type</span>--</span>
+        <span class="param-chip"><span class="lbl">freq</span>--</span>
+        <span class="param-chip"><span class="lbl">Q</span>--</span>
+      </div>
+    </div>
+
+    <div class="layer-card">
+      <div class="layer-header">
+        <input type="checkbox" id="chordEnabled" checked onchange="toggleLayer('chord')">
+        <span class="layer-name">Chord</span>
+        <div class="slider-group">
+          <label>Vol</label>
+          <input type="range" id="chordVol" min="0" max="100" value="40" oninput="setLayerVol('chord', this.value)">
+          <span id="chordVolLabel">40%</span>
+        </div>
+      </div>
+      <div class="layer-params" id="chordParams">
+        <span class="param-chip"><span class="lbl">f1</span>--</span>
+        <span class="param-chip"><span class="lbl">f2</span>--</span>
+        <span class="param-chip"><span class="lbl">f3</span>--</span>
+        <span class="param-chip"><span class="lbl">f4</span>--</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="ws-section">
+    <h3>WebSocket Connection</h3>
+    <div class="ws-row">
+      <label>URL</label>
+      <input type="text" id="wsUrl" value="ws://localhost:8766/ws">
+      <button class="btn-connect" onclick="connectWs()">Connect</button>
+      <button class="btn-connect" onclick="disconnectWs()" style="background:#3a2020;">Disconnect</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// STATE PRESETS
+// ============================================================
+const STATE_PRESETS = {
+  calm: {
+    label: 'CALM', cssClass: 'state-calm',
+    drone: { freq: 110 },
+    noise: { type: 'lowpass',  freq: 400, Q: 1.0 },
+    chord: [65.4, 98.0, 130.8, 196.0],     // C2-G2-C3-G3: 深い開放五度、瞑想的
+  },
+  neutral: {
+    label: 'NEUTRAL', cssClass: 'state-neutral',
+    drone: { freq: 130.8 },
+    noise: { type: 'bandpass', freq: 800, Q: 0.7 },
+    chord: [130.8, 155.6, 196.0, 233.1],   // Cm7
+  },
+  active: {
+    label: 'ACTIVE', cssClass: 'state-active',
+    drone: { freq: 164.8 },
+    noise: { type: 'highpass', freq: 900, Q: 0.8 },
+    chord: [196.0, 246.9, 293.7, 370.0],   // Gmaj7
+  },
+};
+
+const DRONE_HARMONICS = [
+  [1.0, 0.60],
+  [2.0, 0.30],
+  [3.0, 0.15],
+];
+
+// ============================================================
+// Audio graph state
+// ============================================================
+let audioCtx    = null;
+let masterGain  = null;
+
+let droneGain     = null;
+let droneOscs     = [];
+let droneOscGains = [];
+
+let noiseSource = null;
+let noiseFilter = null;
+let noiseGain   = null;
+
+let chordGain     = null;
+let chordOscs     = [];
+let chordOscGains = [];
+
+let isPlaying    = false;
+let currentState = 'neutral';
+let transitionTime = 2.0;
+
+const layerVols    = { drone: 0.6, noise: 0.4, chord: 0.4 };
+const layerEnabled = { drone: true, noise: true, chord: true };
+
+// ============================================================
+// startAudio / stopAudio
+// ============================================================
+function startAudio() {
+  if (isPlaying) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = parseFloat(document.getElementById('masterVol').value) / 100;
+  masterGain.connect(audioCtx.destination);
+
+  // --- Drone layer ---
+  droneGain = audioCtx.createGain();
+  droneGain.gain.value = getEffectiveLayerVol('drone');
+  droneGain.connect(masterGain);
+
+  const dronePreset = STATE_PRESETS[currentState].drone;
+  droneOscs = [];
+  droneOscGains = [];
+  DRONE_HARMONICS.forEach(([mult, g]) => {
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = dronePreset.freq * mult;
+    const og = audioCtx.createGain();
+    og.gain.value = g;
+    osc.connect(og);
+    og.connect(droneGain);
+    osc.start();
+    droneOscs.push(osc);
+    droneOscGains.push(og);
+  });
+
+  // --- Noise layer ---
+  noiseGain = audioCtx.createGain();
+  noiseGain.gain.value = getEffectiveLayerVol('noise');
+  noiseGain.connect(masterGain);
+
+  const noisePreset = STATE_PRESETS[currentState].noise;
+  noiseSource = audioCtx.createBufferSource();
+  noiseSource.buffer = createWhiteNoiseBuffer(audioCtx, 2.0);
+  noiseSource.loop = true;
+
+  noiseFilter = audioCtx.createBiquadFilter();
+  noiseFilter.type = noisePreset.type;
+  noiseFilter.frequency.value = noisePreset.freq;
+  noiseFilter.Q.value = noisePreset.Q;
+
+  noiseSource.connect(noiseFilter);
+  noiseFilter.connect(noiseGain);
+  noiseSource.start();
+
+  // --- Chord layer ---
+  chordGain = audioCtx.createGain();
+  chordGain.gain.value = getEffectiveLayerVol('chord');
+  chordGain.connect(masterGain);
+
+  const chordFreqs = STATE_PRESETS[currentState].chord;
+  chordOscs = [];
+  chordOscGains = [];
+  chordFreqs.forEach(freq => {
+    const osc = audioCtx.createOscillator();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    const og = audioCtx.createGain();
+    og.gain.value = 0.25;
+    osc.connect(og);
+    og.connect(chordGain);
+    osc.start();
+    chordOscs.push(osc);
+    chordOscGains.push(og);
+  });
+
+  isPlaying = true;
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+
+  updateStateDisplay(currentState);
+  startTimers();
+}
+
+function stopAudio() {
+  if (!isPlaying || !audioCtx) return;
+
+  droneOscs.forEach(o => { try { o.stop(); } catch(e) {} });
+  if (noiseSource) { try { noiseSource.stop(); } catch(e) {} }
+  chordOscs.forEach(o => { try { o.stop(); } catch(e) {} });
+
+  audioCtx.close();
+  audioCtx    = null;
+  masterGain  = null;
+  droneGain   = null; droneOscs = []; droneOscGains = [];
+  noiseSource = null; noiseFilter = null; noiseGain = null;
+  chordGain   = null; chordOscs = []; chordOscGains = [];
+
+  isPlaying = false;
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnStop').disabled = true;
+
+  const el = document.getElementById('stateDisplay');
+  el.className = 'state-display state-stopped';
+  el.textContent = 'STOPPED';
+
+  stopTimers();
+  clearParamDisplay();
+}
+
+// ============================================================
+// White noise buffer
+// ============================================================
+function createWhiteNoiseBuffer(ctx, durationSec) {
+  const length = Math.floor(ctx.sampleRate * durationSec);
+  const buf = ctx.createBuffer(1, length, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < length; i++) {
+    data[i] = Math.random() * 2 - 1;
+  }
+  return buf;
+}
+
+// ============================================================
+// State transition
+// ============================================================
+function switchState(stateName) {
+  if (!isPlaying || !audioCtx) {
+    currentState = stateName;
+    return;
+  }
+  currentState = stateName;
+
+  const preset  = STATE_PRESETS[stateName];
+  const now     = audioCtx.currentTime;
+  const endTime = now + transitionTime;
+
+  // Drone: ramp each oscillator frequency
+  const dronePreset = preset.drone;
+  DRONE_HARMONICS.forEach(([mult], i) => {
+    const param = droneOscs[i].frequency;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(param.value, now);
+    param.linearRampToValueAtTime(dronePreset.freq * mult, endTime);
+  });
+
+  // Noise filter
+  const np = preset.noise;
+  if (noiseFilter.type !== np.type) {
+    const switchMs = transitionTime * 400;
+    noiseGain.gain.cancelScheduledValues(now);
+    noiseGain.gain.setValueAtTime(noiseGain.gain.value, now);
+    noiseGain.gain.linearRampToValueAtTime(0, now + transitionTime * 0.4);
+
+    setTimeout(() => {
+      if (!audioCtx) return;
+      const t = audioCtx.currentTime;
+      noiseFilter.type = np.type;
+      noiseFilter.frequency.cancelScheduledValues(t);
+      noiseFilter.frequency.setValueAtTime(np.freq, t);
+      noiseFilter.Q.cancelScheduledValues(t);
+      noiseFilter.Q.setValueAtTime(np.Q, t);
+
+      const target = getEffectiveLayerVol('noise');
+      noiseGain.gain.cancelScheduledValues(t);
+      noiseGain.gain.setValueAtTime(0, t);
+      noiseGain.gain.linearRampToValueAtTime(target, t + transitionTime * 0.5);
+    }, switchMs);
+  } else {
+    const fParam = noiseFilter.frequency;
+    fParam.cancelScheduledValues(now);
+    fParam.setValueAtTime(fParam.value, now);
+    fParam.linearRampToValueAtTime(np.freq, endTime);
+
+    const qParam = noiseFilter.Q;
+    qParam.cancelScheduledValues(now);
+    qParam.setValueAtTime(qParam.value, now);
+    qParam.linearRampToValueAtTime(np.Q, endTime);
+  }
+
+  // Chord: ramp each oscillator frequency
+  preset.chord.forEach((freq, i) => {
+    const param = chordOscs[i].frequency;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(param.value, now);
+    param.linearRampToValueAtTime(freq, endTime);
+  });
+
+  updateStateDisplay(stateName);
+}
+
+// ============================================================
+// Layer gain helpers
+// ============================================================
+function getEffectiveLayerVol(layer) {
+  return layerEnabled[layer] ? layerVols[layer] : 0;
+}
+
+function applyLayerGains() {
+  if (!isPlaying || !audioCtx) return;
+  const now = audioCtx.currentTime;
+  const FADE = 0.05;
+
+  const gainNodes = { drone: droneGain, noise: noiseGain, chord: chordGain };
+  Object.keys(gainNodes).forEach(layer => {
+    const g = gainNodes[layer];
+    if (!g) return;
+    const target = getEffectiveLayerVol(layer);
+    g.gain.cancelScheduledValues(now);
+    g.gain.setValueAtTime(g.gain.value, now);
+    g.gain.linearRampToValueAtTime(target, now + FADE);
+  });
+}
+
+// ============================================================
+// UI event handlers
+// ============================================================
+function setMasterVol(val) {
+  document.getElementById('masterVolLabel').textContent = val + '%';
+  if (masterGain) masterGain.gain.value = val / 100;
+}
+
+function setTransTime(val) {
+  transitionTime = parseFloat(val);
+  document.getElementById('transTimeLabel').textContent = parseFloat(val).toFixed(1) + 's';
+}
+
+function setLayerVol(layer, val) {
+  layerVols[layer] = val / 100;
+  document.getElementById(layer + 'VolLabel').textContent = val + '%';
+  applyLayerGains();
+}
+
+function toggleLayer(layer) {
+  layerEnabled[layer] = document.getElementById(layer + 'Enabled').checked;
+  applyLayerGains();
+}
+
+function updateStateDisplay(stateName) {
+  const preset = STATE_PRESETS[stateName];
+  const el = document.getElementById('stateDisplay');
+  el.textContent = preset.label;
+  el.className   = 'state-display ' + preset.cssClass;
+}
+
+// ============================================================
+// Timers
+// ============================================================
+let timerInterval   = null;
+let displayInterval = null;
+let startTime       = null;
+
+function startTimers() {
+  startTime = Date.now();
+  timerInterval   = setInterval(updateTimer,  1000);
+  displayInterval = setInterval(updateParams,  500);
+}
+
+function stopTimers() {
+  clearInterval(timerInterval);
+  clearInterval(displayInterval);
+  timerInterval = displayInterval = startTime = null;
+  document.getElementById('timer').textContent = '00:00:00';
+}
+
+function updateTimer() {
+  if (!startTime) return;
+  const elapsed = Math.floor((Date.now() - startTime) / 1000);
+  const h = Math.floor(elapsed / 3600);
+  const m = Math.floor((elapsed % 3600) / 60);
+  const s = elapsed % 60;
+  document.getElementById('timer').textContent =
+    String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+}
+
+function updateParams() {
+  if (!isPlaying || !audioCtx) return;
+
+  if (droneOscs.length > 0) {
+    document.getElementById('droneParams').innerHTML = droneOscs.map((osc, i) => {
+      const freq = osc.frequency.value.toFixed(1);
+      const g    = droneOscGains[i] ? droneOscGains[i].gain.value.toFixed(2) : '--';
+      return `<span class="param-chip"><span class="lbl">f${i+1}</span>${freq}Hz&nbsp;g=${g}</span>`;
+    }).join('');
+  }
+
+  if (noiseFilter) {
+    document.getElementById('noiseParams').innerHTML =
+      `<span class="param-chip"><span class="lbl">type</span>${noiseFilter.type}</span>` +
+      `<span class="param-chip"><span class="lbl">freq</span>${noiseFilter.frequency.value.toFixed(0)}Hz</span>` +
+      `<span class="param-chip"><span class="lbl">Q</span>${noiseFilter.Q.value.toFixed(2)}</span>`;
+  }
+
+  if (chordOscs.length > 0) {
+    document.getElementById('chordParams').innerHTML = chordOscs.map((osc, i) =>
+      `<span class="param-chip"><span class="lbl">f${i+1}</span>${osc.frequency.value.toFixed(1)}Hz</span>`
+    ).join('');
+  }
+}
+
+function clearParamDisplay() {
+  document.getElementById('droneParams').innerHTML =
+    ['f1','f2','f3'].map(l =>
+      `<span class="param-chip"><span class="lbl">${l}</span>--</span>`
+    ).join('');
+  document.getElementById('noiseParams').innerHTML =
+    ['type','freq','Q'].map(l =>
+      `<span class="param-chip"><span class="lbl">${l}</span>--</span>`
+    ).join('');
+  document.getElementById('chordParams').innerHTML =
+    ['f1','f2','f3','f4'].map(l =>
+      `<span class="param-chip"><span class="lbl">${l}</span>--</span>`
+    ).join('');
+}
+
+// ============================================================
+// WebSocket
+// ============================================================
+let ws = null;
+let rxCount = 0;
+
+function connectWs() {
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+
+  const url = document.getElementById('wsUrl').value;
+  setStatus('connecting', 'Connecting to ' + url + '...');
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    rxCount = 0;
+    setStatus('connected', 'Connected — waiting for data...');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      handleMessage(data);
+    } catch (e) {
+      console.error('Invalid message:', event.data, e);
+    }
+  };
+
+  ws.onclose = () => {
+    setStatus('disconnected', 'Disconnected');
+    ws = null;
+  };
+
+  ws.onerror = (err) => {
+    console.error('WebSocket error:', err);
+    setStatus('disconnected', 'Connection error');
+  };
+}
+
+function disconnectWs() {
+  if (ws) {
+    ws.close();
+    ws = null;
+  }
+}
+
+function handleMessage(data) {
+  console.log('[WS]', data);
+  if (data.mind_state) {
+    const stateName = data.mind_state.toLowerCase();
+    document.getElementById('dataState').textContent = data.mind_state;
+    if (STATE_PRESETS[stateName] && stateName !== currentState) {
+      switchState(stateName);
+    }
+  }
+
+  if (data.z_score !== undefined) {
+    const zStr = data.z_score >= 0 ? '+' + data.z_score.toFixed(2) : data.z_score.toFixed(2);
+    document.getElementById('dataZ').textContent = zStr;
+  }
+  if (data.ratio !== undefined) {
+    document.getElementById('dataRatio').textContent = data.ratio.toFixed(3);
+  }
+  if (data.phase) {
+    document.getElementById('dataPhase').textContent = data.phase;
+  }
+}
+
+function setStatus(cls, text) {
+  const el = document.getElementById('status');
+  el.className = 'status ' + cls;
+  el.textContent = text;
+}
+
+// Auto-connect on load
+window.addEventListener('load', () => {
+  const params = new URLSearchParams(window.location.search);
+  const wsParam = params.get('ws');
+  if (wsParam) {
+    document.getElementById('wsUrl').value = wsParam;
+  }
+  connectWs();
+});
+</script>
+
+</body>
+</html>
