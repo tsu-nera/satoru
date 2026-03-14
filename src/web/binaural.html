@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Binaural Beat - Neurofeedback</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+  .container {
+    max-width: 500px;
+    width: 90%;
+    text-align: center;
+  }
+  h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #a0c4ff; }
+  .status {
+    padding: 0.8rem;
+    border-radius: 8px;
+    margin-bottom: 1.5rem;
+    font-size: 0.9rem;
+  }
+  .status.disconnected { background: #4a1a1a; border: 1px solid #ff6b6b; }
+  .status.connected { background: #1a4a1a; border: 1px solid #6bff6b; }
+  .status.connecting { background: #4a4a1a; border: 1px solid #ffff6b; }
+
+  .state-display {
+    font-size: 3rem;
+    font-weight: bold;
+    padding: 2rem;
+    border-radius: 16px;
+    margin-bottom: 1.5rem;
+    transition: background 0.5s, color 0.5s;
+  }
+  .state-calm { background: #1a3a2a; color: #6bffb0; }
+  .state-neutral { background: #2a2a3a; color: #a0a0ff; }
+  .state-active { background: #3a1a1a; color: #ff8080; }
+
+  .params {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+    margin-bottom: 1.5rem;
+  }
+  .param {
+    background: #252540;
+    padding: 1rem;
+    border-radius: 8px;
+  }
+  .param-label { font-size: 0.75rem; color: #888; text-transform: uppercase; }
+  .param-value { font-size: 1.5rem; font-weight: bold; margin-top: 0.3rem; }
+
+  button {
+    padding: 0.8rem 2rem;
+    font-size: 1rem;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    margin: 0.3rem;
+    transition: opacity 0.2s;
+  }
+  button:hover { opacity: 0.85; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-start { background: #4caf50; color: white; }
+  .btn-stop { background: #f44336; color: white; }
+
+  .controls { margin-bottom: 1rem; }
+  .volume-control {
+    margin-top: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .volume-control label { font-size: 0.85rem; color: #888; }
+  .volume-control input[type=range] { width: 150px; }
+
+  .ws-url {
+    margin-top: 1.5rem;
+    font-size: 0.8rem;
+    color: #666;
+  }
+  .ws-url input {
+    background: #252540;
+    border: 1px solid #444;
+    color: #e0e0e0;
+    padding: 0.4rem 0.6rem;
+    border-radius: 4px;
+    width: 250px;
+    font-size: 0.8rem;
+    margin-left: 0.3rem;
+  }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <h1>Binaural Beat Neurofeedback</h1>
+
+  <div id="status" class="status disconnected">Disconnected</div>
+
+  <div id="stateDisplay" class="state-display state-neutral">--</div>
+
+  <div class="params">
+    <div class="param">
+      <div class="param-label">Carrier</div>
+      <div class="param-value" id="carrierHz">--</div>
+    </div>
+    <div class="param">
+      <div class="param-label">Beat</div>
+      <div class="param-value" id="beatHz">--</div>
+    </div>
+    <div class="param">
+      <div class="param-label">Left Ear</div>
+      <div class="param-value" id="leftHz">--</div>
+    </div>
+    <div class="param">
+      <div class="param-label">Right Ear</div>
+      <div class="param-value" id="rightHz">--</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btnStart" class="btn-start" onclick="startAudio()">Start Audio</button>
+    <button id="btnStop" class="btn-stop" onclick="stopAudio()" disabled>Stop Audio</button>
+    <div class="volume-control">
+      <label>Volume</label>
+      <input type="range" id="volume" min="0" max="100" value="30" oninput="setVolume(this.value)">
+      <span id="volumeLabel">30%</span>
+    </div>
+  </div>
+
+  <div class="controls" style="margin-top:1rem;">
+    <button onclick="testMono()" style="padding:0.5rem 1rem; font-size:0.85rem; background:#666;">Test Mono (no stereo split)</button>
+    <button onclick="testStereo()" style="padding:0.5rem 1rem; font-size:0.85rem; background:#666;">Test Stereo (L/R split)</button>
+    <div id="testInfo" style="font-size:0.75rem; color:#888; margin-top:0.5rem;"></div>
+  </div>
+
+  <div class="ws-url">
+    <label>WebSocket:
+      <input type="text" id="wsUrl" value="ws://localhost:8765/ws">
+    </label>
+    <button onclick="connectWs()" style="padding:0.3rem 0.8rem; font-size:0.8rem; background:#555;">Connect</button>
+  </div>
+</div>
+
+<script>
+// --- Web Audio API (ScriptProcessor direct sample generation) ---
+let audioCtx = null;
+let processorNode = null;
+let gainNode = null;
+let isPlaying = false;
+
+// Current params
+let currentCarrier = 200;
+let currentBeat = 7;
+let currentVolume = 0.3;
+
+// Phase accumulators (continuous, no loop boundary)
+let phaseL = 0;
+let phaseR = 0;
+
+function startAudio() {
+  if (isPlaying) return;
+
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+  gainNode = audioCtx.createGain();
+  gainNode.gain.value = currentVolume;
+  gainNode.connect(audioCtx.destination);
+
+  // 0 input channels, 2 output channels (stereo)
+  processorNode = audioCtx.createScriptProcessor(4096, 0, 2);
+  phaseL = 0;
+  phaseR = 0;
+
+  processorNode.onaudioprocess = function(e) {
+    const L = e.outputBuffer.getChannelData(0);
+    const R = e.outputBuffer.getChannelData(1);
+    const sr = audioCtx.sampleRate;
+    const stepL = currentCarrier / sr;
+    const stepR = (currentCarrier + currentBeat) / sr;
+
+    for (let i = 0; i < L.length; i++) {
+      L[i] = Math.sin(6.283185307179586 * phaseL);
+      R[i] = Math.sin(6.283185307179586 * phaseR);
+      phaseL += stepL;
+      phaseR += stepR;
+    }
+    // Keep phase in [0,1) to avoid floating point precision loss
+    phaseL -= Math.floor(phaseL);
+    phaseR -= Math.floor(phaseR);
+  };
+
+  processorNode.connect(gainNode);
+
+  isPlaying = true;
+  document.getElementById('btnStart').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  updateDisplay();
+
+  console.log('Audio started: sampleRate=' + audioCtx.sampleRate + ' bufferSize=4096');
+}
+
+function stopAudio() {
+  if (!isPlaying || !audioCtx) return;
+
+  processorNode.disconnect();
+  audioCtx.close();
+  audioCtx = null;
+  processorNode = null;
+  gainNode = null;
+  isPlaying = false;
+  document.getElementById('btnStart').disabled = false;
+  document.getElementById('btnStop').disabled = true;
+}
+
+function setVolume(val) {
+  currentVolume = val / 100;
+  document.getElementById('volumeLabel').textContent = val + '%';
+  if (isPlaying && gainNode) {
+    gainNode.gain.value = currentVolume;
+  }
+}
+
+function updateFrequency(carrier, beat) {
+  currentCarrier = carrier;
+  currentBeat = beat;
+  updateDisplay();
+  // Phase accumulators continue smoothly — no restart needed
+}
+
+function updateDisplay() {
+  document.getElementById('carrierHz').textContent = currentCarrier + ' Hz';
+  document.getElementById('beatHz').textContent = currentBeat + ' Hz';
+  document.getElementById('leftHz').textContent = currentCarrier + ' Hz';
+  document.getElementById('rightHz').textContent = (currentCarrier + currentBeat) + ' Hz';
+}
+
+// --- Diagnostic tests ---
+function testMono() {
+  const ctx = new AudioContext();
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.value = 440;
+  const g = ctx.createGain();
+  g.gain.value = 0.3;
+  osc.connect(g);
+  g.connect(ctx.destination);
+  osc.start();
+  document.getElementById('testInfo').textContent =
+    'Mono 440Hz playing (5s) | sampleRate=' + ctx.sampleRate + ' baseLatency=' + (ctx.baseLatency || 'N/A');
+  setTimeout(() => { osc.stop(); ctx.close(); document.getElementById('testInfo').textContent += ' | stopped'; }, 5000);
+}
+
+function testStereo() {
+  const ctx = new AudioContext();
+  const merger = ctx.createChannelMerger(2);
+  const g = ctx.createGain();
+  g.gain.value = 0.3;
+  merger.connect(g);
+  g.connect(ctx.destination);
+
+  const oscL = ctx.createOscillator();
+  oscL.type = 'sine';
+  oscL.frequency.value = 200;
+  oscL.connect(merger, 0, 0);
+
+  const oscR = ctx.createOscillator();
+  oscR.type = 'sine';
+  oscR.frequency.value = 207;
+  oscR.connect(merger, 0, 1);
+
+  oscL.start();
+  oscR.start();
+  document.getElementById('testInfo').textContent =
+    'Stereo L=200Hz R=207Hz playing (5s) | sampleRate=' + ctx.sampleRate;
+  setTimeout(() => { oscL.stop(); oscR.stop(); ctx.close(); document.getElementById('testInfo').textContent += ' | stopped'; }, 5000);
+}
+
+// --- WebSocket ---
+let ws = null;
+
+function connectWs() {
+  if (ws) {
+    ws.close();
+  }
+
+  const url = document.getElementById('wsUrl').value;
+  setStatus('connecting', 'Connecting to ' + url + '...');
+
+  ws = new WebSocket(url);
+
+  ws.onopen = () => {
+    setStatus('connected', 'Connected to ' + url);
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      handleMessage(data);
+    } catch (e) {
+      console.error('Invalid message:', event.data, e);
+    }
+  };
+
+  ws.onclose = () => {
+    setStatus('disconnected', 'Disconnected');
+    ws = null;
+  };
+
+  ws.onerror = (err) => {
+    console.error('WebSocket error:', err);
+    setStatus('disconnected', 'Connection error');
+  };
+}
+
+function handleMessage(data) {
+  // Update frequency
+  if (data.carrier_hz !== undefined && data.beat_hz !== undefined) {
+    updateFrequency(data.carrier_hz, data.beat_hz);
+  }
+
+  // Update mind state display
+  if (data.mind_state) {
+    const el = document.getElementById('stateDisplay');
+    el.textContent = data.mind_state;
+    el.className = 'state-display state-' + data.mind_state.toLowerCase();
+  }
+
+  // Update status with extra info
+  if (data.z_score !== undefined) {
+    const statusEl = document.getElementById('status');
+    const zStr = data.z_score >= 0 ? '+' + data.z_score.toFixed(2) : data.z_score.toFixed(2);
+    statusEl.textContent = 'Connected | Z: ' + zStr + ' | Phase: ' + (data.phase || '--');
+  }
+}
+
+function setStatus(cls, text) {
+  const el = document.getElementById('status');
+  el.className = 'status ' + cls;
+  el.textContent = text;
+}
+
+// Auto-connect on load
+window.addEventListener('load', () => {
+  // Check URL params for ws address
+  const params = new URLSearchParams(window.location.search);
+  const wsParam = params.get('ws');
+  if (wsParam) {
+    document.getElementById('wsUrl').value = wsParam;
+  }
+  connectWs();
+});
+</script>
+
+</body>
+</html>
