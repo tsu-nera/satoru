@@ -168,6 +168,14 @@ def load_selfloops_csv(csv_path: str, warmup_seconds: float = 0.0) -> pd.DataFra
     # 2行目以降をDataFrameとして読み込み（1行目スキップ、2行目がヘッダー）
     df = pd.read_csv(csv_path, skiprows=1)
 
+    # 新旧フォーマットの列名を統一（新: timestamp/bpm/rr → 旧: Time (ms)/HR (bpm)/R-R (ms)）
+    column_rename = {
+        'timestamp': 'Time (ms)',
+        'bpm': 'HR (bpm)',
+        'rr': 'R-R (ms)',
+    }
+    df = df.rename(columns={k: v for k, v in column_rename.items() if k in df.columns})
+
     # 相対時間（秒）を計算
     df['Time_sec'] = df['Time (ms)'] / 1000.0
 
