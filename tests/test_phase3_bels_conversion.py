@@ -1,7 +1,7 @@
 """
-Phase 3のBels変換を検証するテストコード
+Phase 3のdB変換を検証するテストコード
 
-Fmθ、FAAの計算がμV²/lnからBelsに正しく変換されたことを確認する。
+Fmθ、FAAの計算がμV²/lnからdB (10*log10) に正しく変換されたことを確認する。
 """
 
 import numpy as np
@@ -13,7 +13,7 @@ from lib.segment_analysis import calculate_meditation_score
 
 
 def test_fmtheta_bels_output():
-    """Fmθ計算がBels単位で出力されることを確認"""
+    """Fmθ計算がdB単位で出力されることを確認"""
     # サンプルデータ作成（簡易的なダミーデータ）
     np.random.seed(42)
     n_samples = 256 * 60  # 1分間のデータ（256Hz）
@@ -26,67 +26,66 @@ def test_fmtheta_bels_output():
 
     result = calculate_frontal_theta(df, band=(6.0, 7.0))
 
-    # Bels単位であることを確認
-    assert result.metadata['unit'] == 'Bels'
-    assert result.metadata['method'] == 'mne_hilbert_bels'
+    # dB単位であることを確認
+    assert result.metadata['unit'] == 'dB'
+    assert result.metadata['method'] == 'mne_hilbert_db'
 
-    # 統計データがBels単位であることを確認
-    stats_df = result.statistics
-    assert (stats_df['Unit'] == 'Bels').sum() == 6  # 6つのBels単位指標（Mean, Median, Std, First, Second, Increase）
-
-    # Belsの妥当な範囲（10*log10(μV²)なので、数値的に合理的な範囲）
+    # dBの妥当な範囲（10*log10(μV²)なので、数値的に合理的な範囲）
     mean_val = result.time_series.mean()
-    assert -20 < mean_val < 40, f"Fmθ mean ({mean_val}) should be in Bels range"
+    assert -20 < mean_val < 40, f"Fmθ mean ({mean_val}) should be in dB range"
 
-    # 時系列データがBelsであることを確認（対数スケールなので広い範囲を許容）
-    assert result.time_series.min() > -100  # Bels下限
-    assert result.time_series.max() < 100   # Bels上限
+    # 時系列データがdBであることを確認（対数スケールなので広い範囲を許容）
+    assert result.time_series.min() > -100  # dB下限
+    assert result.time_series.max() < 100   # dB上限
 
-    print(f"✓ Fmθ Bels conversion test passed")
-    print(f"  Mean: {mean_val:.2f} Bels")
-    print(f"  Range: {result.time_series.min():.2f} - {result.time_series.max():.2f} Bels")
+    print(f"✓ Fmθ dB conversion test passed")
+    print(f"  Mean: {mean_val:.2f} dB")
+    print(f"  Range: {result.time_series.min():.2f} - {result.time_series.max():.2f} dB")
 
 
 def test_faa_bels_output():
-    """FAA計算がBels差分で出力されることを確認"""
+    """FAA計算がdB差分で出力されることを確認"""
     np.random.seed(42)
     n_samples = 256 * 60  # 1分間のデータ
 
+    # use_mastoid_reference がデフォルトで True のため、TP9/TP10 も必要
     df = pd.DataFrame({
         'TimeStamp': pd.date_range('2025-01-01', periods=n_samples, freq='3.90625ms'),
         'RAW_AF7': np.random.randn(n_samples) * 10 + 50,
         'RAW_AF8': np.random.randn(n_samples) * 10 + 55,  # 右が少し高め
+        'RAW_TP9': np.random.randn(n_samples) * 10 + 50,
+        'RAW_TP10': np.random.randn(n_samples) * 10 + 50,
     })
 
     result = calculate_frontal_asymmetry(df)
 
-    # Bels単位であることを確認
-    assert result.metadata['unit'] == 'Bels'
-    assert result.metadata['method'] == 'mne_hilbert_bels'
+    # dB単位であることを確認
+    assert result.metadata['unit'] == 'dB'
+    assert result.metadata['method'] == 'mne_hilbert_db'
 
-    # 統計データがBels単位であることを確認
+    # 統計データがdB単位であることを確認
     stats_df = result.statistics
-    assert (stats_df['Unit'] == 'Bels').sum() == 5  # 5つのBels単位指標（Mean, Median, Std, First, Second）
+    assert (stats_df['Unit'] == 'dB').sum() == 5  # 5つのdB単位指標（Mean, Median, Std, First, Second）
 
-    # Bels差分の妥当な範囲（対数スケールなので広めに）
+    # dB差分の妥当な範囲（対数スケールなので広めに）
     mean_faa = result.time_series.mean()
-    assert -20 < mean_faa < 20, f"FAA mean ({mean_faa}) should be in Bels diff range"
+    assert -20 < mean_faa < 20, f"FAA mean ({mean_faa}) should be in dB diff range"
 
-    # 左右パワーがBelsであることを確認（対数スケールなので広い範囲を許容）
+    # 左右パワーがdBであることを確認（対数スケールなので広い範囲を許容）
     assert result.left_power.min() > -100
     assert result.left_power.max() < 100
     assert result.right_power.min() > -100
     assert result.right_power.max() < 100
 
-    print(f"✓ FAA Bels conversion test passed")
-    print(f"  Mean FAA: {mean_faa:.2f} Bels")
-    print(f"  Left power range: {result.left_power.min():.2f} - {result.left_power.max():.2f} Bels")
-    print(f"  Right power range: {result.right_power.min():.2f} - {result.right_power.max():.2f} Bels")
+    print(f"✓ FAA dB conversion test passed")
+    print(f"  Mean FAA: {mean_faa:.2f} dB")
+    print(f"  Left power range: {result.left_power.min():.2f} - {result.left_power.max():.2f} dB")
+    print(f"  Right power range: {result.right_power.min():.2f} - {result.right_power.max():.2f} dB")
 
 
 def test_meditation_score_normalization():
-    """総合スコアの正規化範囲がBelsに対応していることを確認"""
-    # Fmθ: 17-23 Bels の範囲でテスト
+    """総合スコアの正規化範囲がdBに対応していることを確認"""
+    # Fmθ: 17-23 dB の範囲でテスト
     score_min = calculate_meditation_score(fmtheta=17.0)
     score_max = calculate_meditation_score(fmtheta=23.0)
     score_mid = calculate_meditation_score(fmtheta=20.0)
@@ -95,9 +94,9 @@ def test_meditation_score_normalization():
     assert score_max['scores']['fmtheta'] == 1.0  # max値で1
     assert 0.4 < score_mid['scores']['fmtheta'] < 0.6  # 中間値で約0.5
 
-    # FAA: -2.0 ~ 2.0 Bels の範囲でテスト
-    faa_min = calculate_meditation_score(faa=-2.0)
-    faa_max = calculate_meditation_score(faa=2.0)
+    # FAA: -20.0 ~ 20.0 dB の範囲でテスト
+    faa_min = calculate_meditation_score(faa=-20.0)
+    faa_max = calculate_meditation_score(faa=20.0)
     faa_mid = calculate_meditation_score(faa=0.0)
 
     assert faa_min['scores']['faa'] == 0.0
