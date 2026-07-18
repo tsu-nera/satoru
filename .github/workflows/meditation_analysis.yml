@@ -1,4 +1,4 @@
-name: Meditation Analysis (EEG + HRV)
+name: Meditation Analysis
 
 on:
   workflow_dispatch:
