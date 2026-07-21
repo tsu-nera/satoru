@@ -85,14 +85,19 @@ def test_faa_bels_output():
 
 def test_meditation_score_normalization():
     """総合スコアの正規化範囲がdBに対応していることを確認"""
-    # Fmθ: 17-23 dB の範囲でテスト
-    score_min = calculate_meditation_score(fmtheta=17.0)
-    score_max = calculate_meditation_score(fmtheta=23.0)
-    score_mid = calculate_meditation_score(fmtheta=20.0)
+    # Fmθ: -5.0 ~ +5.0 dB の範囲でテスト（実測分布に基づくレンジ）
+    score_min = calculate_meditation_score(fmtheta=-5.0)
+    score_max = calculate_meditation_score(fmtheta=5.0)
+    score_mid = calculate_meditation_score(fmtheta=0.0)
 
     assert score_min['scores']['fmtheta'] == 0.0  # min値で0
     assert score_max['scores']['fmtheta'] == 1.0  # max値で1
     assert 0.4 < score_mid['scores']['fmtheta'] < 0.6  # 中間値で約0.5
+
+    # 実測レンジのFmθがクリップされず中間域に入ること（回帰防止）
+    for observed in (-2.37, -1.34, 0.35):
+        s = calculate_meditation_score(fmtheta=observed)['scores']['fmtheta']
+        assert 0.0 < s < 1.0, f'Fmθ={observed} がクリップされている'
 
     # FAA: -20.0 ~ 20.0 dB の範囲でテスト
     faa_min = calculate_meditation_score(faa=-20.0)
