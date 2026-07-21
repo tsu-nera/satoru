@@ -89,7 +89,14 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
 
 ### 気づき・次回への提案
 - 具体的に2-3個
+
+---
+レポート: `tmp/REPORT.md` / 図: `tmp/img/` / サマリー: `tmp/summary.csv`
+図込みで読む: `cd tmp && mdcat -p REPORT.md`
 ```
+
+`tmp/` は実行のたび上書きされる。レポート内の画像参照は `img/*.png` の相対パスなので、
+mdcat はリポジトリルートからでなく `tmp/` 内で実行しないと画像が抜ける。
 
 レビュー後はディスカッションに入る。
 
