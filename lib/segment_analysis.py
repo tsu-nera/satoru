@@ -569,9 +569,13 @@ def calculate_meditation_score(
     scores = {}
 
     # Fmθスコア（高いほど良い）
-    # 旧: 50-200 μV² → 新: 17-23 dB (10*log10(50) ≈ 17, 10*log10(200) ≈ 23)
+    # レンジは実測分布から決定（2026-06〜07の5セッション）:
+    #   セッション平均 -2.37〜+0.35 dB、瞬時値 -5.18〜+6.20 dB
+    # 単位をμV²からdBへ移行した際、旧レンジ50-200 μV²に10*log10を適用した
+    # 17-23 dBが残っていたが、これは実測値と全く重ならず常時下限クリップされ、
+    # 重み最大(0.3125)のFmθスコアが恒常的に0となり総合スコアの上限が68.8だった。
     if fmtheta is not None:
-        scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=17.0, max_val=23.0)
+        scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=-5.0, max_val=5.0)
     else:
         scores['fmtheta'] = 0.5
 
