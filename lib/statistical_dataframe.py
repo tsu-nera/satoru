@@ -15,13 +15,20 @@ from scipy import stats
 
 # Spectral Entropy計算関数をインポート
 from .sensors.eeg.spectral_entropy import _calculate_shannon_entropy
+from .sensors.eeg.artifact import (
+    ARTIFACT_P2P_THRESHOLD_UV,
+    ARTIFACT_WINDOW_SAMPLES,
+    SEGMENT_MIN_VALID_RATIO,
+    detect_artifact_windows,
+    segment_valid_ratio,
+)
 
 if TYPE_CHECKING:
     import mne
 
 try:
     import mne
-    from mne import Epochs, make_fixed_length_events
+    from mne.time_frequency import psd_array_welch
     MNE_AVAILABLE = True
 except ImportError:
     MNE_AVAILABLE = False
@@ -38,6 +45,7 @@ def create_statistical_dataframe(
     df: Optional[pd.DataFrame] = None,
     hrv_result: Optional[object] = None,
     respiration_result: Optional[object] = None,
+    artifact_threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
 ) -> Dict[str, pd.DataFrame]:
     """
     統一的なStatistical DataFrameを生成する。
@@ -68,6 +76,8 @@ def create_statistical_dataframe(
         calculate_hrv_standard_set()の戻り値（HRVデータ）
     respiration_result : RespirationResult, optional
         calculate_breathing_rate()の戻り値（呼吸データ）
+    artifact_threshold_uv : float, default ARTIFACT_P2P_THRESHOLD_UV
+        Welch窓内peak-to-peak振幅の除外閾値（μV）
 
     Returns
     -------
@@ -83,11 +93,17 @@ def create_statistical_dataframe(
             'posture': DataFrame,          # セグメント別Posture統計量時系列
             'hrv': DataFrame,              # セグメント別HRV時系列（RMSSD）
             'respiration': DataFrame,      # セグメント別呼吸時系列（BR）
-            'statistics': DataFrame        # 統計サマリー（縦長形式）
+            'statistics': DataFrame,       # 統計サマリー（縦長形式）
+            'quality': DataFrame           # セグメント別のアーチファクト除去率
         }
 
     Notes
     -----
+    - PSDはWelch窓（2048サンプル = 8秒 @256Hz）単位で計算し、
+      窓内peak-to-peak振幅が閾値を超えたチャネル×窓を除外してから平均する。
+      チャネル単位で判定するため、耳側（TP9/TP10）だけが汚いセッションでも
+      前頭（AF7/AF8）のデータは保持される
+    - 残存率がSEGMENT_MIN_VALID_RATIOを下回るセグメントは全指標をNaNにする
     - バンドパワーはdB（10*log10(μV²)）で表現
     - 比率（対数）はdB差分（10*log10(A/B) = 10*log10(A) - 10*log10(B)）
     - 比率（実数）は10^(dB差分/10)で計算
@@ -110,35 +126,75 @@ def create_statistical_dataframe(
     # ウォームアップ後のデータをクロップ
     raw_cropped = raw.copy().crop(tmin=tmin_sec, tmax=tmax_sec)
 
-    # 固定長イベント作成
     duration_sec = segment_minutes * 60.0
-    events = make_fixed_length_events(raw_cropped, duration=duration_sec)
-
-    if len(events) == 0:
-        raise ValueError('セグメント用のイベントが生成できませんでした。')
-
-    # Epochsオブジェクト作成
-    epochs = Epochs(
-        raw_cropped,
-        events,
-        tmin=0,
-        tmax=duration_sec,
-        baseline=None,
-        preload=True,
-        verbose=False,
-    )
 
     # PSD計算（Welch法）
     sfreq = raw_cropped.info['sfreq']
     nyquist = sfreq / 2.0
     fmax = min(50.0, nyquist * 0.95)  # 安全マージン5%
 
-    spectrum = epochs.compute_psd(method='welch', fmin=1.0, fmax=fmax, verbose=False)
-    psds, freqs = spectrum.get_data(return_freqs=True)
+    # μV単位のデータ（MNEはV単位で保持）
+    data_uv = raw_cropped.get_data() * 1e6
 
-    # V²/Hz → μV²/Hz に変換（MNEはV単位で処理するため）
-    # 1 V² = (10^6 μV)² = 10^12 μV²
-    psds = psds * 1e12
+    # 振幅ベースのアーチファクト検出（チャネル×Welch窓）
+    valid_mask = detect_artifact_windows(
+        data_uv,
+        window_samples=ARTIFACT_WINDOW_SAMPLES,
+        threshold_uv=artifact_threshold_uv,
+    )
+    n_windows = valid_mask.shape[1]
+
+    if n_windows == 0:
+        raise ValueError(
+            f'PSD窓（{ARTIFACT_WINDOW_SAMPLES}サンプル）を構成できるだけのデータがありません。'
+        )
+
+    # 窓ごと・チャネルごとのPSDを一括計算
+    # shape: (n_windows, n_channels, window_samples)
+    windowed = (
+        data_uv[:, : n_windows * ARTIFACT_WINDOW_SAMPLES]
+        .reshape(data_uv.shape[0], n_windows, ARTIFACT_WINDOW_SAMPLES)
+        .transpose(1, 0, 2)
+    )
+    window_psds, freqs = psd_array_welch(
+        windowed,
+        sfreq=sfreq,
+        fmin=1.0,
+        fmax=fmax,
+        n_fft=ARTIFACT_WINDOW_SAMPLES,
+        n_per_seg=ARTIFACT_WINDOW_SAMPLES,
+        n_overlap=0,
+        verbose=False,
+    )
+
+    # セグメント境界を窓インデックスで表現
+    windows_per_segment = max(1, int(round(duration_sec * sfreq / ARTIFACT_WINDOW_SAMPLES)))
+    n_segments = n_windows // windows_per_segment
+
+    if n_segments == 0:
+        raise ValueError('セグメントを構成できるだけのデータがありません。')
+
+    # セグメントごとに、有効窓のみを平均してPSDを作る
+    # 不良チャネル（そのセグメントで全窓が不良）はチャネル平均から除外する
+    psds = np.full((n_segments, data_uv.shape[0], len(freqs)), np.nan)
+    segment_valid_ratios = []
+
+    for seg_idx in range(n_segments):
+        w_start = seg_idx * windows_per_segment
+        w_end = w_start + windows_per_segment
+        seg_mask = valid_mask[:, w_start:w_end]
+        segment_valid_ratios.append(segment_valid_ratio(valid_mask, w_start, w_end))
+
+        for ch_idx in range(data_uv.shape[0]):
+            ch_valid = seg_mask[ch_idx]
+            if not ch_valid.any():
+                continue
+            psds[seg_idx, ch_idx] = window_psds[w_start:w_end][ch_valid, ch_idx].mean(axis=0)
+
+    segment_valid_ratios = np.asarray(segment_valid_ratios)
+
+    # 残存率が閾値を下回るセグメントは指標を算出しない（NaNのまま返す）
+    segment_usable = segment_valid_ratios >= SEGMENT_MIN_VALID_RATIO
 
     # バンド定義（全バンド）
     bands = {
@@ -152,23 +208,34 @@ def create_statistical_dataframe(
     # タイムスタンプ生成
     timestamps = [
         session_start + pd.Timedelta(minutes=warmup_minutes) + pd.Timedelta(seconds=i * duration_sec)
-        for i in range(len(epochs))
+        for i in range(n_segments)
     ]
 
-    # バンドパワー計算（全チャネル平均、dB変換）
+    # バンドパワー計算（有効チャネル平均、dB変換）
     band_powers_dict = {}
     for band_name, (fmin_band, fmax_band) in bands.items():
         freq_mask = (freqs >= fmin_band) & (freqs < fmax_band)
-        # shape: (n_epochs, n_channels, n_freqs) -> (n_epochs,)
-        band_power = psds[:, :, freq_mask].mean(axis=(1, 2))
 
-        # dB変換（10*log10）
-        band_power_db = 10 * np.log10(band_power + 1e-12)  # ゼロ除算回避
+        band_power_db = np.full(n_segments, np.nan)
+        for seg_idx in np.flatnonzero(segment_usable):
+            # 全窓が不良だったチャネルはNaNなのでnanmeanで除外する
+            band_power = np.nanmean(psds[seg_idx][:, freq_mask])
+            band_power_db[seg_idx] = 10 * np.log10(band_power + 1e-12)  # ゼロ除算回避
 
         band_powers_dict[band_name] = band_power_db
 
     # DataFrameに変換
     band_powers_df = pd.DataFrame(band_powers_dict, index=timestamps)
+
+    # セグメント別の品質（アーチファクト除去の結果）
+    quality_df = pd.DataFrame(
+        {
+            'valid_ratio': segment_valid_ratios[:n_segments],
+            'excluded_ratio': 1.0 - segment_valid_ratios[:n_segments],
+            'usable': segment_usable[:n_segments],
+        },
+        index=timestamps,
+    )
 
     # Spectral Entropy計算（全チャネル平均）
     # 周波数範囲でマスク（1-40Hz）
@@ -176,12 +243,13 @@ def create_statistical_dataframe(
     freq_mask = (freqs >= freq_range[0]) & (freqs <= freq_range[1])
 
     se_values = []
-    for epoch_idx in range(len(epochs)):
-        # このエポックのPSD (n_channels, n_freqs)
-        psd_epoch = psds[epoch_idx]
+    for seg_idx in range(n_segments):
+        if not segment_usable[seg_idx]:
+            se_values.append(np.nan)
+            continue
 
-        # 全チャネルの平均PSD
-        psd_avg = psd_epoch.mean(axis=0)
+        # このセグメントの有効チャネル平均PSD (n_freqs,)
+        psd_avg = np.nanmean(psds[seg_idx], axis=0)
 
         # 周波数範囲でマスク
         psd_masked = psd_avg[freq_mask]
@@ -194,20 +262,21 @@ def create_statistical_dataframe(
     se_df = pd.DataFrame({'spectral_entropy': se_values}, index=timestamps)
 
     # IAF（Individual Alpha Frequency）計算
-    # Epochsごとにアルファ帯域のピーク周波数を計算
+    # セグメントごとにアルファ帯域のピーク周波数を計算
     iaf_values = []
     alpha_range = (8.0, 13.0)
 
-    for epoch_idx in range(len(epochs)):
-        # このエポックのPSD (n_channels, n_freqs)
-        psd_epoch = psds[epoch_idx]
+    for seg_idx in range(n_segments):
+        if not segment_usable[seg_idx]:
+            iaf_values.append(np.nan)
+            continue
 
         # アルファ帯域のマスク
         alpha_mask = (freqs >= alpha_range[0]) & (freqs <= alpha_range[1])
         alpha_freqs = freqs[alpha_mask]
 
-        # 全チャネルの平均PSD（アルファ帯域）
-        psd_alpha_avg = psd_epoch[:, alpha_mask].mean(axis=0)
+        # 有効チャネルの平均PSD（アルファ帯域）
+        psd_alpha_avg = np.nanmean(psds[seg_idx][:, alpha_mask], axis=0)
 
         # ピーク周波数を検出
         peak_idx = psd_alpha_avg.argmax()
@@ -218,20 +287,21 @@ def create_statistical_dataframe(
     iaf_series = pd.Series(iaf_values, index=timestamps)
 
     # ITF（Individual Theta Frequency）計算
-    # Epochsごとにシータ帯域のピーク周波数を計算
+    # セグメントごとにシータ帯域のピーク周波数を計算
     itf_values = []
     theta_range = (5.0, 7.0)
 
-    for epoch_idx in range(len(epochs)):
-        # このエポックのPSD (n_channels, n_freqs)
-        psd_epoch = psds[epoch_idx]
+    for seg_idx in range(n_segments):
+        if not segment_usable[seg_idx]:
+            itf_values.append(np.nan)
+            continue
 
         # シータ帯域のマスク
         theta_mask = (freqs >= theta_range[0]) & (freqs <= theta_range[1])
         theta_freqs = freqs[theta_mask]
 
-        # 全チャネルの平均PSD（シータ帯域）
-        psd_theta_avg = psd_epoch[:, theta_mask].mean(axis=0)
+        # 有効チャネルの平均PSD（シータ帯域）
+        psd_theta_avg = np.nanmean(psds[seg_idx][:, theta_mask], axis=0)
 
         # ピーク周波数を検出
         peak_idx = psd_theta_avg.argmax()
@@ -751,6 +821,7 @@ def create_statistical_dataframe(
         'hrv': hrv_df,
         'respiration': respiration_df,
         'statistics': statistics_df,
+        'quality': quality_df,
     }
 
 
