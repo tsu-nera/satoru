@@ -13,6 +13,25 @@
 > **注**: 1.0=Good, 2.0=Medium, 4.0=Bad
 
 {% endif %}
+{% if hsi.amplitude_statistics is not none and not hsi.amplitude_statistics.empty %}
+### RAW振幅品質（EEG）
+
+- **振幅による除外率**: {{ hsi.rejected_ratio|format_percent }}
+
+{{ hsi.amplitude_statistics|df_to_markdown(floatfmt='.1f', index=False) }}
+
+> **単位**: Std / P2P (median) / Threshold = μV、Rejected = %
+>
+> **判定**: {{ hsi.window_samples }}サンプル窓（PSDのWelch窓と同一）内のpeak-to-peak振幅が
+> Thresholdを超えたチャネル×窓をバンドパワー計算から除外しています。
+> Thresholdは絶対値{{ hsi.threshold_uv|number_format(0) }}μVと、チャネル別p2p中央値の4倍のうち
+> 厳しい方（下限50μV）です。
+>
+> **HSIとの違い**: HSIは電極の接触インピーダンス指標であり、アーチファクト検出器ではありません。
+> 眼球運動・まばたき・前額の筋電・発汗ドリフトはHSIがGoodのままでも混入するため、
+> Rejectedが高いチャネルはHSIがGoodでも数値の信頼度を割り引いて読んでください。
+
+{% endif %}
 {% if hsi.rr_quality_stats %}
 ### R-R間隔データ品質（ECG）
 

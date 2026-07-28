@@ -57,6 +57,7 @@ from lib import (
 )
 from lib.session_log import write_to_csv, write_to_google_sheets
 from lib.sensors.ecg.respiration import calculate_respiratory_period
+from lib.sensors.eeg.artifact import summarize_artifacts
 from lib.sensors.eeg.band_power import compute_band_powers_from_raw, needs_band_power_computation
 
 # 可視化関数をインポート
@@ -233,9 +234,11 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
             # Selfloopsデータから心拍数を取得
             print(f'Loading Selfloops HR data: {selfloops_data}')
             from lib.loaders.selfloops import load_selfloops_csv
-            from lib.loaders.base import get_heart_rate_data
+            # 別名で束縛する。同名でimportするとget_heart_rate_dataが関数スコープの
+            # ローカル変数になり、else側（Muse経路）がUnboundLocalErrorで落ちる
+            from lib.loaders.base import get_heart_rate_data as get_hr_from_ecg
             sl_df = load_selfloops_csv(str(selfloops_data), warmup_seconds=0.0)
-            hr_data = get_heart_rate_data(sl_df)
+            hr_data = get_hr_from_ecg(sl_df)
             hr_data_source = 'Selfloops'
         else:
             # Museデータから心拍数を取得
@@ -378,6 +381,15 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         raw = mne_dict['raw']
         print(f'検出されたチャネル: {mne_dict["channels"]}')
         print(f'推定サンプリングレート: {mne_dict["sfreq"]:.2f} Hz')
+
+        # RAW振幅ベースの品質統計（HSIでは検出できないアーチファクトの可視化）
+        print('計算中: RAW振幅品質...')
+        artifact_summary = summarize_artifacts(
+            raw.get_data() * 1e6,
+            mne_dict['channels'],
+        )
+        results['artifact_summary'] = artifact_summary
+        print(f'  振幅による除外率: {artifact_summary["rejected_ratio"] * 100:.1f}%')
 
         # Fmθ/FAA計算用に、バンドパスフィルタを適用しないrawデータを作成
         # (これらの関数は内部で独自のバンドパスフィルタを適用するため)

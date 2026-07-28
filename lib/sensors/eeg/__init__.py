@@ -15,6 +15,14 @@ from .frequency import calculate_psd, calculate_spectrogram, calculate_spectrogr
 # 統計
 from .statistics import calculate_band_statistics, calculate_hsi_statistics
 
+# アーチファクト検出（振幅ベース）
+from .artifact import (
+    ARTIFACT_P2P_THRESHOLD_UV,
+    calculate_amplitude_statistics,
+    detect_artifact_windows,
+    summarize_artifacts,
+)
+
 # PAF解析
 from .paf import calculate_paf
 
@@ -83,6 +91,9 @@ __all__ = [
     # 統計
     'calculate_band_statistics',
     'calculate_hsi_statistics',
+    'summarize_artifacts',
+    'calculate_amplitude_statistics',
+    'detect_artifact_windows',
     # PAF解析
     'calculate_paf',
     # ITF解析

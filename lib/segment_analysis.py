@@ -17,6 +17,7 @@ from .sensors.eeg.frontal_theta import (
     FrontalThetaResult,
     calculate_frontal_theta,
 )
+from .sensors.eeg.artifact import PEAK_MAX_EXCLUDED_RATIO
 from .sensors.eeg.preprocessing import filter_eeg_quality
 from .statistical_dataframe import get_band_power_at_time, get_band_ratio_at_time
 
@@ -126,6 +127,7 @@ def calculate_segment_analysis(
     posture_df = statistical_df.get('posture')
     hrv_df = statistical_df.get('hrv')
     respiration_df = statistical_df.get('respiration')
+    quality_df = statistical_df.get('quality')
 
     if 'TimeStamp' not in df_clean.columns:
         raise ValueError('TimeStamp列が存在しません。')
@@ -265,6 +267,13 @@ def calculate_segment_analysis(
         if posture_df is not None and start in posture_df.index:
             yaw_rms = posture_df.loc[start, 'yaw_rms']
 
+        # アーチファクト除去率を取得
+        excluded_ratio = np.nan
+        segment_usable = True
+        if quality_df is not None and start in quality_df.index:
+            excluded_ratio = quality_df.loc[start, 'excluded_ratio']
+            segment_usable = bool(quality_df.loc[start, 'usable'])
+
         # 相対パワー（%）の計算
         # dB → パワーに変換（10^(dB/10)）
         delta_power = 10 ** (delta_mean / 10) if pd.notna(delta_mean) else 0.0
@@ -334,6 +343,8 @@ def calculate_segment_analysis(
             'br_mean': br_mean,
             'yaw_rms': yaw_rms,
             'meditation_score': meditation_score,
+            'excluded_ratio': excluded_ratio,
+            'usable': segment_usable,
         })
 
     segment_frame = pd.DataFrame(records)
@@ -365,6 +376,21 @@ def calculate_segment_analysis(
         excluded_indices.add(all_indices[0])
     if exclude_last_segment and len(all_indices) > 0:
         excluded_indices.add(all_indices[-1])
+
+    # アーチファクト除去率が高いセグメントをピーク判定・best値から除外する。
+    # これを入れないと、まばたき等の大振幅アーチファクトがθ/αとFmθを押し上げ、
+    # 汚染区間が「最高パフォーマンス区間」として提示される。
+    # 指標がNaNの区間（usable=False）と、値は出すがピーク判定には使わない区間を分ける。
+    artifact_indices = set(
+        segment_frame.loc[~segment_frame['usable'], 'segment_index'].tolist()
+    )
+    noisy_indices = set(
+        segment_frame.loc[
+            segment_frame['excluded_ratio'] > PEAK_MAX_EXCLUDED_RATIO, 'segment_index'
+        ].tolist()
+    ) - artifact_indices
+    excluded_indices |= artifact_indices | noisy_indices
+
     scoring_indices = [idx for idx in all_indices if idx not in excluded_indices]
 
     # ピーク判定（総合スコアベース、除外セグメントを除く）
@@ -390,7 +416,11 @@ def calculate_segment_analysis(
 
         # 備考列: 最初/最後/ピークを表示
         note = ''
-        if exclude_first_segment and seg_idx == first_idx:
+        if seg_idx in artifact_indices:
+            note = 'artifact'
+        elif seg_idx in noisy_indices:
+            note = 'noisy'
+        elif exclude_first_segment and seg_idx == first_idx:
             note = 'relaxing'
         elif exclude_last_segment and seg_idx == last_idx:
             note = 'post meditation'
@@ -430,6 +460,7 @@ def calculate_segment_analysis(
             'HRV': row['rmssd_mean'],
             'RP (s)': 60 / row['br_mean'] if pd.notna(row['br_mean']) and row['br_mean'] > 0 else None,
             'Yaw RMS': row['yaw_rms'],
+            '除外 (%)': row['excluded_ratio'] * 100 if pd.notna(row['excluded_ratio']) else None,
             '備考': note,
         }
         metrics_rows.append(metrics_row)
@@ -461,6 +492,8 @@ def calculate_segment_analysis(
         ),
         'peak_score': float(peak_score.loc[peak_idx]) if peak_idx is not None else None,
         'excluded_indices': list(excluded_indices),
+        'artifact_indices': sorted(artifact_indices),
+        'noisy_indices': sorted(noisy_indices),
         'scoring_indices': scoring_indices,
     }
 

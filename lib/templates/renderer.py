@@ -125,10 +125,12 @@ class MeditationReportRenderer:
         # 接続品質 (HSI)
         if 'hsi_stats' in results:
             hsi_data = results['hsi_stats']
+            artifact = results.get('artifact_summary')
             has_hsi_data = (
                 hsi_data.get('overall_quality') is not None
                 or (hsi_data.get('statistics') is not None and not hsi_data['statistics'].empty)
                 or results.get('rr_quality_stats') is not None
+                or artifact is not None
             )
             if has_hsi_data:
                 context['hsi'] = {
@@ -136,6 +138,12 @@ class MeditationReportRenderer:
                     'good_ratio': hsi_data.get('good_ratio', 0.0),
                     'statistics': hsi_data.get('statistics'),
                     'rr_quality_stats': results.get('rr_quality_stats'),
+                    'amplitude_statistics': (
+                        artifact.get('amplitude_statistics') if artifact else None
+                    ),
+                    'rejected_ratio': artifact.get('rejected_ratio') if artifact else None,
+                    'threshold_uv': artifact.get('threshold_uv') if artifact else None,
+                    'window_samples': artifact.get('window_samples') if artifact else None,
                 }
 
         # 生データプレビュー
