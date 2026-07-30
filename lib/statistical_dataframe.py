@@ -46,6 +46,7 @@ def create_statistical_dataframe(
     hrv_result: Optional[object] = None,
     respiration_result: Optional[object] = None,
     artifact_threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
+    window_samples: int = ARTIFACT_WINDOW_SAMPLES,
 ) -> Dict[str, pd.DataFrame]:
     """
     統一的なStatistical DataFrameを生成する。
@@ -78,6 +79,9 @@ def create_statistical_dataframe(
         calculate_breathing_rate()の戻り値（呼吸データ）
     artifact_threshold_uv : float, default ARTIFACT_P2P_THRESHOLD_UV
         Welch窓内peak-to-peak振幅の除外閾値（μV）
+    window_samples : int, default ARTIFACT_WINDOW_SAMPLES
+        Welch窓長（サンプル）。アーチファクト判定の粒度も兼ねる。
+        窓長を変えると除外率が大きく動くため、比較実験用に上書きできるようにしてある
 
     Returns
     -------
@@ -99,7 +103,7 @@ def create_statistical_dataframe(
 
     Notes
     -----
-    - PSDはWelch窓（2048サンプル = 8秒 @256Hz）単位で計算し、
+    - PSDはWelch窓（既定1024サンプル = 4秒 @256Hz）単位で計算し、
       窓内peak-to-peak振幅が閾値を超えたチャネル×窓を除外してから平均する。
       チャネル単位で判定するため、耳側（TP9/TP10）だけが汚いセッションでも
       前頭（AF7/AF8）のデータは保持される
@@ -139,14 +143,14 @@ def create_statistical_dataframe(
     # 振幅ベースのアーチファクト検出（チャネル×Welch窓）
     valid_mask = detect_artifact_windows(
         data_uv,
-        window_samples=ARTIFACT_WINDOW_SAMPLES,
+        window_samples=window_samples,
         threshold_uv=artifact_threshold_uv,
     )
     n_windows = valid_mask.shape[1]
 
     if n_windows == 0:
         raise ValueError(
-            f'PSD窓（{ARTIFACT_WINDOW_SAMPLES}サンプル）を構成できるだけのデータがありません。'
+            f'PSD窓（{window_samples}サンプル）を構成できるだけのデータがありません。'
         )
 
     # 窓ごと・チャネルごとのPSDを一括計算

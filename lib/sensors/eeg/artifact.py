@@ -6,8 +6,8 @@ HSI（Horseshoe Signal Index）は電極の接触インピーダンス指標で�
 電極の微小な滑りはいずれもHSIをGoodのまま通過するため、
 振幅による独立した品質ゲートが必要になる。
 
-検出の粒度はPSDのWelch窓（既定2048サンプル = 8秒 @256Hz）に揃える。
-PSDが8秒単位で汚染される以上、それより細かい粒度で除去しても意味がないため。
+検出の粒度はPSDのWelch窓（既定1024サンプル = 4秒 @256Hz）に揃える。
+PSDは窓単位で汚染されるため、それより細かい粒度で除去しても意味がない。
 """
 
 from __future__ import annotations
@@ -31,8 +31,10 @@ ARTIFACT_RELATIVE_K = 4.0
 # 相対閾値の下限（μV）。極端にクリーンなチャネルで正常なEEG変動まで落とさないため
 ARTIFACT_RELATIVE_FLOOR_UV = 50.0
 
-# PSDのWelch窓長（サンプル）。statistical_dataframe側のn_fftと一致させること
-ARTIFACT_WINDOW_SAMPLES = 2048
+# PSDのWelch窓長（サンプル）。statistical_dataframe側のn_fftと一致させること。
+# 窓は1点でも汚れると丸ごと落ちるので、窓長がそのまま巻き添え損失になる。
+# 長くする方向の変更は除外率を大きく押し上げるため、docs/adr/001 を読んでから。
+ARTIFACT_WINDOW_SAMPLES = 1024
 
 # セグメントを有効とみなす最小の残存率。これを下回るセグメントは指標をNaNにする
 SEGMENT_MIN_VALID_RATIO = 0.5

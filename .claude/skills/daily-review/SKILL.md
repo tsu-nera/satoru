@@ -92,11 +92,12 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
 
 ---
 レポート: `tmp/REPORT.md` / 図: `tmp/img/` / サマリー: `tmp/summary.csv`
-図込みで読む: `cd tmp && mdcat -p REPORT.md`
+図込みで読む: `cd tmp && mdcat REPORT.md`
 ```
 
-`tmp/` は実行のたび上書きされる。レポート内の画像参照は `img/*.png` の相対パスなので、
-mdcat はリポジトリルートからでなく `tmp/` 内で実行しないと画像が抜ける。
+`tmp/` は実行のたび上書きされる。mdcat の落とし穴は2つ:
+- `-p`（ページャ）を付けるとインライン画像が落ちてOSC 8リンクに置換される。画像を見たいなら付けない。
+- レポート内の画像参照は `img/*.png` の相対パスなので、リポジトリルートでなく `tmp/` 内で実行する。
 
 レビュー後はディスカッションに入る。
 

@@ -25,8 +25,14 @@ from lib.sensors.eeg.artifact import (  # noqa: E402
 )
 
 SFREQ = 256.0
-N_WINDOWS = 24
 CHANNELS = ['RAW_TP9', 'RAW_AF7', 'RAW_AF8', 'RAW_TP10']
+
+# 統合テストは segment_minutes=1 で回すので、窓数は窓長から導出する。
+# ARTIFACT_WINDOW_SAMPLES を変えてもセグメント数が3のまま保たれるようにするため、
+# 定数をベタ書きしない（窓長は docs/adr/001 の通り調整対象）
+WINDOWS_PER_SEGMENT = int(round(60.0 * SFREQ / ARTIFACT_WINDOW_SAMPLES))
+N_SEGMENTS = 3
+N_WINDOWS = N_SEGMENTS * WINDOWS_PER_SEGMENT
 
 
 def make_clean_data(amplitude_uv=10.0, seed=0):
@@ -159,8 +165,8 @@ class TestStatisticalDataFrameIntegration:
         除去が効いていなければ、バーストの低周波成分でδが跳ね上がる。
         """
         dirty = make_clean_data()
-        # 1セグメント = 1分 ≒ 7窓。先頭セグメントにのみバーストを集中させる
-        for w in range(3):
+        # 先頭セグメントにのみバーストを集中させる（残存率は50%を下回らせない）
+        for w in range(WINDOWS_PER_SEGMENT // 2):
             dirty = inject_burst(dirty, channel_idx=1, window_idx=w, amplitude_uv=800.0)
 
         result = self._build(dirty)
@@ -174,9 +180,9 @@ class TestStatisticalDataFrameIntegration:
     def test_heavily_contaminated_segment_is_nan(self):
         """残存率が閾値を下回るセグメントは指標を出さない。"""
         data = make_clean_data()
-        # 先頭セグメント（1分 ≒ 7窓）を全チャネル・全窓で汚染する
+        # 先頭セグメントを全チャネル・全窓で汚染する
         for ch in range(len(CHANNELS)):
-            for w in range(8):
+            for w in range(WINDOWS_PER_SEGMENT):
                 data = inject_burst(data, channel_idx=ch, window_idx=w, amplitude_uv=800.0)
 
         result = self._build(data)

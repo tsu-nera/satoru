@@ -57,7 +57,7 @@ from lib import (
 )
 from lib.session_log import write_to_csv, write_to_google_sheets
 from lib.sensors.ecg.respiration import calculate_respiratory_period
-from lib.sensors.eeg.artifact import summarize_artifacts
+from lib.sensors.eeg.artifact import ARTIFACT_WINDOW_SAMPLES, summarize_artifacts
 from lib.sensors.eeg.band_power import compute_band_powers_from_raw, needs_band_power_computation
 
 # 可視化関数をインポート
@@ -115,7 +115,8 @@ def generate_markdown_report(data_path, output_dir, results):
     print(f'✓ レポート生成完了: {report_path}')
 
 
-def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0, selfloops_data=None):
+def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0, selfloops_data=None,
+                      artifact_window_samples=ARTIFACT_WINDOW_SAMPLES):
     """
     完全な分析を実行
 
@@ -134,6 +135,9 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         ウォームアップ除外時間（分）。短い記録の場合は0を指定。
     selfloops_data : Path, default=None
         Selfloops HRVデータファイルパス（オプション）
+    artifact_window_samples : int, default=ARTIFACT_WINDOW_SAMPLES
+        アーチファクト判定兼PSDのWelch窓長（サンプル）。窓長を変えると除外率が
+        大きく動くため、比較実験用に上書きできる（docs/adr/001）
     """
     print('='*60)
     print('瞑想分析レポート生成')
@@ -387,6 +391,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         artifact_summary = summarize_artifacts(
             raw.get_data() * 1e6,
             mne_dict['channels'],
+            window_samples=artifact_window_samples,
         )
         results['artifact_summary'] = artifact_summary
         print(f'  振幅による除外率: {artifact_summary["rejected_ratio"] * 100:.1f}%')
@@ -585,6 +590,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
                 df=df,  # Posture統計量計算用
                 hrv_result=hrv_result,  # HRVデータを追加
                 respiration_result=respiration_result,  # 呼吸データを追加
+                window_samples=artifact_window_samples,
             )
             results['statistical_df'] = statistical_df
             print(f'  バンドパワー: {len(statistical_df["band_powers"])} セグメント')
@@ -882,6 +888,13 @@ def main():
         help='ウォームアップ除外時間（分）。短い記録の場合は0を指定（デフォルト: 1.0）'
     )
     parser.add_argument(
+        '--artifact-window-samples',
+        type=int,
+        default=ARTIFACT_WINDOW_SAMPLES,
+        help=f'アーチファクト判定兼PSDのWelch窓長（サンプル、@256Hzで1024=4秒）。'
+             f'窓長を変えると除外率が大きく動く（デフォルト: {ARTIFACT_WINDOW_SAMPLES}）'
+    )
+    parser.add_argument(
         '--selfloops-data',
         type=Path,
         default=None,
@@ -903,7 +916,8 @@ def main():
         args.output,
         save_to=args.save_to,
         warmup_minutes=args.warmup,
-        selfloops_data=args.selfloops_data
+        selfloops_data=args.selfloops_data,
+        artifact_window_samples=args.artifact_window_samples,
     )
 
     return 0
