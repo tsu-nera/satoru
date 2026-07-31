@@ -34,6 +34,67 @@ except ImportError:
     MNE_AVAILABLE = False
 
 
+def _remove_outliers(values: pd.Series, threshold: float = 3.0) -> pd.Series:
+    """Z-score外れ値除去。除去後0件なら元の値をそのまま返す。"""
+    if len(values) > 3:
+        z_scores = np.abs(stats.zscore(values))
+        filtered = values[z_scores < threshold]
+        if len(filtered) > 0:
+            return filtered
+    return values
+
+
+def _append_stats(
+    rows: list,
+    series: pd.Series,
+    *,
+    category: str,
+    metric_prefix: str,
+    unit: str,
+    display_prefix: str,
+    display_suffix: str = '',
+    include_median: bool = True,
+    with_cv: bool = False,
+) -> None:
+    """dropna → 外れ値除去 → Mean/Median/Std（+CV）の統計行を rows に追加する。"""
+    values = series.dropna()
+    if len(values) == 0:
+        return
+    values = _remove_outliers(values)
+
+    rows.append({
+        'Category': category,
+        'Metric': f'{metric_prefix}_Mean',
+        'Value': values.mean(),
+        'Unit': unit,
+        'DisplayName': f'{display_prefix}平均{display_suffix}',
+    })
+    if include_median:
+        rows.append({
+            'Category': category,
+            'Metric': f'{metric_prefix}_Median',
+            'Value': values.median(),
+            'Unit': unit,
+            'DisplayName': f'{display_prefix}中央値{display_suffix}',
+        })
+    rows.append({
+        'Category': category,
+        'Metric': f'{metric_prefix}_Std',
+        'Value': values.std(),
+        'Unit': unit,
+        'DisplayName': f'{display_prefix}標準偏差{display_suffix}',
+    })
+    if with_cv:
+        mean = values.mean()
+        rows.append({
+            'Category': category,
+            'Metric': f'{metric_prefix}_CV',
+            'Value': values.std() / mean if mean > 0 else np.nan,
+            'Unit': 'ratio',
+            'DisplayName': f'{display_prefix}変動係数',
+        })
+
+
 def create_statistical_dataframe(
     raw: 'mne.io.RawArray',
     segment_minutes: int = 3,
@@ -420,156 +481,50 @@ def create_statistical_dataframe(
 
     # バンドパワー統計
     for band_name in bands.keys():
-        values = band_powers_df[band_name].dropna()
-        if len(values) == 0:
-            continue
-
-        # Z-score外れ値除去（閾値3.0）
-        if len(values) > 3:
-            z_scores = np.abs(stats.zscore(values))
-            filtered_values = values[z_scores < 3.0]
-            if len(filtered_values) > 0:
-                values = filtered_values
-
-        statistics_rows.extend([
-            {
-                'Category': 'BandPower',
-                'Metric': f'{band_name}_Mean',
-                'Value': values.mean(),
-                'Unit': 'dB',
-                'DisplayName': f'{band_name}平均 (dB)',
-            },
-            {
-                'Category': 'BandPower',
-                'Metric': f'{band_name}_Median',
-                'Value': values.median(),
-                'Unit': 'dB',
-                'DisplayName': f'{band_name}中央値 (dB)',
-            },
-            {
-                'Category': 'BandPower',
-                'Metric': f'{band_name}_Std',
-                'Value': values.std(),
-                'Unit': 'dB',
-                'DisplayName': f'{band_name}標準偏差 (dB)',
-            },
-        ])
+        _append_stats(
+            statistics_rows,
+            band_powers_df[band_name],
+            category='BandPower',
+            metric_prefix=band_name,
+            unit='dB',
+            display_prefix=band_name,
+            display_suffix=' (dB)',
+        )
 
     # Spectral Entropy統計
-    se_values_clean = se_df['spectral_entropy'].dropna()
-    if len(se_values_clean) > 0:
-        # Z-score外れ値除去（閾値3.0）
-        if len(se_values_clean) > 3:
-            z_scores = np.abs(stats.zscore(se_values_clean))
-            filtered_se = se_values_clean[z_scores < 3.0]
-            if len(filtered_se) > 0:
-                se_values_clean = filtered_se
-
-        statistics_rows.extend([
-            {
-                'Category': 'SpectralEntropy',
-                'Metric': 'spectral_entropy_Mean',
-                'Value': se_values_clean.mean(),
-                'Unit': 'normalized',
-                'DisplayName': 'Spectral Entropy平均 (集中度)',
-            },
-            {
-                'Category': 'SpectralEntropy',
-                'Metric': 'spectral_entropy_Median',
-                'Value': se_values_clean.median(),
-                'Unit': 'normalized',
-                'DisplayName': 'Spectral Entropy中央値 (集中度)',
-            },
-            {
-                'Category': 'SpectralEntropy',
-                'Metric': 'spectral_entropy_Std',
-                'Value': se_values_clean.std(),
-                'Unit': 'normalized',
-                'DisplayName': 'Spectral Entropy標準偏差 (集中度)',
-            },
-        ])
+    _append_stats(
+        statistics_rows,
+        se_df['spectral_entropy'],
+        category='SpectralEntropy',
+        metric_prefix='spectral_entropy',
+        unit='normalized',
+        display_prefix='Spectral Entropy',
+        display_suffix=' (集中度)',
+    )
 
     # IAF統計
-    iaf_clean = iaf_series.dropna()
-    if len(iaf_clean) > 0:
-        # Z-score外れ値除去（閾値3.0）
-        if len(iaf_clean) > 3:
-            z_scores = np.abs(stats.zscore(iaf_clean))
-            filtered_iaf = iaf_clean[z_scores < 3.0]
-            if len(filtered_iaf) > 0:
-                iaf_clean = filtered_iaf
-
-        statistics_rows.extend([
-            {
-                'Category': 'IAF',
-                'Metric': 'iaf_Mean',
-                'Value': iaf_clean.mean(),
-                'Unit': 'Hz',
-                'DisplayName': 'IAF平均 (Hz)',
-            },
-            {
-                'Category': 'IAF',
-                'Metric': 'iaf_Median',
-                'Value': iaf_clean.median(),
-                'Unit': 'Hz',
-                'DisplayName': 'IAF中央値 (Hz)',
-            },
-            {
-                'Category': 'IAF',
-                'Metric': 'iaf_Std',
-                'Value': iaf_clean.std(),
-                'Unit': 'Hz',
-                'DisplayName': 'IAF標準偏差 (Hz)',
-            },
-            {
-                'Category': 'IAF',
-                'Metric': 'iaf_CV',
-                'Value': iaf_clean.std() / iaf_clean.mean() if iaf_clean.mean() > 0 else np.nan,
-                'Unit': 'ratio',
-                'DisplayName': 'IAF変動係数',
-            },
-        ])
+    _append_stats(
+        statistics_rows,
+        iaf_series,
+        category='IAF',
+        metric_prefix='iaf',
+        unit='Hz',
+        display_prefix='IAF',
+        display_suffix=' (Hz)',
+        with_cv=True,
+    )
 
     # ITF統計
-    itf_clean = itf_series.dropna()
-    if len(itf_clean) > 0:
-        # Z-score外れ値除去（閾値3.0）
-        if len(itf_clean) > 3:
-            z_scores = np.abs(stats.zscore(itf_clean))
-            filtered_itf = itf_clean[z_scores < 3.0]
-            if len(filtered_itf) > 0:
-                itf_clean = filtered_itf
-
-        statistics_rows.extend([
-            {
-                'Category': 'ITF',
-                'Metric': 'itf_Mean',
-                'Value': itf_clean.mean(),
-                'Unit': 'Hz',
-                'DisplayName': 'ITF平均 (Hz)',
-            },
-            {
-                'Category': 'ITF',
-                'Metric': 'itf_Median',
-                'Value': itf_clean.median(),
-                'Unit': 'Hz',
-                'DisplayName': 'ITF中央値 (Hz)',
-            },
-            {
-                'Category': 'ITF',
-                'Metric': 'itf_Std',
-                'Value': itf_clean.std(),
-                'Unit': 'Hz',
-                'DisplayName': 'ITF標準偏差 (Hz)',
-            },
-            {
-                'Category': 'ITF',
-                'Metric': 'itf_CV',
-                'Value': itf_clean.std() / itf_clean.mean() if itf_clean.mean() > 0 else np.nan,
-                'Unit': 'ratio',
-                'DisplayName': 'ITF変動係数',
-            },
-        ])
+    _append_stats(
+        statistics_rows,
+        itf_series,
+        category='ITF',
+        metric_prefix='itf',
+        unit='Hz',
+        display_prefix='ITF',
+        display_suffix=' (Hz)',
+        with_cv=True,
+    )
 
     # バンド比率統計
     ratio_configs = [
@@ -584,121 +539,54 @@ def create_statistical_dataframe(
     ]
 
     for metric_key, ratio_name, unit, description in ratio_configs:
-        values = band_ratios_df[metric_key].dropna()
-        if len(values) == 0:
-            continue
-
-        # Z-score外れ値除去（閾値3.0）
-        if len(values) > 3:
-            z_scores = np.abs(stats.zscore(values))
-            filtered_values = values[z_scores < 3.0]
-            if len(filtered_values) > 0:
-                values = filtered_values
-
-        statistics_rows.extend([
-            {
-                'Category': 'BandRatio',
-                'Metric': f'{metric_key}_Mean',
-                'Value': values.mean(),
-                'Unit': unit,
-                'DisplayName': f'{ratio_name}平均 ({unit}) - {description}',
-            },
-            {
-                'Category': 'BandRatio',
-                'Metric': f'{metric_key}_Median',
-                'Value': values.median(),
-                'Unit': unit,
-                'DisplayName': f'{ratio_name}中央値 ({unit}) - {description}',
-            },
-            {
-                'Category': 'BandRatio',
-                'Metric': f'{metric_key}_Std',
-                'Value': values.std(),
-                'Unit': unit,
-                'DisplayName': f'{ratio_name}標準偏差 ({unit}) - {description}',
-            },
-        ])
+        _append_stats(
+            statistics_rows,
+            band_ratios_df[metric_key],
+            category='BandRatio',
+            metric_prefix=metric_key,
+            unit=unit,
+            display_prefix=ratio_name,
+            display_suffix=f' ({unit}) - {description}',
+        )
 
     # fNIRS統計（オプション）
     if fnirs_df is not None:
         # HbO統計
-        hbo_values = fnirs_df['hbo_mean'].dropna()
-        if len(hbo_values) > 0:
-            if len(hbo_values) > 3:
-                z_scores = np.abs(stats.zscore(hbo_values))
-                filtered_hbo = hbo_values[z_scores < 3.0]
-                if len(filtered_hbo) > 0:
-                    hbo_values = filtered_hbo
-
-            statistics_rows.extend([
-                {
-                    'Category': 'fNIRS',
-                    'Metric': 'hbo_Mean',
-                    'Value': hbo_values.mean(),
-                    'Unit': 'µM',
-                    'DisplayName': 'HbO平均 (µM)',
-                },
-                {
-                    'Category': 'fNIRS',
-                    'Metric': 'hbo_Std',
-                    'Value': hbo_values.std(),
-                    'Unit': 'µM',
-                    'DisplayName': 'HbO標準偏差 (µM)',
-                },
-            ])
+        _append_stats(
+            statistics_rows,
+            fnirs_df['hbo_mean'],
+            category='fNIRS',
+            metric_prefix='hbo',
+            unit='µM',
+            display_prefix='HbO',
+            display_suffix=' (µM)',
+            include_median=False,
+        )
 
         # HbR統計
-        hbr_values = fnirs_df['hbr_mean'].dropna()
-        if len(hbr_values) > 0:
-            if len(hbr_values) > 3:
-                z_scores = np.abs(stats.zscore(hbr_values))
-                filtered_hbr = hbr_values[z_scores < 3.0]
-                if len(filtered_hbr) > 0:
-                    hbr_values = filtered_hbr
-
-            statistics_rows.extend([
-                {
-                    'Category': 'fNIRS',
-                    'Metric': 'hbr_Mean',
-                    'Value': hbr_values.mean(),
-                    'Unit': 'µM',
-                    'DisplayName': 'HbR平均 (µM)',
-                },
-                {
-                    'Category': 'fNIRS',
-                    'Metric': 'hbr_Std',
-                    'Value': hbr_values.std(),
-                    'Unit': 'µM',
-                    'DisplayName': 'HbR標準偏差 (µM)',
-                },
-            ])
+        _append_stats(
+            statistics_rows,
+            fnirs_df['hbr_mean'],
+            category='fNIRS',
+            metric_prefix='hbr',
+            unit='µM',
+            display_prefix='HbR',
+            display_suffix=' (µM)',
+            include_median=False,
+        )
 
     # HR統計（オプション）
     if hr_df is not None:
-        hr_values = hr_df['hr_mean'].dropna()
-        if len(hr_values) > 0:
-            if len(hr_values) > 3:
-                z_scores = np.abs(stats.zscore(hr_values))
-                filtered_hr = hr_values[z_scores < 3.0]
-                if len(filtered_hr) > 0:
-                    hr_values = filtered_hr
-
-            statistics_rows.extend([
-                {
-                    'Category': 'HR',
-                    'Metric': 'hr_Mean',
-                    'Value': hr_values.mean(),
-                    'Unit': 'bpm',
-                    'DisplayName': 'HR平均 (bpm)',
-                },
-                {
-                    'Category': 'HR',
-                    'Metric': 'hr_Std',
-                    'Value': hr_values.std(),
-                    'Unit': 'bpm',
-                    'DisplayName': 'HR標準偏差 (bpm)',
-                },
-            ])
+        _append_stats(
+            statistics_rows,
+            hr_df['hr_mean'],
+            category='HR',
+            metric_prefix='hr',
+            unit='bpm',
+            display_prefix='HR',
+            display_suffix=' (bpm)',
+            include_median=False,
+        )
 
     # Posture統計量計算（オプション）
     posture_df = pd.DataFrame()  # デフォルトは空のDataFrame
