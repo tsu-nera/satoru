@@ -10,15 +10,13 @@ Fmθパワーの時系列と統計指標を算出する。
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, Optional, Sequence, Tuple
+from typing import Dict, Iterable, Optional, Tuple
 
-import numpy as np
 import pandas as pd
 import mne
 
-from .preprocessing import prepare_mne_raw
-from .core.hilbert_power import calculate_hilbert_band_power, calculate_channel_average_power
-from .core.statistics import calculate_half_comparison, create_statistics_dataframe, create_metadata
+from .core.hilbert_power import calculate_channel_average_power
+from ._band_power_base import calculate_band_power
 
 # 代表的なFmθ帯域プリセット（必要に応じて切り替え可能）
 FMTHETA_BAND_OPTIONS: Dict[str, Tuple[float, float]] = {
@@ -36,25 +34,6 @@ class FrontalThetaResult:
     statistics: pd.DataFrame
     metadata: dict
     alpha_series: Optional[pd.Series] = None  # アルファ波時系列（オプション）
-
-
-def _prepare_raw_for_channels(
-    df: pd.DataFrame,
-    channels: Sequence[str],
-    sfreq: Optional[float] = None,
-) -> mne.io.BaseRaw:
-    """指定チャネルのみ抽出したRawオブジェクトを取得。"""
-    mne_dict = prepare_mne_raw(df, sfreq=sfreq)
-    if not mne_dict:
-        raise ValueError('Failed to construct RAW data.')
-
-    raw = mne_dict['raw'].copy()
-    available = set(raw.ch_names)
-    missing = [ch for ch in channels if ch not in available]
-    if missing:
-        raise ValueError(f'Specified channels not found: {missing}')
-
-    return raw
 
 
 def calculate_frontal_theta(
@@ -100,96 +79,39 @@ def calculate_frontal_theta(
         時系列パワーはdB単位（10*log10(μV²)）で出力される。
         include_alpha=Trueの場合、alpha_seriesにアルファ波時系列も含まれる。
     """
-    if channels is None:
-        channels = ('RAW_AF7', 'RAW_AF8')
-
-    channel_list = list(channels)
-
-    if band is not None:
-        band_tuple = band
-        band_label = 'custom'
-    else:
-        key = band_key or 'narrow'
-        if key not in FMTHETA_BAND_OPTIONS:
-            raise ValueError(f'未定義のFmθ帯域キーです: {key}')
-        band_tuple = FMTHETA_BAND_OPTIONS[key]
-        band_label = key
-
-    # RAWデータ準備
-    if raw is None:
-        raw = _prepare_raw_for_channels(df, channel_list)
-    else:
-        raw = raw.copy()
-
-    # セッション開始時刻
-    start_time = pd.to_datetime(df['TimeStamp'].min())
-
-    # 処理パラメータ
-    processing_params = {
-        'resample_interval': resample_interval,
-        'smoothing_seconds': smoothing_seconds,
-        'rolling_window_seconds': rolling_window_seconds,
-    }
-
-    # ヒルベルト変換でバンドパワー計算（チャネル平均）
-    theta_series = calculate_channel_average_power(
-        raw=raw,
-        band=band_tuple,
-        channels=channel_list,
-        start_time=start_time,
+    computation = calculate_band_power(
+        df,
+        channels=channels,
+        band=band,
+        band_key=band_key,
+        band_options=FMTHETA_BAND_OPTIONS,
+        default_band_key='narrow',
+        band_label_for_error='Fmθ',
+        empty_series_message='Fmθ time series is empty.',
         resample_interval=resample_interval,
         smoothing_seconds=smoothing_seconds,
         rolling_window_seconds=rolling_window_seconds,
-        outlier_percentile=0.90,
+        raw=raw,
     )
-
-    if theta_series.empty:
-        raise ValueError('Fmθ time series is empty.')
-
-    # 統計DataFrame作成
-    stats_df = create_statistics_dataframe(
-        theta_series,
-        name='Value',
-        unit='dB',
-        include_half_comparison=True,
-    )
-    # Unit列を削除（後方互換性のため）
-    if 'Unit' in stats_df.columns:
-        stats_df = stats_df.drop(columns=['Unit'])
-
-    # メタデータ作成
-    metadata = create_metadata(
-        series=theta_series,
-        band=band_tuple,
-        channels=channel_list,
-        sfreq=float(raw.info['sfreq']),
-        processing_params=processing_params,
-        extra={'band_key': band_label},
-    )
-
-    # 後方互換性のためのキー追加
-    half_stats = calculate_half_comparison(theta_series)
-    metadata['increase_db'] = half_stats['change_db']
-    metadata['increase_rate_percent'] = half_stats['change_percent']
 
     # アルファ波の計算（オプション）
     alpha_series_final = None
     if include_alpha:
         alpha_series_final = calculate_channel_average_power(
-            raw=raw,
+            raw=computation.raw,
             band=alpha_band,
-            channels=channel_list,
-            start_time=start_time,
+            channels=computation.channels,
+            start_time=computation.start_time,
             resample_interval=resample_interval,
             smoothing_seconds=smoothing_seconds,
             rolling_window_seconds=rolling_window_seconds,
             outlier_percentile=0.90,
         )
-        metadata['alpha_band'] = alpha_band
+        computation.metadata['alpha_band'] = alpha_band
 
     return FrontalThetaResult(
-        time_series=theta_series,
-        statistics=stats_df,
-        metadata=metadata,
+        time_series=computation.time_series,
+        statistics=computation.statistics,
+        metadata=computation.metadata,
         alpha_series=alpha_series_final,
     )

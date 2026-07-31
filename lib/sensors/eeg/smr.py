@@ -27,13 +27,7 @@ from typing import Dict, Iterable, Optional, Tuple
 import pandas as pd
 import mne
 
-from .preprocessing import prepare_mne_raw
-from .core.hilbert_power import calculate_channel_average_power
-from .core.statistics import (
-    calculate_half_comparison,
-    create_statistics_dataframe,
-    create_metadata,
-)
+from ._band_power_base import calculate_band_power
 
 # SMR帯域の定義
 SMR_BAND: Tuple[float, float] = (12.0, 15.0)
@@ -52,25 +46,6 @@ class SMRResult:
     time_series: pd.Series  # SMRパワー時系列 (dB)
     statistics: pd.DataFrame
     metadata: dict
-
-
-def _prepare_raw_for_channels(
-    df: pd.DataFrame,
-    channels: list,
-    sfreq: Optional[float] = None,
-) -> mne.io.BaseRaw:
-    """指定チャネルを含むRawオブジェクトを取得。"""
-    mne_dict = prepare_mne_raw(df, sfreq=sfreq)
-    if not mne_dict:
-        raise ValueError('Failed to construct RAW data.')
-
-    raw = mne_dict['raw'].copy()
-    available = set(raw.ch_names)
-    missing = [ch for ch in channels if ch not in available]
-    if missing:
-        raise ValueError(f'Specified channels not found: {missing}')
-
-    return raw
 
 
 def calculate_smr(
@@ -119,83 +94,24 @@ def calculate_smr(
     - 実測データでは、AF領域でSMR帯域が鮮明に観察されることがある
     - これは前頭葉の注意制御・集中活動を反映している可能性がある
     """
-    if channels is None:
-        channels = ('RAW_AF7', 'RAW_AF8')
-
-    channel_list = list(channels)
-
-    if band is not None:
-        band_tuple = band
-        band_label = 'custom'
-    else:
-        key = band_key or 'narrow'
-        if key not in SMR_BAND_OPTIONS:
-            raise ValueError(f'未定義のSMR帯域キーです: {key}')
-        band_tuple = SMR_BAND_OPTIONS[key]
-        band_label = key
-
-    # RAWデータ準備
-    if raw is None:
-        raw = _prepare_raw_for_channels(df, channel_list)
-    else:
-        raw = raw.copy()
-
-    # セッション開始時刻
-    start_time = pd.to_datetime(df['TimeStamp'].min())
-
-    # 処理パラメータ
-    processing_params = {
-        'resample_interval': resample_interval,
-        'smoothing_seconds': smoothing_seconds,
-        'rolling_window_seconds': rolling_window_seconds,
-    }
-
-    # ヒルベルト変換でバンドパワー計算（チャネル平均）
-    smr_series = calculate_channel_average_power(
-        raw=raw,
-        band=band_tuple,
-        channels=channel_list,
-        start_time=start_time,
+    computation = calculate_band_power(
+        df,
+        channels=channels,
+        band=band,
+        band_key=band_key,
+        band_options=SMR_BAND_OPTIONS,
+        default_band_key='narrow',
+        band_label_for_error='SMR',
+        empty_series_message='SMR time series is empty.',
+        metadata_extra={'measurement_note': 'AF領域での測定（本来のSMRはC3/C4）'},
         resample_interval=resample_interval,
         smoothing_seconds=smoothing_seconds,
         rolling_window_seconds=rolling_window_seconds,
-        outlier_percentile=0.90,
+        raw=raw,
     )
-
-    if smr_series.empty:
-        raise ValueError('SMR time series is empty.')
-
-    # 統計DataFrame作成
-    stats_df = create_statistics_dataframe(
-        smr_series,
-        name='Value',
-        unit='dB',
-        include_half_comparison=True,
-    )
-    # Unit列を削除（後方互換性のため）
-    if 'Unit' in stats_df.columns:
-        stats_df = stats_df.drop(columns=['Unit'])
-
-    # メタデータ作成
-    metadata = create_metadata(
-        series=smr_series,
-        band=band_tuple,
-        channels=channel_list,
-        sfreq=float(raw.info['sfreq']),
-        processing_params=processing_params,
-        extra={
-            'band_key': band_label,
-            'measurement_note': 'AF領域での測定（本来のSMRはC3/C4）',
-        },
-    )
-
-    # 後方互換性のためのキー追加
-    half_stats = calculate_half_comparison(smr_series)
-    metadata['increase_db'] = half_stats['change_db']
-    metadata['increase_rate_percent'] = half_stats['change_percent']
 
     return SMRResult(
-        time_series=smr_series,
-        statistics=stats_df,
-        metadata=metadata,
+        time_series=computation.time_series,
+        statistics=computation.statistics,
+        metadata=computation.metadata,
     )
