@@ -5,9 +5,9 @@ PSD-based peak frequency calculation - shared logic for PAF and ITF.
 共通計算ロジックを提供します。
 """
 
-import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
+import numpy as np
 
 HEMISPHERE_CONFIG: Dict[str, List[str]] = {
     'Left': ['RAW_TP9', 'RAW_AF7'],
@@ -61,7 +61,8 @@ def calculate_peak_frequency(
     -------
     result : dict
         {
-            'peak_by_channel': dict,  # チャネル/半球別 {label: {'Peak': float, 'CoG': float, 'Power': float, 'PSD': array}}
+            # チャネル/半球別 {label: {'Peak': float, 'CoG': float, 'Power': float, 'PSD': array}}
+            'peak_by_channel': dict,
             'individual_peak': float,  # 左右ピークの平均
             'individual_cog': float,   # 左右CoGの平均
             'individual_std': float,   # ピーク値の標準偏差

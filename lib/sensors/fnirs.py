@@ -7,7 +7,6 @@ fNIRSセンサーによる近赤外光計測データから脳血流を解析し
 
 import numpy as np
 
-
 # Modified Beer-Lambert Lawのパラメータ
 EXTINCTION_COEF = {
     730: {'HbO': 1.4866, 'HbR': 3.8437},  # 730nm

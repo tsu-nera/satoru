@@ -7,10 +7,10 @@ Muse App OSC Receiver - シンプルな受信テスト用スクリプト
 3. Muse AppでOSC出力先をこのPCのIPとポート5000に設定
 """
 
-from pythonosc import dispatcher
-from pythonosc import osc_server
 import argparse
 from datetime import datetime
+
+from pythonosc import dispatcher, osc_server
 
 
 def make_handler(name):
@@ -21,13 +21,15 @@ def make_handler(name):
     return handler
 
 
+_eeg_sample_count = 0
+
+
 def eeg_handler(address, *args):
     """EEGデータ用ハンドラー（高頻度なので簡略表示）"""
-    # 10回に1回だけ表示（256Hzは多すぎる）
-    if not hasattr(eeg_handler, 'count'):
-        eeg_handler.count = 0
-    eeg_handler.count += 1
-    if eeg_handler.count % 50 == 0:
+    # 50回に1回だけ表示（256Hzは多すぎる）
+    global _eeg_sample_count
+    _eeg_sample_count += 1
+    if _eeg_sample_count % 50 == 0:
         timestamp = datetime.now().strftime("%H:%M:%S")
         print(f"[{timestamp}] EEG: TP9={args[0]:.1f}, AF7={args[1]:.1f}, AF8={args[2]:.1f}, TP10={args[3]:.1f}")
 
@@ -69,7 +71,7 @@ def main():
     print(f"Listening on {args.ip}:{args.port}")
     print()
     print("Muse Appの設定:")
-    print(f"  - IP: あなたのPCのIPアドレス")
+    print("  - IP: あなたのPCのIPアドレス")
     print(f"  - Port: {args.port}")
     print()
     print("待機中... (Ctrl+C で終了)")

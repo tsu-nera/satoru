@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 from scipy.signal import welch
 
-from .constants import FREQ_BANDS, DEFAULT_SFREQ
+from .constants import DEFAULT_SFREQ, FREQ_BANDS
 
 # チャネル名マッピング: RAW_XX -> XX
 RAW_CHANNELS = ['TP9', 'AF7', 'AF8', 'TP10']

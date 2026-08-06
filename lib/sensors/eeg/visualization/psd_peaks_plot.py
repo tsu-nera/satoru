@@ -5,11 +5,11 @@ PSDピーク分析の可視化モジュール
 from pathlib import Path
 from typing import Optional, Union
 
-import numpy as np
 import matplotlib.pyplot as plt
+import numpy as np
 
-from ..psd_peaks import PsdPeaksResult, PeakType, DETAILED_FREQ_BANDS
-from ....visualization.utils import power_to_db, style_frequency_plot
+from ....visualization.utils import power_to_db
+from ..psd_peaks import DETAILED_FREQ_BANDS, PeakType, PsdPeaksResult
 
 
 def plot_psd_peaks(

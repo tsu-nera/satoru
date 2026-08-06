@@ -30,7 +30,8 @@ def calculate_itf(psd_dict, theta_range=(5.0, 7.0), use_hemisphere_average=True)
     -------
     itf_dict : dict
         {
-            'ptf_by_channel': dict,  # チャネル/半球別 {channel: {'PTF': float, 'CoG': float, 'Power': float, 'PSD': array}}
+            # チャネル/半球別 {channel: {'PTF': float, 'CoG': float, 'Power': float, 'PSD': array}}
+            'ptf_by_channel': dict,
             'itf_peak': float,       # ITF Peak方式 (左右PTFの平均)
             'itf_cog': float,        # ITF CoG方式 (左右CoGの平均)
             'itf': float,            # ITF (itf_peakのエイリアス)

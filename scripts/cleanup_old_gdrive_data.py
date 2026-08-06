@@ -20,17 +20,16 @@ import argparse
 import os
 import sys
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-
 
 # APIスコープ（削除のために書き込み権限が必要）
 SCOPES = ['https://www.googleapis.com/auth/drive']
 
 
-def authenticate_gdrive(credentials_path: Optional[str] = None) -> any:
+def authenticate_gdrive(credentials_path: Optional[str] = None) -> Any:
     """
     Google Drive APIに認証する
 
@@ -70,7 +69,7 @@ def authenticate_gdrive(credentials_path: Optional[str] = None) -> any:
     return service
 
 
-def list_old_files(service: any, folder_id: str, days: int) -> List[Dict]:
+def list_old_files(service: Any, folder_id: str, days: int) -> List[Dict]:
     """
     指定フォルダ内の古いファイル一覧を取得
 
@@ -145,7 +144,7 @@ def display_files(files: List[Dict]):
         print()
 
 
-def create_archive_folder(service: any, parent_folder_id: str) -> str:
+def create_archive_folder(service: Any, parent_folder_id: str) -> str:
     """
     アーカイブフォルダを作成（既に存在する場合は取得）
 
@@ -195,8 +194,8 @@ def create_archive_folder(service: any, parent_folder_id: str) -> str:
     return folder_id
 
 
-def delete_files(service: any, files: List[Dict], dry_run: bool = False,
-                 move_to_archive: bool = False, parent_folder_id: str = None) -> int:
+def delete_files(service: Any, files: List[Dict], dry_run: bool = False,
+                 move_to_archive: bool = False, parent_folder_id: Optional[str] = None) -> int:
     """
     ファイルを削除またはアーカイブフォルダに移動
 

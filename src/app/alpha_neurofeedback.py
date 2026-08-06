@@ -20,7 +20,6 @@ Alpha相対パワーが高い（リラックス状態）ときに音声・視覚
 from __future__ import annotations
 
 import argparse
-import array
 import collections
 import subprocess
 import sys
@@ -37,21 +36,21 @@ import numpy as np
 try:
     import matplotlib
     matplotlib.use('TkAgg')
-    import matplotlib.pyplot as plt
     import matplotlib.animation as animation
+    import matplotlib.pyplot as plt
     MATPLOTLIB_AVAILABLE = True
 except ImportError:
     MATPLOTLIB_AVAILABLE = False
 
-from pythonosc import dispatcher, osc_server
-
 # プロジェクトルートをパスに追加
 import os
+
+from pythonosc import dispatcher, osc_server
+
 _project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _project_root)
 
 from lib.sensors.eeg.alpha_power import DEFAULT_PARAMS, AlphaPowerMethod
-
 
 # --------------------------------------------------------------------------- #
 # 定数
@@ -403,13 +402,10 @@ class VisualFeedback:
         for name, val in zip(ch_names, hsi):
             if val <= 1:
                 symbol = '●'
-                color_code = 'G'
             elif val <= 2:
                 symbol = '◐'
-                color_code = 'Y'
             else:
                 symbol = '○'
-                color_code = 'R'
             labels.append(f"{name}:{symbol}")
         return "  ".join(labels)
 
@@ -565,7 +561,7 @@ def main() -> None:
     print(f"History:   {args.history}s")
     print()
     print("Mind Monitor settings:")
-    print(f"  Host: <your PC IP address>")
+    print("  Host: <your PC IP address>")
     print(f"  Port: {args.port}")
     print()
     print("Waiting for data... (Ctrl+C to exit)")

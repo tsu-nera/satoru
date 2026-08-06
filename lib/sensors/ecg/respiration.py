@@ -10,9 +10,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+import neurokit2 as nk
 import numpy as np
 import pandas as pd
-import neurokit2 as nk
 from scipy import interpolate
 
 

@@ -24,8 +24,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
-import pandas as pd
 import mne
+import pandas as pd
 
 from ._band_power_base import calculate_band_power
 

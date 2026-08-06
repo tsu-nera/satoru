@@ -3,8 +3,9 @@
 """
 
 import warnings
-import numpy as np
+
 import mne
+import numpy as np
 from mne.time_frequency import AverageTFRArray
 
 # Warningsとログを抑制

@@ -68,11 +68,11 @@ for name, freq_hz in candidates:
 
     # 判定
     if diff_spectral < 0.5:
-        print(f"  → Spectral BRとほぼ一致！ ✓✓✓")
+        print("  → Spectral BRとほぼ一致！ ✓✓✓")
     elif diff_mean < 0.5:
-        print(f"  → Mean BRとほぼ一致！ ✓")
+        print("  → Mean BRとほぼ一致！ ✓")
     else:
-        print(f"  → どの呼吸数とも一致しない ✗")
+        print("  → どの呼吸数とも一致しない ✗")
 
 # 高調波の可能性
 print("\n" + "=" * 70)

@@ -4,12 +4,11 @@
 Jinja2を使用して瞑想分析Markdownレポートを生成
 """
 
+import logging
 from datetime import datetime
 from pathlib import Path
-import logging
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
-import pandas as pd
 
 from lib.templates.formatters import format_respiratory_stats
 
@@ -44,15 +43,15 @@ class MeditationReportRenderer:
     def _register_filters(self):
         """カスタムフィルタをJinja2環境に登録"""
         from .filters import (
-            number_format,
-            format_percent,
-            format_db,
-            format_hz,
-            format_timestamp,
-            format_duration,
-            format_change,
             df_to_markdown,
+            format_change,
+            format_db,
+            format_duration,
+            format_hz,
+            format_percent,
             format_score,
+            format_timestamp,
+            number_format,
         )
 
         self.env.filters['number_format'] = number_format

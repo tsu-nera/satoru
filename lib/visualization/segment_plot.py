@@ -14,7 +14,7 @@ from .utils import format_time_axis
 def plot_segment_comparison(
     result: SegmentAnalysisResult,
     img_path: Optional[str] = None,
-) -> 'matplotlib.figure.Figure':
+) -> plt.Figure:
     """
     セグメントごとの主要指標を時系列で可視化する。
 

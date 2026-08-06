@@ -25,7 +25,8 @@ def calculate_paf(psd_dict, alpha_range=(8.0, 12.0), use_hemisphere_average=True
     -------
     paf_dict : dict
         {
-            'paf_by_channel': dict,  # チャネル/半球別 {channel: {'PAF': float, 'CoG': float, 'Power': float, 'PSD': array}}
+            # チャネル/半球別 {channel: {'PAF': float, 'CoG': float, 'Power': float, 'PSD': array}}
+            'paf_by_channel': dict,
             'iaf_peak': float,       # IAF Peak方式 (左右PAFの平均)
             'iaf_cog': float,        # IAF CoG方式 (左右CoGの平均)
             'iaf': float,            # IAF (iaf_peakのエイリアス、Muse app互換)

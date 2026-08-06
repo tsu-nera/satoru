@@ -6,14 +6,14 @@ Statistical DataFrame / セグメント分析 / バンド比率 / 総合スコ�
 import os
 
 from lib import (
-    calculate_segment_analysis,
-    calculate_meditation_score,
     calculate_best_metrics,
+    calculate_meditation_score,
+    calculate_segment_analysis,
 )
-from lib.session_log import write_to_csv, write_to_google_sheets
 from lib.sensors.eeg.visualization import plot_band_ratios
-from lib.visualization import plot_segment_comparison
+from lib.session_log import write_to_csv, write_to_google_sheets
 from lib.statistical_dataframe import create_statistical_dataframe
+from lib.visualization import plot_segment_comparison
 
 from .step import analysis_step
 

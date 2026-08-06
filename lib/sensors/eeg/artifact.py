@@ -12,7 +12,7 @@ PSDは窓単位で汚染されるため、それより細かい粒度で除去�
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Any, Dict
 
 import numpy as np
 import pandas as pd
@@ -175,7 +175,7 @@ def summarize_artifacts(
     channel_names: list,
     window_samples: int = ARTIFACT_WINDOW_SAMPLES,
     threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
-) -> Dict[str, object]:
+) -> Dict[str, Any]:
     """
     アーチファクト検出結果をまとめて返す。
 

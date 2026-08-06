@@ -90,7 +90,10 @@ class MuseOSCRecorder:
         if count % 256 == 0:
             elapsed = (datetime.now() - self.start_time).seconds
             m, s = divmod(elapsed, 60)
-            print(f"[{m:02d}:{s:02d}] {count} samples | EEG: TP9={args[0]:.1f}, AF7={args[1]:.1f}, AF8={args[2]:.1f}, TP10={args[3]:.1f}")
+            print(
+                f"[{m:02d}:{s:02d}] {count} samples | EEG: "
+                f"TP9={args[0]:.1f}, AF7={args[1]:.1f}, AF8={args[2]:.1f}, TP10={args[3]:.1f}"
+            )
 
     def on_acc(self, address: str, *args) -> None:
         """加速度データ受信ハンドラー"""
@@ -229,12 +232,12 @@ class MuseOSCRecorder:
         print()
         if self.source == 'muse_app_osc':
             print("Muse Appの設定:")
-            print(f"  - IP: このPCのIPアドレス")
+            print("  - IP: このPCのIPアドレス")
             print(f"  - Port: {port}")
-            print(f"  - Streaming Enabled: ON")
+            print("  - Streaming Enabled: ON")
         else:
             print("Mind Monitorの設定:")
-            print(f"  - OSC Stream Target IP: このPCのIPアドレス")
+            print("  - OSC Stream Target IP: このPCのIPアドレス")
             print(f"  - OSC Stream Target Port: {port}")
         print()
         print("Ctrl+C で記録終了・CSV保存")

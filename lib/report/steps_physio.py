@@ -6,19 +6,23 @@ fNIRS / 動作検出+心拍数 / HRV / 呼吸の解析ステップ
 results をコピーして最後にマージしてはいけない）。
 """
 
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from lib import (
-    get_optics_data,
     analyze_fnirs as compute_fnirs,
-    get_heart_rate_data,
+)
+from lib import (
     analyze_motion as compute_motion,
 )
+from lib import (
+    get_heart_rate_data,
+    get_optics_data,
+)
 from lib.visualization import (
+    create_motion_stats_table,
     plot_fnirs_muse_style,
     plot_motion_heart_rate,
-    create_motion_stats_table,
 )
 
 from .step import analysis_step
@@ -66,10 +70,10 @@ def analyze_motion_and_hr(df, img_dir, results, selfloops_data):
     if selfloops_data and selfloops_data.exists():
         # Selfloopsデータから心拍数を取得
         print(f'Loading Selfloops HR data: {selfloops_data}')
-        from lib.loaders.selfloops import load_selfloops_csv
         # 別名で束縛する。同名でimportするとget_heart_rate_dataが関数スコープの
         # ローカル変数になり、else側（Muse経路）がUnboundLocalErrorで落ちる
         from lib.loaders.base import get_heart_rate_data as get_hr_from_ecg
+        from lib.loaders.selfloops import load_selfloops_csv
         sl_df = load_selfloops_csv(str(selfloops_data), warmup_seconds=0.0)
         hr_data = get_hr_from_ecg(sl_df)
         hr_data_source = 'Selfloops'
@@ -114,7 +118,7 @@ def analyze_hrv(df, img_dir, results, selfloops_data, hr_data):
 
     if selfloops_data and selfloops_data.exists():
         print('計算中: HRV解析（自律神経系）...')
-        from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
+        from lib.loaders.selfloops import get_hrv_data, load_selfloops_csv
         from lib.sensors.ecg.hrv import calculate_hrv_standard_set
 
         # Selfloopsファイルパスを保存（レポート表示用）
@@ -126,8 +130,9 @@ def analyze_hrv(df, img_dir, results, selfloops_data, hr_data):
         # R-R間隔の品質情報を保存
         if 'quality_stats' in hrv_data:
             results['rr_quality_stats'] = hrv_data['quality_stats']
-            print(f"  R-R間隔品質: {hrv_data['quality_stats']['quality_rate']:.1f}% "
-                  f"({hrv_data['quality_stats']['outliers_count']}/{hrv_data['quality_stats']['total_intervals']} outliers)")
+            quality_stats = hrv_data['quality_stats']
+            print(f"  R-R間隔品質: {quality_stats['quality_rate']:.1f}% "
+                  f"({quality_stats['outliers_count']}/{quality_stats['total_intervals']} outliers)")
 
         # セッション時間チェック
         total_duration = hrv_data['time'][-1] - hrv_data['time'][0]
@@ -139,8 +144,8 @@ def analyze_hrv(df, img_dir, results, selfloops_data, hr_data):
             results['hrv_result'] = hrv_result  # 時系列データ用に保存
 
             print('プロット中: HRV時系列...')
-            from lib.sensors.ecg.visualization.hrv_plot import plot_hrv_time_series, plot_hrv_frequency
             from lib.sensors.ecg.analysis import analyze_hrv as compute_hrv_indices
+            from lib.sensors.ecg.visualization.hrv_plot import plot_hrv_frequency, plot_hrv_time_series
 
             hrv_img_name = 'hrv_time_series.png'
             plot_hrv_time_series(

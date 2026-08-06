@@ -14,15 +14,13 @@ Google DriveからMind Monitor CSVファイルを取得するスクリプト
 """
 
 import argparse
-import json
 import os
 import sys
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Any, Dict, List, Optional
 
-from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -31,12 +29,11 @@ from googleapiclient.http import MediaIoBaseDownload
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.loaders.selfloops import rename_selfloops_file
 
-
 # APIスコープ（読み取り専用）
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
 
-def authenticate_gdrive(credentials_path: Optional[str] = None) -> any:
+def authenticate_gdrive(credentials_path: Optional[str] = None) -> Any:
     """
     Google Drive APIに認証する
 
@@ -76,7 +73,7 @@ def authenticate_gdrive(credentials_path: Optional[str] = None) -> any:
     return service
 
 
-def list_csv_files(service: any, folder_id: str) -> List[Dict]:
+def list_csv_files(service: Any, folder_id: str) -> List[Dict]:
     """
     指定フォルダ内のCSVファイル・ZIPファイル一覧を取得
 
@@ -147,7 +144,7 @@ def display_files(files: List[Dict]):
         print()
 
 
-def download_file(service: any, file_id: str, file_name: str, output_dir: str) -> str:
+def download_file(service: Any, file_id: str, file_name: str, output_dir: str) -> str:
     """
     ファイルをダウンロード
 
@@ -185,7 +182,7 @@ def download_file(service: any, file_id: str, file_name: str, output_dir: str) -
                 progress = int(status.progress() * 100)
                 print(f"  進捗: {progress}%", end='\r')
 
-        print(f"  進捗: 100% ✅")
+        print("  進捗: 100% ✅")
 
     print(f"✅ ダウンロード完了: {output_path}")
     return str(output_path)
@@ -228,7 +225,8 @@ def extract_zip(zip_path: str, output_dir: str) -> Optional[str]:
             # 空のディレクトリを削除
             try:
                 extracted_path.parent.rmdir()
-            except:
+            except OSError:
+                # ディレクトリが空でない場合は残したままにする
                 pass
             extracted_path = final_path
 
@@ -328,6 +326,7 @@ def main():
 
         # --download: ダウンロード
         if args.download:
+            target_file: Optional[Dict]
             if args.download.lower() == 'latest':
                 # 最新ファイル
                 target_file = files[0]
@@ -363,7 +362,7 @@ def main():
             if final_path.endswith('.csv'):
                 final_path = rename_selfloops_file(final_path)
 
-            print(f"\n✅ すべての処理が完了しました")
+            print("\n✅ すべての処理が完了しました")
             print(f"ファイルパス: {final_path}")
 
     except Exception as e:

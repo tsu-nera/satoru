@@ -7,17 +7,17 @@ EEG可視化モジュール
 
 # 基本EEG可視化
 from .eeg_plots import (
-    plot_raw_preview,
     plot_band_power_time_series,
-    plot_psd,
-    plot_spectrogram,
-    plot_spectrogram_grid,
     plot_band_ratios,
     plot_paf,
+    plot_psd,
+    plot_raw_preview,
+    plot_spectrogram,
+    plot_spectrogram_grid,
 )
 
 # 指標別可視化
-from .psd_peaks_plot import plot_psd_peaks, plot_harmonics  # plot_harmonicsは後方互換性
+from .psd_peaks_plot import plot_harmonics, plot_psd_peaks  # plot_harmonicsは後方互換性
 
 __all__ = [
     # 基本EEG可視化

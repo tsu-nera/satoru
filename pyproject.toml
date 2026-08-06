@@ -1,0 +1,86 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["venv", "issues", "analysis", "tmp", "data"]
+
+[tool.ruff.lint]
+# 段階導入。correctness (E/F)・import順序 (I)・bugbear (B) から始める。
+# pyupgrade (UP) は typing.List → list 等の一括更新が 200 箇所超になるため未導入。
+select = ["E", "F", "I", "B"]
+# B905: zip(strict=) の有無。長さ不一致が想定内かは呼び出し箇所ごとの判断が必要なため保留
+ignore = ["B905"]
+
+[tool.ruff.lint.per-file-ignores]
+# エントリポイントは sys.path 追加や matplotlib backend 固定を import より前に行うため E402 を許容
+"scripts/**" = ["E402"]
+"src/app/**" = ["E402"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["lib", "src"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["lib", "scripts", "tests"]
+exclude = "^(venv|issues|analysis)/"
+# 科学計算ライブラリ（pandas/mne/neurokit2 等）は型スタブを持たないため無視する
+ignore_missing_imports = true
+# 段階導入。未注釈関数の本体もチェックし、明らかな誤りは拾う
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+
+# --- mypy 既存債務（staged 導入） ---
+# 下記は型チェック導入時点で既に注釈精度の問題があったモジュール。
+# 新規コードは完全にゲートしつつ、既存分はモジュール単位で可視化して段階的に潰す。
+# 直したら該当ブロックを削除する。空になれば債務ゼロ。
+[[tool.mypy.overrides]]
+module = "lib.loaders.elite_hrv"
+disable_error_code = ["assignment", "operator"]
+
+[[tool.mypy.overrides]]
+module = "lib.recorders.muse_osc"
+disable_error_code = ["assignment", "attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "lib.sensors.ecg.hrv"
+disable_error_code = ["attr-defined"]
+
+[[tool.mypy.overrides]]
+module = "lib.sensors.ecg.visualization.hrv_plot"
+disable_error_code = ["assignment"]
+
+[[tool.mypy.overrides]]
+module = "lib.sensors.eeg.artifact"
+disable_error_code = ["index"]
+
+[[tool.mypy.overrides]]
+module = ["lib.sensors.eeg.frontal_theta", "lib.sensors.eeg.smr", "lib.visualization.fnirs"]
+disable_error_code = ["arg-type"]
+
+[[tool.mypy.overrides]]
+module = "lib.sensors.eeg.spectral_entropy"
+disable_error_code = ["arg-type", "misc"]
+
+[[tool.mypy.overrides]]
+module = "lib.statistical_dataframe"
+disable_error_code = ["assignment", "operator", "var-annotated"]
+
+[[tool.mypy.overrides]]
+module = "lib.visualization.utils"
+disable_error_code = ["operator"]
+
+[[tool.mypy.overrides]]
+module = ["scripts.cleanup_old_gdrive_data", "scripts.fetch_from_gdrive", "scripts.report.generate_hrv"]
+disable_error_code = ["assignment"]
+
+[[tool.mypy.overrides]]
+module = "scripts.osc_receiver"
+disable_error_code = ["attr-defined"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

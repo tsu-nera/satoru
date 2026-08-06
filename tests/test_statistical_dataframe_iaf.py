@@ -3,14 +3,16 @@ Statistical DataFrame IAF統合のテスト
 
 Phase 2でIAF計算がstatistical_dataframe.pyに統合されたことを確認するテスト
 """
-import pytest
+from pathlib import Path
+
 import numpy as np
 import pandas as pd
-from pathlib import Path
+import pytest
+
+from lib import load_mind_monitor_csv, prepare_mne_raw
 
 # テスト対象モジュール
 from lib.statistical_dataframe import create_statistical_dataframe
-from lib import prepare_mne_raw, load_mind_monitor_csv
 
 
 class TestStatisticalDataframeIAF:

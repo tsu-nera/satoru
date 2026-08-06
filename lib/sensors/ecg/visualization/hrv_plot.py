@@ -2,23 +2,17 @@
 心拍変動（HRV）可視化モジュール
 """
 
-from typing import Dict, Optional, Tuple, Union
 from pathlib import Path
+from typing import Dict, Optional, Tuple, Union
 
 import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse
 import numpy as np
 import pandas as pd
+from matplotlib.patches import Ellipse
 from scipy import signal
 
+from ....visualization.utils import apply_frequency_band_shading, format_time_axis, power_to_db, style_frequency_plot
 from ..hrv import HRVResult
-from ....visualization.utils import (
-    format_time_axis,
-    power_to_db,
-    apply_frequency_band_shading,
-    style_frequency_plot
-)
-
 
 # HRV周波数帯域定義（NeuroKit2準拠）
 HRV_FREQ_BANDS = {

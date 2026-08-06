@@ -2,15 +2,12 @@
 EEG基本可視化モジュール
 """
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 
+from ....visualization.utils import apply_frequency_band_shading, format_time_axis
 from ..constants import FREQ_BANDS
-from ..frequency import calculate_psd
-from ....visualization.utils import format_time_axis, apply_frequency_band_shading
-
 
 DEFAULT_SPECTROGRAM_CMAP = 'magma'
 

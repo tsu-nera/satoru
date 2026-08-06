@@ -9,11 +9,12 @@ Usage:
     python generate_report.py --data <CSV_PATH> [--output <REPORT_PATH>]
 """
 
+import argparse
 import sys
 from pathlib import Path
-import argparse
 
 import matplotlib
+
 # lib 側が pyplot を import する前にバックエンドを固定する
 matplotlib.use("Agg")
 
@@ -23,33 +24,31 @@ sys.path.insert(0, str(project_root))
 
 # lib モジュールから関数をインポート
 from lib import (
-    load_mind_monitor_csv,
     calculate_band_statistics,
     calculate_hsi_statistics,
     generate_session_summary,
+    load_mind_monitor_csv,
 )
-from lib.sensors.eeg.artifact import ARTIFACT_WINDOW_SAMPLES
-from lib.sensors.eeg.band_power import compute_band_powers_from_raw, needs_band_power_computation
 
 # 解析ステップ（fNIRS / 動作+心拍 / HRV / 呼吸 / EEGスペクトル / Statistical DF /
 # セグメント / 総合スコア / ログ保存）
 from lib.report import (
     analyze_fnirs,
-    analyze_motion_and_hr,
-    analyze_hrv,
-    analyze_respiration,
-    plot_band_power_series,
-    prepare_mne_and_spectral,
     analyze_frontal_theta_step,
+    analyze_hrv,
+    analyze_motion_and_hr,
+    analyze_respiration,
+    analyze_segments,
     analyze_smr_step,
     build_statistical_dataframe,
-    analyze_segments,
-    plot_band_ratios_step,
     calculate_session_score,
+    plot_band_power_series,
+    plot_band_ratios_step,
+    prepare_mne_and_spectral,
     save_session_log,
 )
-
-
+from lib.sensors.eeg.artifact import ARTIFACT_WINDOW_SAMPLES
+from lib.sensors.eeg.band_power import compute_band_powers_from_raw, needs_band_power_computation
 
 
 def generate_markdown_report(data_path, output_dir, results):
@@ -259,7 +258,10 @@ def main():
         type=str,
         choices=['none', 'csv', 'sheets'],
         default='none',
-        help='セッションログの保存先: none=保存しない（デフォルト）, csv=ローカルCSV（開発用）, sheets=Google Sheets（本番用）'
+        help=(
+            'セッションログの保存先: none=保存しない（デフォルト）, '
+            'csv=ローカルCSV（開発用）, sheets=Google Sheets（本番用）'
+        )
     )
     parser.add_argument(
         '--warmup',

@@ -89,11 +89,10 @@ def calculate_spectral_entropy(
     # 周波数範囲でマスク
     freq_low, freq_high = freq_range
     freq_mask = (freqs >= freq_low) & (freqs <= freq_high)
-    freqs_selected = freqs[freq_mask]
 
     # 各チャネルのエントロピーを計算
     entropy_values = []
-    for i, ch_name in enumerate(channels):
+    for i, _ch_name in enumerate(channels):
         psd_ch = psds[i][freq_mask]
         entropy_ch = _calculate_shannon_entropy(psd_ch, normalize=normalize)
         entropy_values.append(entropy_ch)
@@ -165,7 +164,6 @@ def calculate_spectral_entropy_time_series(
     # 周波数範囲でマスク
     freq_low, freq_high = freq_range
     freq_mask = (freqs >= freq_low) & (freqs <= freq_high)
-    freqs_selected = freqs[freq_mask]
     power_selected = power[freq_mask, :]
 
     # 各時間点でのエントロピーを計算

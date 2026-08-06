@@ -5,8 +5,9 @@ EEG/瞑想分析レポートテンプレート用のフォーマット関数を�
 """
 
 from datetime import datetime
-import pandas as pd
+
 import numpy as np
+import pandas as pd
 from jinja2 import Undefined
 
 

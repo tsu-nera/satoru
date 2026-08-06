@@ -1,0 +1,13 @@
+# 開発用ツール（本番の解析実行には不要）
+# インストール: VIRTUAL_ENV=venv uv pip install -r requirements-dev.txt
+
+-r requirements.txt
+
+# Lint / Format
+ruff>=0.16
+
+# 型チェック
+mypy>=2.3
+
+# テスト
+pytest>=8.0

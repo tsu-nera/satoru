@@ -32,7 +32,6 @@ def plot_motion_heart_rate(motion_result, hr_data=None, df=None, figsize=(15, 10
     axes : np.ndarray
     """
     motion_df = motion_result['motion_df']
-    stats = motion_result['stats']
     motion_ratio = motion_result['motion_ratio']
 
     # セッション開始時刻を基準にした経過時間（秒）を計算

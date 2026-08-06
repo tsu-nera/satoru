@@ -6,10 +6,10 @@ Muse S の加速度計・ジャイロスコープを統合的に扱います。
 - 姿勢統計量：坐禅中の姿勢安定性評価用の統計量計算
 """
 
+from typing import Dict
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional
-
 
 # ============================================================
 # 定数定義
@@ -825,17 +825,6 @@ class PostureAnalyzer:
                 ...
             }
         """
-        # 全期間での統計量
-        acc_x = df['Accelerometer_X'].values
-        acc_y = df['Accelerometer_Y'].values
-        acc_z = df['Accelerometer_Z'].values
-        gyro_x = df['Gyro_X'].values
-        gyro_y = df['Gyro_Y'].values
-        gyro_z = df['Gyro_Z'].values
-
-        metrics = self.compute_essential(acc_x, acc_y, acc_z,
-                                        gyro_x, gyro_y, gyro_z)
-
         # 時系列での変動を計算するため、短い間隔で分析
         interval_df = self.analyze_intervals(df, interval='10s', level='essential')
 

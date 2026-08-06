@@ -5,9 +5,10 @@ ECGデータからのHRV解析 - NeuroKit2ラッパー
 デバイス非依存の設計により、どのECGセンサーからのデータでも同じAPIで解析可能です。
 """
 
+from typing import Any, Dict
+
 import neurokit2 as nk
 import pandas as pd
-from typing import Dict, Any
 
 
 def analyze_hrv(hrv_data: Dict[str, Any], show: bool = False) -> pd.DataFrame:

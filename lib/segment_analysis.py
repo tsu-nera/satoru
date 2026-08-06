@@ -7,22 +7,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-from .sensors.eeg.frontal_theta import (
-    FrontalThetaResult,
-    calculate_frontal_theta,
-)
 from .sensors.eeg.artifact import PEAK_MAX_EXCLUDED_RATIO
-from .sensors.eeg.preprocessing import filter_eeg_quality
-from .statistical_dataframe import get_band_power_at_time, get_band_ratio_at_time
 
 if TYPE_CHECKING:
-    import mne
+    pass
 
 
 # ========================================
@@ -44,7 +38,7 @@ class SegmentAnalysisResult:
     segments: pd.DataFrame
     table: pd.DataFrame  # 後方互換性のため残す（metrics_tableと同じ内容）
     normalized: pd.DataFrame
-    metadata: Dict[str, object]
+    metadata: Dict[str, Any]
     band_power_table: pd.DataFrame  # 新規: バンドパワー詳細テーブル
     metrics_table: pd.DataFrame  # 新規: 比率と特徴指標テーブル
 
@@ -411,7 +405,7 @@ def calculate_segment_analysis(
     first_idx = all_indices[0] if all_indices else None
     last_idx = all_indices[-1] if all_indices else None
 
-    for idx, row in segment_frame.iterrows():
+    for _idx, row in segment_frame.iterrows():
         seg_idx = int(row['segment_index'])
 
         # 備考列: 最初/最後/ピークを表示
@@ -563,7 +557,7 @@ def calculate_meditation_score(
     iaf_cv: Optional[float] = None,
     hsi_quality: Optional[float] = None,
     weights: Optional[Dict[str, float]] = None,
-) -> Dict[str, object]:
+) -> Dict[str, Any]:
     """
     瞑想セッションの総合スコアを計算する。
 
@@ -722,7 +716,9 @@ def calculate_best_metrics(segment_result: SegmentAnalysisResult) -> Dict[str, f
         'fm_theta_best': scoring_segments['fmtheta_mean'].max() if 'fmtheta_mean' in scoring_segments else np.nan,
         'iaf_best': scoring_segments['iaf_mean'].max() if 'iaf_mean' in scoring_segments else np.nan,
         'alpha_best': scoring_segments['alpha_mean'].max() if 'alpha_mean' in scoring_segments else np.nan,
-        'theta_alpha_best': scoring_segments['theta_alpha_ratio'].max() if 'theta_alpha_ratio' in scoring_segments else np.nan,
+        'theta_alpha_best': (
+            scoring_segments['theta_alpha_ratio'].max() if 'theta_alpha_ratio' in scoring_segments else np.nan
+        ),
         # 低いほど良い指標 → 最小値
         'beta_best': scoring_segments['beta_mean'].min() if 'beta_mean' in scoring_segments else np.nan,
     }
