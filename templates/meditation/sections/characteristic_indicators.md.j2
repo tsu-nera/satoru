@@ -40,6 +40,24 @@
 
 {% endif %}
 
+{% if indicators.faa %}
+### Frontal Alpha Asymmetry (FAA)
+
+{% if indicators.faa.interpretation %}
+**判定**: {{ indicators.faa.interpretation }}
+
+{% endif %}
+{% if indicators.faa.stats is not none %}
+{% set faa_df = indicators.faa.stats[indicators.faa.stats['Metric'] != 'Interpretation'] %}
+{{ faa_df|df_to_markdown(floatfmt='.3f', index=False, standardize_columns=True) }}
+
+{% endif %}
+> **解釈**: FAA = 右α(dB) − 左α(dB)。αパワーは皮質活動と逆相関するため、
+> 正値は左前頭優位（接近動機・ポジティブ傾向）、負値は右前頭優位（回避動機・ネガティブ傾向）を示唆します。
+> ±2.0 dB 以内は Balanced として扱います。
+
+{% endif %}
+
 {% if indicators.band_ratios %}
 ### バンド比率指標
 

@@ -12,13 +12,10 @@ Usage:
 import sys
 from pathlib import Path
 import argparse
-from datetime import datetime
 
-import numpy as np
-import pandas as pd
 import matplotlib
+# lib 側が pyplot を import する前にバックエンドを固定する
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).resolve().parents[1]

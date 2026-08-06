@@ -106,6 +106,7 @@ def analyze_faa(df, raw_unfiltered, results):
     print('計算中: Frontal Alpha Asymmetry...')
     faa_result = calculate_frontal_asymmetry(df, raw=raw_unfiltered)
     results['faa_stats'] = faa_result.statistics
+    results['faa_interpretation'] = faa_result.metadata.get('interpretation')
     return faa_result
 
 
