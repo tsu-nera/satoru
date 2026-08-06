@@ -109,8 +109,14 @@ def test_meditation_score_normalization():
     assert 0.4 < faa_mid['scores']['faa'] < 0.6
 
     print("✓ Meditation score normalization test passed")
-    print(f"  Fmθ normalization: {score_min['scores']['fmtheta']:.2f} / {score_mid['scores']['fmtheta']:.2f} / {score_max['scores']['fmtheta']:.2f}")
-    print(f"  FAA normalization: {faa_min['scores']['faa']:.2f} / {faa_mid['scores']['faa']:.2f} / {faa_max['scores']['faa']:.2f}")
+    print(
+        f"  Fmθ normalization: {score_min['scores']['fmtheta']:.2f} / "
+        f"{score_mid['scores']['fmtheta']:.2f} / {score_max['scores']['fmtheta']:.2f}"
+    )
+    print(
+        f"  FAA normalization: {faa_min['scores']['faa']:.2f} / "
+        f"{faa_mid['scores']['faa']:.2f} / {faa_max['scores']['faa']:.2f}"
+    )
 
 
 def test_bels_conversion_consistency():
@@ -140,7 +146,7 @@ def test_bels_conversion_consistency():
     assert np.isclose(bels_diff, 3.01, atol=0.01)
 
     print("✓ Bels conversion consistency test passed")
-    for uv2, expected_bels in test_cases:
+    for uv2, _expected_bels in test_cases:
         print(f"  10*log10({uv2}) = {10 * np.log10(uv2):.2f} Bels")
 
 

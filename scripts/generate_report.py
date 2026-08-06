@@ -258,7 +258,10 @@ def main():
         type=str,
         choices=['none', 'csv', 'sheets'],
         default='none',
-        help='セッションログの保存先: none=保存しない（デフォルト）, csv=ローカルCSV（開発用）, sheets=Google Sheets（本番用）'
+        help=(
+            'セッションログの保存先: none=保存しない（デフォルト）, '
+            'csv=ローカルCSV（開発用）, sheets=Google Sheets（本番用）'
+        )
     )
     parser.add_argument(
         '--warmup',

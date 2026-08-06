@@ -90,7 +90,10 @@ class MuseOSCRecorder:
         if count % 256 == 0:
             elapsed = (datetime.now() - self.start_time).seconds
             m, s = divmod(elapsed, 60)
-            print(f"[{m:02d}:{s:02d}] {count} samples | EEG: TP9={args[0]:.1f}, AF7={args[1]:.1f}, AF8={args[2]:.1f}, TP10={args[3]:.1f}")
+            print(
+                f"[{m:02d}:{s:02d}] {count} samples | EEG: "
+                f"TP9={args[0]:.1f}, AF7={args[1]:.1f}, AF8={args[2]:.1f}, TP10={args[3]:.1f}"
+            )
 
     def on_acc(self, address: str, *args) -> None:
         """加速度データ受信ハンドラー"""

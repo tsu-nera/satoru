@@ -93,7 +93,6 @@ def main():
 
         # 実際のパワーを確認
         closest_idx = np.argmin(np.abs(freqs - harmonic_hz))
-        actual_freq = freqs[closest_idx]
         actual_power = power[closest_idx]
         rel_power = (actual_power / power[sorted_indices[0]]) * 100
 
@@ -112,7 +111,6 @@ def main():
         # 実際のパワーを確認
         if harmonic_hz <= freqs[-1]:
             closest_idx = np.argmin(np.abs(freqs - harmonic_hz))
-            actual_freq = freqs[closest_idx]
             actual_power = power[closest_idx]
             rel_power = (actual_power / power[sorted_indices[0]]) * 100
 
@@ -177,7 +175,7 @@ def main():
 
     # 主要ピークをマーク
     hf_sorted = np.argsort(power[hf_mask])[::-1][:5]
-    for i, idx in enumerate(hf_sorted):
+    for _i, idx in enumerate(hf_sorted):
         freq = freqs[hf_mask][idx]
         pwr = power[hf_mask][idx]
         ax2.axvline(freq, color='red', linestyle='--', alpha=0.5, linewidth=1)

@@ -19,7 +19,7 @@ import sys
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -33,7 +33,7 @@ from lib.loaders.selfloops import rename_selfloops_file
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 
 
-def authenticate_gdrive(credentials_path: Optional[str] = None) -> any:
+def authenticate_gdrive(credentials_path: Optional[str] = None) -> Any:
     """
     Google Drive APIに認証する
 
@@ -73,7 +73,7 @@ def authenticate_gdrive(credentials_path: Optional[str] = None) -> any:
     return service
 
 
-def list_csv_files(service: any, folder_id: str) -> List[Dict]:
+def list_csv_files(service: Any, folder_id: str) -> List[Dict]:
     """
     指定フォルダ内のCSVファイル・ZIPファイル一覧を取得
 
@@ -144,7 +144,7 @@ def display_files(files: List[Dict]):
         print()
 
 
-def download_file(service: any, file_id: str, file_name: str, output_dir: str) -> str:
+def download_file(service: Any, file_id: str, file_name: str, output_dir: str) -> str:
     """
     ファイルをダウンロード
 
@@ -225,7 +225,8 @@ def extract_zip(zip_path: str, output_dir: str) -> Optional[str]:
             # 空のディレクトリを削除
             try:
                 extracted_path.parent.rmdir()
-            except:
+            except OSError:
+                # ディレクトリが空でない場合は残したままにする
                 pass
             extracted_path = final_path
 
@@ -325,6 +326,7 @@ def main():
 
         # --download: ダウンロード
         if args.download:
+            target_file: Optional[Dict]
             if args.download.lower() == 'latest':
                 # 最新ファイル
                 target_file = files[0]

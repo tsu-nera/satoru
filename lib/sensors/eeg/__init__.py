@@ -93,6 +93,7 @@ __all__ = [
     'summarize_artifacts',
     'calculate_amplitude_statistics',
     'detect_artifact_windows',
+    'ARTIFACT_P2P_THRESHOLD_UV',
     # PAF解析
     'calculate_paf',
     # ITF解析

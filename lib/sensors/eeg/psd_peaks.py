@@ -204,7 +204,7 @@ def _classify_peaks(
 
     # FMT帯域内のピークを見つけて、最もパワーの高いものをFMTピークとする
     fmt_candidates = []
-    for freq, power, prom in zip(peak_freqs, peak_powers, prominences):
+    for freq, power, _prom in zip(peak_freqs, peak_powers, prominences):
         if fmt_band[0] <= freq < fmt_band[1]:
             fmt_candidates.append((freq, power))
 

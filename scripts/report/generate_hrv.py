@@ -17,6 +17,7 @@ import argparse
 import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict
 
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).resolve().parents[2]
@@ -239,7 +240,7 @@ def analyze_hrv_session(data_path, output_dir, warmup_seconds=60.0):
         results['duration_sec'] = duration_sec
 
     # ECG/HRVデータ
-    ecg = {}
+    ecg: Dict[str, Any] = {}
     ecg['hrv_img'] = hrv_img_name
     ecg['hrv_freq_img'] = hrv_freq_img_name
     ecg['hrv_nonlinear_img'] = hrv_nonlinear_img_name

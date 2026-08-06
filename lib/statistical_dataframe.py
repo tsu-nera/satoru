@@ -404,7 +404,11 @@ def create_statistical_dataframe(
     # 低周波数: δ+θ (1-8Hz) = 深いリラックス・睡眠・深い瞑想
     # 高周波数: α+β+γ (8-50Hz) = 覚醒・認知活動・注意
     low_freq_power = 10 ** (band_powers_df['Delta'] / 10) + 10 ** (band_powers_df['Theta'] / 10)
-    high_freq_power = 10 ** (band_powers_df['Alpha'] / 10) + 10 ** (band_powers_df['Beta'] / 10) + 10 ** (band_powers_df['Gamma'] / 10)
+    high_freq_power = (
+        10 ** (band_powers_df['Alpha'] / 10)
+        + 10 ** (band_powers_df['Beta'] / 10)
+        + 10 ** (band_powers_df['Gamma'] / 10)
+    )
     ratios_dict['low_high'] = low_freq_power / high_freq_power
     ratios_dict['low_high_db'] = 10 * np.log10(ratios_dict['low_high'])
 
@@ -681,7 +685,8 @@ def create_statistical_dataframe(
                 resp_ts_indexed = resp_ts.copy()
                 resp_ts_indexed.index = session_start + pd.to_timedelta(resp_ts_indexed['Time (min)'], unit='m')
                 # ウォームアップ期間を除外
-                resp_ts_indexed = resp_ts_indexed[resp_ts_indexed.index >= session_start + pd.Timedelta(minutes=warmup_minutes)]
+                warmup_end = session_start + pd.Timedelta(minutes=warmup_minutes)
+                resp_ts_indexed = resp_ts_indexed[resp_ts_indexed.index >= warmup_end]
 
                 # セグメント別に集計（timestampsを使用）
                 resp_rows = []

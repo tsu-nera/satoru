@@ -180,7 +180,7 @@ def calculate_segment_hrv_analysis(
                     order=1,
                     show=False
                 )
-            except:
+            except Exception:
                 dfa_alpha1 = np.nan
                 dfa_alpha2 = np.nan
 

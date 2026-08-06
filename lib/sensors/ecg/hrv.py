@@ -162,7 +162,7 @@ def calculate_hrv_standard_set(
         full_metrics['HRV_DFA_alpha2'] = dfa_alpha2
 
     except Exception as e:
-        raise ValueError(f"Failed to calculate HRV metrics: {e}")
+        raise ValueError(f"Failed to calculate HRV metrics: {e}") from e
 
     # 2. スライディングウィンドウでRMSSD・LF/HF時系列生成
     time_series = _calculate_sliding_window_hrv(
@@ -179,7 +179,6 @@ def calculate_hrv_standard_set(
     try:
         freqs, power = calculate_power_spectrum(rr_intervals, fs=4.0)
         slope_result = calculate_1f_slope(freqs, power, freq_range=(0.01, 0.4))
-        noise_type = classify_noise_type(slope_result['beta'])
 
         # LF/HF帯域のピーク周波数を計算
         lf_peak_freq = find_peak_frequency(freqs, power, freq_range=(0.04, 0.15))

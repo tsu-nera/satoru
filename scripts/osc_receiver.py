@@ -21,13 +21,15 @@ def make_handler(name):
     return handler
 
 
+_eeg_sample_count = 0
+
+
 def eeg_handler(address, *args):
     """EEGデータ用ハンドラー（高頻度なので簡略表示）"""
-    # 10回に1回だけ表示（256Hzは多すぎる）
-    if not hasattr(eeg_handler, 'count'):
-        eeg_handler.count = 0
-    eeg_handler.count += 1
-    if eeg_handler.count % 50 == 0:
+    # 50回に1回だけ表示（256Hzは多すぎる）
+    global _eeg_sample_count
+    _eeg_sample_count += 1
+    if _eeg_sample_count % 50 == 0:
         timestamp = datetime.now().strftime("%H:%M:%S")
         print(f"[{timestamp}] EEG: TP9={args[0]:.1f}, AF7={args[1]:.1f}, AF8={args[2]:.1f}, TP10={args[3]:.1f}")
 

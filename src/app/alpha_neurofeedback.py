@@ -402,13 +402,10 @@ class VisualFeedback:
         for name, val in zip(ch_names, hsi):
             if val <= 1:
                 symbol = '●'
-                color_code = 'G'
             elif val <= 2:
                 symbol = '◐'
-                color_code = 'Y'
             else:
                 symbol = '○'
-                color_code = 'R'
             labels.append(f"{name}:{symbol}")
         return "  ".join(labels)
 

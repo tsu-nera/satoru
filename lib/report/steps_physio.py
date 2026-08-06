@@ -130,8 +130,9 @@ def analyze_hrv(df, img_dir, results, selfloops_data, hr_data):
         # R-R間隔の品質情報を保存
         if 'quality_stats' in hrv_data:
             results['rr_quality_stats'] = hrv_data['quality_stats']
-            print(f"  R-R間隔品質: {hrv_data['quality_stats']['quality_rate']:.1f}% "
-                  f"({hrv_data['quality_stats']['outliers_count']}/{hrv_data['quality_stats']['total_intervals']} outliers)")
+            quality_stats = hrv_data['quality_stats']
+            print(f"  R-R間隔品質: {quality_stats['quality_rate']:.1f}% "
+                  f"({quality_stats['outliers_count']}/{quality_stats['total_intervals']} outliers)")
 
         # セッション時間チェック
         total_duration = hrv_data['time'][-1] - hrv_data['time'][0]

@@ -61,7 +61,8 @@ def calculate_peak_frequency(
     -------
     result : dict
         {
-            'peak_by_channel': dict,  # チャネル/半球別 {label: {'Peak': float, 'CoG': float, 'Power': float, 'PSD': array}}
+            # チャネル/半球別 {label: {'Peak': float, 'CoG': float, 'Power': float, 'PSD': array}}
+            'peak_by_channel': dict,
             'individual_peak': float,  # 左右ピークの平均
             'individual_cog': float,   # 左右CoGの平均
             'individual_std': float,   # ピーク値の標準偏差
