@@ -209,6 +209,13 @@ class MeditationReportRenderer:
                 'stats': results.get('alpha_power_stats'),
             }
 
+        # FAA（前頭アルファ非対称）
+        if 'faa_stats' in results:
+            indicators['faa'] = {
+                'stats': results.get('faa_stats'),
+                'interpretation': results.get('faa_interpretation'),
+            }
+
         # Band Ratios
         if 'band_ratios_img' in results:
             indicators['band_ratios'] = {

@@ -13,7 +13,6 @@ from lib import (
 from lib.session_log import write_to_csv, write_to_google_sheets
 from lib.sensors.eeg.visualization import plot_band_ratios
 from lib.visualization import plot_segment_comparison
-from lib.sensors.imu import PostureAnalyzer
 from lib.statistical_dataframe import create_statistical_dataframe
 
 from .step import analysis_step
@@ -47,10 +46,6 @@ def build_statistical_dataframe(
     if 'posture' in statistical_df and not statistical_df['posture'].empty:
         print(f'  Posture統計量: {len(statistical_df["posture"])} セグメント')
         posture_df = statistical_df['posture']
-
-        # 後方互換性のため、PostureAnalyzer でもサマリーを計算
-        posture_analyzer = PostureAnalyzer()
-        posture_analyzer.compute_summary(df)
 
         # posture詳細テーブルを追加
         if 'posture' not in results:

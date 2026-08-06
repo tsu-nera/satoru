@@ -127,37 +127,17 @@ def generate_session_summary(
         summary['hsi_quality_score'] = hsi_data.get('overall_quality')
         summary['hsi_good_ratio'] = hsi_data.get('good_ratio', 0.0)
 
-    # バンド比率（新しい縦長形式に対応）
+    # バンド比率（Metric名は create_statistical_dataframe の f'{metric_key}_Mean' 形式）
     if 'band_ratios_stats' in results:
         ratios_df = results['band_ratios_stats']
 
-        # Beta/Alpha（覚醒度）
-        beta_alpha_mean = extract_metric_value(ratios_df, 'beta_alpha_Mean')
-        if beta_alpha_mean is None:
-            # 旧形式（横長）への後方互換
-            old_row = ratios_df[ratios_df.get('Metric', ratios_df.get('指標', pd.Series())) == 'Beta/Alpha']
-            if not old_row.empty:
-                beta_alpha_mean = old_row.get('Value', old_row.get('平均値', pd.Series())).iloc[0]
-
-        summary['beta_alpha_ratio_mean'] = beta_alpha_mean
-
-        # Beta/Theta（集中度）
-        beta_theta_mean = extract_metric_value(ratios_df, 'Beta/Theta Mean')
-        if beta_theta_mean is None:
-            old_row = ratios_df[ratios_df.get('Metric', ratios_df.get('指標', pd.Series())) == 'Beta/Theta']
-            if not old_row.empty:
-                beta_theta_mean = old_row.get('Value', old_row.get('平均値', pd.Series())).iloc[0]
-
-        summary['beta_theta_ratio_mean'] = beta_theta_mean
-
-        # Theta/Alpha（瞑想深度）
-        theta_alpha_mean = extract_metric_value(ratios_df, 'Theta/Alpha Mean')
-        if theta_alpha_mean is None:
-            old_row = ratios_df[ratios_df.get('Metric', ratios_df.get('指標', pd.Series())) == 'Theta/Alpha']
-            if not old_row.empty:
-                theta_alpha_mean = old_row.get('Value', old_row.get('平均値', pd.Series())).iloc[0]
-
-        summary['theta_alpha_ratio_mean'] = theta_alpha_mean
+        ratio_columns = {
+            'beta_alpha_ratio_mean': 'beta_alpha',   # 覚醒度
+            'beta_theta_ratio_mean': 'beta_theta',   # 集中度
+            'theta_alpha_ratio_mean': 'theta_alpha',  # 瞑想深度
+        }
+        for summary_key, metric_key in ratio_columns.items():
+            summary[summary_key] = extract_metric_value(ratios_df, f'{metric_key}_Mean')
 
     # Fmθ
     if 'frontal_theta_stats' in results:
