@@ -7,22 +7,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-from .sensors.eeg.frontal_theta import (
-    FrontalThetaResult,
-    calculate_frontal_theta,
-)
 from .sensors.eeg.artifact import PEAK_MAX_EXCLUDED_RATIO
-from .sensors.eeg.preprocessing import filter_eeg_quality
-from .statistical_dataframe import get_band_power_at_time, get_band_ratio_at_time
 
 if TYPE_CHECKING:
-    import mne
+    pass
 
 
 # ========================================

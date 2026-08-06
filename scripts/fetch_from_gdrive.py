@@ -14,15 +14,13 @@ Google DriveからMind Monitor CSVファイルを取得するスクリプト
 """
 
 import argparse
-import json
 import os
 import sys
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
-from google.auth.transport.requests import Request
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
@@ -30,7 +28,6 @@ from googleapiclient.http import MediaIoBaseDownload
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.loaders.selfloops import rename_selfloops_file
-
 
 # APIスコープ（読み取り専用）
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
@@ -185,7 +182,7 @@ def download_file(service: any, file_id: str, file_name: str, output_dir: str) -
                 progress = int(status.progress() * 100)
                 print(f"  進捗: {progress}%", end='\r')
 
-        print(f"  進捗: 100% ✅")
+        print("  進捗: 100% ✅")
 
     print(f"✅ ダウンロード完了: {output_path}")
     return str(output_path)
@@ -363,7 +360,7 @@ def main():
             if final_path.endswith('.csv'):
                 final_path = rename_selfloops_file(final_path)
 
-            print(f"\n✅ すべての処理が完了しました")
+            print("\n✅ すべての処理が完了しました")
             print(f"ファイルパス: {final_path}")
 
     except Exception as e:

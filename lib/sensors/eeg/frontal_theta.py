@@ -12,11 +12,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Iterable, Optional, Tuple
 
-import pandas as pd
 import mne
+import pandas as pd
 
-from .core.hilbert_power import calculate_channel_average_power
 from ._band_power_base import calculate_band_power
+from .core.hilbert_power import calculate_channel_average_power
 
 # 代表的なFmθ帯域プリセット（必要に応じて切り替え可能）
 FMTHETA_BAND_OPTIONS: Dict[str, Tuple[float, float]] = {

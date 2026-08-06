@@ -8,26 +8,23 @@
 """
 
 from .step import analysis_step
-
-from .steps_physio import (
-    analyze_fnirs,
-    analyze_motion_and_hr,
-    analyze_hrv,
-    analyze_respiration,
-)
-
 from .steps_eeg import (
-    plot_band_power_series,
-    prepare_mne_and_spectral,
     analyze_frontal_theta_step,
     analyze_smr_step,
+    plot_band_power_series,
+    prepare_mne_and_spectral,
 )
-
+from .steps_physio import (
+    analyze_fnirs,
+    analyze_hrv,
+    analyze_motion_and_hr,
+    analyze_respiration,
+)
 from .steps_summary import (
-    build_statistical_dataframe,
     analyze_segments,
-    plot_band_ratios_step,
+    build_statistical_dataframe,
     calculate_session_score,
+    plot_band_ratios_step,
     save_session_log,
 )
 

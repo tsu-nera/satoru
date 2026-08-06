@@ -24,13 +24,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-import numpy as np
-import pandas as pd
 import mne
+import pandas as pd
 
-from .preprocessing import prepare_mne_raw
 from .core.hilbert_power import calculate_hilbert_band_power
 from .core.statistics import calculate_half_comparison
+from .preprocessing import prepare_mne_raw
 
 
 @dataclass

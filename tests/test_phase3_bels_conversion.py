@@ -7,9 +7,9 @@ Fmθ、FAAの計算がμV²/lnからdB (10*log10) に正しく変換されたこ
 import numpy as np
 import pandas as pd
 
-from lib.sensors.eeg.frontal_theta import calculate_frontal_theta
-from lib.sensors.eeg.frontal_asymmetry import calculate_frontal_asymmetry
 from lib.segment_analysis import calculate_meditation_score
+from lib.sensors.eeg.frontal_asymmetry import calculate_frontal_asymmetry
+from lib.sensors.eeg.frontal_theta import calculate_frontal_theta
 
 
 def test_fmtheta_bels_output():
@@ -38,7 +38,7 @@ def test_fmtheta_bels_output():
     assert result.time_series.min() > -100  # dB下限
     assert result.time_series.max() < 100   # dB上限
 
-    print(f"✓ Fmθ dB conversion test passed")
+    print("✓ Fmθ dB conversion test passed")
     print(f"  Mean: {mean_val:.2f} dB")
     print(f"  Range: {result.time_series.min():.2f} - {result.time_series.max():.2f} dB")
 
@@ -77,7 +77,7 @@ def test_faa_bels_output():
     assert result.right_power.min() > -100
     assert result.right_power.max() < 100
 
-    print(f"✓ FAA dB conversion test passed")
+    print("✓ FAA dB conversion test passed")
     print(f"  Mean FAA: {mean_faa:.2f} dB")
     print(f"  Left power range: {result.left_power.min():.2f} - {result.left_power.max():.2f} dB")
     print(f"  Right power range: {result.right_power.min():.2f} - {result.right_power.max():.2f} dB")

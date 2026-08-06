@@ -10,12 +10,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Optional, Sequence, Tuple
 
-import pandas as pd
 import mne
+import pandas as pd
 
-from .preprocessing import prepare_mne_raw
 from .core.hilbert_power import calculate_channel_average_power
-from .core.statistics import calculate_half_comparison, create_statistics_dataframe, create_metadata
+from .core.statistics import calculate_half_comparison, create_metadata, create_statistics_dataframe
+from .preprocessing import prepare_mne_raw
 
 
 @dataclass

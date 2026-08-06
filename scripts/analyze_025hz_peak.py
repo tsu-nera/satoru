@@ -11,15 +11,15 @@
 
 import sys
 from pathlib import Path
-import numpy as np
-from scipy import signal
+
 import matplotlib.pyplot as plt
+import numpy as np
 
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(project_root))
 
-from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
+from lib.loaders.selfloops import get_hrv_data, load_selfloops_csv
 from lib.sensors.ecg.hrv import calculate_power_spectrum
 
 
@@ -75,11 +75,11 @@ def main():
     mean_br_hz = mean_br / 60.0
     spectral_br_hz = spectral_br / 60.0
 
-    print(f'\nレポート記載の呼吸数:')
+    print('\nレポート記載の呼吸数:')
     print(f'  Mean BR: {mean_br} bpm = {mean_br_hz:.4f} Hz')
     print(f'  Spectral BR: {spectral_br} bpm = {spectral_br_hz:.4f} Hz')
 
-    print(f'\n呼吸周波数の高調波:')
+    print('\n呼吸周波数の高調波:')
 
     # Mean BRの高調波
     print(f'\n  Mean BR ({mean_br} bpm) の高調波:')
@@ -200,7 +200,7 @@ def main():
     print('結論: 0.25 Hz ピークの原因')
     print('='*70)
 
-    print(f'''
+    print('''
 主要な要因:
   1. 基本呼吸周波数の4次高調波
      - Mean BR (3.8 bpm) × 4 = 15.2 bpm ≈ 0.253 Hz

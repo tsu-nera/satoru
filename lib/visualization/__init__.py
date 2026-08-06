@@ -6,13 +6,12 @@
 """
 
 # セグメント分析可視化
-from .segment_plot import plot_segment_comparison
-
 # fNIRS可視化
 from .fnirs import plot_fnirs, plot_fnirs_muse_style
 
 # 動作検出可視化
-from .motion import plot_motion_heart_rate, create_motion_stats_table
+from .motion import create_motion_stats_table, plot_motion_heart_rate
+from .segment_plot import plot_segment_comparison
 
 # 共通ユーティリティ
 from .utils import format_time_axis

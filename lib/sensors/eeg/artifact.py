@@ -12,7 +12,7 @@ PSDは窓単位で汚染されるため、それより細かい粒度で除去�
 
 from __future__ import annotations
 
-from typing import Dict, Optional
+from typing import Dict
 
 import numpy as np
 import pandas as pd

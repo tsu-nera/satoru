@@ -7,14 +7,12 @@ EEG解析のための統一的なバンドパワーおよび比率計算を提�
 
 from __future__ import annotations
 
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Optional
 
 import numpy as np
 import pandas as pd
 from scipy import stats
 
-# Spectral Entropy計算関数をインポート
-from .sensors.eeg.spectral_entropy import _calculate_shannon_entropy
 from .sensors.eeg.artifact import (
     ARTIFACT_P2P_THRESHOLD_UV,
     ARTIFACT_WINDOW_SAMPLES,
@@ -22,6 +20,9 @@ from .sensors.eeg.artifact import (
     detect_artifact_windows,
     segment_valid_ratio,
 )
+
+# Spectral Entropy計算関数をインポート
+from .sensors.eeg.spectral_entropy import _calculate_shannon_entropy
 
 if TYPE_CHECKING:
     import mne

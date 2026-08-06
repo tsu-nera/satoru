@@ -6,10 +6,10 @@ Muse S の加速度計・ジャイロスコープを統合的に扱います。
 - 姿勢統計量：坐禅中の姿勢安定性評価用の統計量計算
 """
 
+from typing import Dict
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Optional
-
 
 # ============================================================
 # 定数定義

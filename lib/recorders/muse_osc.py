@@ -229,12 +229,12 @@ class MuseOSCRecorder:
         print()
         if self.source == 'muse_app_osc':
             print("Muse Appの設定:")
-            print(f"  - IP: このPCのIPアドレス")
+            print("  - IP: このPCのIPアドレス")
             print(f"  - Port: {port}")
-            print(f"  - Streaming Enabled: ON")
+            print("  - Streaming Enabled: ON")
         else:
             print("Mind Monitorの設定:")
-            print(f"  - OSC Stream Target IP: このPCのIPアドレス")
+            print("  - OSC Stream Target IP: このPCのIPアドレス")
             print(f"  - OSC Stream Target Port: {port}")
         print()
         print("Ctrl+C で記録終了・CSV保存")

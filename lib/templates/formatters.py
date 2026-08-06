@@ -5,8 +5,9 @@
 プレゼンテーション層のデータ変換ロジックを集約。
 """
 
-import pandas as pd
 from typing import Any
+
+import pandas as pd
 
 
 def format_respiratory_stats(respiration_result: Any) -> pd.DataFrame:

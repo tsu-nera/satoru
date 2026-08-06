@@ -3,8 +3,9 @@ EEGデータの前処理（MNE RawArray準備）
 """
 
 import warnings
-import pandas as pd
+
 import mne
+import pandas as pd
 
 from .constants import DEFAULT_SFREQ
 

@@ -20,11 +20,10 @@ import argparse
 import os
 import sys
 from datetime import datetime, timedelta, timezone
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-
 
 # APIスコープ（削除のために書き込み権限が必要）
 SCOPES = ['https://www.googleapis.com/auth/drive']

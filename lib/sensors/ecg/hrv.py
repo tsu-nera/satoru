@@ -8,12 +8,12 @@ Selfloops ECGデータからNeuroKit2を使用して標準HRV指標セットを�
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
 from datetime import datetime
+from typing import Any, Dict
 
+import neurokit2 as nk
 import numpy as np
 import pandas as pd
-import neurokit2 as nk
 from scipy import signal
 from scipy.interpolate import interp1d
 from scipy.stats import linregress

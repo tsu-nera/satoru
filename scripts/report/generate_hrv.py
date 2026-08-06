@@ -13,33 +13,33 @@ Usage:
     python generate_hrv.py --data <SELFLOOPS_CSV_PATH> --output <OUTPUT_DIR>
 """
 
-import sys
-from pathlib import Path
 import argparse
+import sys
 from datetime import datetime
+from pathlib import Path
 
 # プロジェクトルートをパスに追加
 project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 import matplotlib
+
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 from jinja2 import Environment, FileSystemLoader
 
-from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
 from lib.loaders.base import get_heart_rate_data
-from lib.sensors.ecg.hrv import calculate_hrv_standard_set
-from lib.sensors.ecg.segment_analysis_hrv import calculate_segment_hrv_analysis
-from lib.sensors.ecg.visualization.hrv_plot import plot_hrv_time_series, plot_hrv_frequency, plot_hrv_nonlinear
+from lib.loaders.selfloops import get_hrv_data, load_selfloops_csv
 from lib.sensors.ecg.analysis import analyze_hrv
+from lib.sensors.ecg.hrv import calculate_hrv_standard_set
 from lib.sensors.ecg.respiration import estimate_resonance_breathing_pace
+from lib.sensors.ecg.segment_analysis_hrv import calculate_segment_hrv_analysis
+from lib.sensors.ecg.visualization.hrv_plot import plot_hrv_frequency, plot_hrv_nonlinear, plot_hrv_time_series
 from lib.templates.filters import (
-    number_format,
+    df_to_markdown,
+    format_duration,
     format_percent,
     format_timestamp,
-    format_duration,
-    df_to_markdown,
+    number_format,
 )
 from lib.templates.formatters import format_respiratory_stats
 
@@ -209,7 +209,7 @@ def analyze_hrv_session(data_path, output_dir, warmup_seconds=60.0):
         bin_width=0.5
     )
 
-    print(f'\n呼吸分析結果:')
+    print('\n呼吸分析結果:')
     print(f'  平均BR: {respiration_result.breathing_rate:.1f} bpm')
     if rbp_result:
         print(f'  共鳴呼吸回数（RMSSD基準）: {rbp_result.optimal_rmssd["range"]} bpm')

@@ -8,11 +8,11 @@ HRVデータを固定時間セグメントに分割し、各セグメントでHR
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
+import neurokit2 as nk
 import numpy as np
 import pandas as pd
-import neurokit2 as nk
 
 
 @dataclass
@@ -184,7 +184,7 @@ def calculate_segment_hrv_analysis(
                 dfa_alpha1 = np.nan
                 dfa_alpha2 = np.nan
 
-        except Exception as e:
+        except Exception:
             # HRV計算失敗時はNaNを設定
             rmssd = np.nan
             sdnn = np.nan

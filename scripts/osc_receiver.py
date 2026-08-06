@@ -7,10 +7,10 @@ Muse App OSC Receiver - シンプルな受信テスト用スクリプト
 3. Muse AppでOSC出力先をこのPCのIPとポート5000に設定
 """
 
-from pythonosc import dispatcher
-from pythonosc import osc_server
 import argparse
 from datetime import datetime
+
+from pythonosc import dispatcher, osc_server
 
 
 def make_handler(name):
@@ -69,7 +69,7 @@ def main():
     print(f"Listening on {args.ip}:{args.port}")
     print()
     print("Muse Appの設定:")
-    print(f"  - IP: あなたのPCのIPアドレス")
+    print("  - IP: あなたのPCのIPアドレス")
     print(f"  - Port: {args.port}")
     print()
     print("待機中... (Ctrl+C で終了)")

@@ -2,7 +2,7 @@
 可視化用共通ユーティリティ
 """
 
-from typing import Dict, Tuple, Optional
+from typing import Dict, Optional, Tuple
 
 import numpy as np
 

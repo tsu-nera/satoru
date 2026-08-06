@@ -5,9 +5,9 @@ PSD-based peak frequency calculation - shared logic for PAF and ITF.
 共通計算ロジックを提供します。
 """
 
-import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 
+import numpy as np
 
 HEMISPHERE_CONFIG: Dict[str, List[str]] = {
     'Left': ['RAW_TP9', 'RAW_AF7'],

@@ -8,41 +8,37 @@
 """
 
 # fNIRSセンサー（脳血流）
-from .fnirs import (
-    calculate_hbo_hbr,
-    analyze_fnirs
-)
-
 # EEGセンサー（脳波）
 from .eeg import (
-    FREQ_BANDS,
     DEFAULT_SFREQ,
+    FREQ_BANDS,
     calculate_band_statistics,
-    prepare_mne_raw,
-    filter_eeg_quality,
+    calculate_paf,
     calculate_psd,
     calculate_spectrogram,
-    calculate_paf,
-    get_psd_peak_frequencies
+    filter_eeg_quality,
+    get_psd_peak_frequencies,
+    prepare_mne_raw,
 )
+from .fnirs import analyze_fnirs, calculate_hbo_hbr
 
 # IMUセンサー（加速度・ジャイロ）
 from .imu import (
     # Motion detection (artifact removal)
     MOTION_THRESHOLDS,
-    compute_magnitude,
-    detect_motion,
-    compute_motion_score,
-    analyze_motion_intervals,
-    get_motion_epochs,
+    PostureAnalyzer,
     analyze_motion,
+    analyze_motion_intervals,
+    compute_magnitude,
+    compute_motion_score,
     # Posture analysis
     compute_posture_statistics,
-    PostureAnalyzer,
+    compute_rms,
+    detect_motion,
+    extract_sensor_data,
+    get_motion_epochs,
     # Common utilities
     remove_dc_offset,
-    compute_rms,
-    extract_sensor_data,
 )
 
 __all__ = [

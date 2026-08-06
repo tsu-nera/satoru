@@ -16,12 +16,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.sensors.eeg.artifact import (  # noqa: E402
     ARTIFACT_RELATIVE_FLOOR_UV,
     ARTIFACT_WINDOW_SAMPLES,
+    _window_p2p,
+    calculate_amplitude_statistics,
     channel_thresholds,
     detect_artifact_windows,
-    calculate_amplitude_statistics,
     segment_valid_ratio,
     summarize_artifacts,
-    _window_p2p,
 )
 
 SFREQ = 256.0

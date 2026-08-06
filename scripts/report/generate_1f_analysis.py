@@ -12,12 +12,12 @@ Usage:
     python generate_1f_analysis.py --data <SELFLOOPS_CSV_PATH> --output <OUTPUT_DIR>
 """
 
-import sys
-from pathlib import Path
 import argparse
-import numpy as np
-import pandas as pd
+import sys
 from datetime import datetime
+from pathlib import Path
+
+import numpy as np
 from scipy import signal
 from scipy.stats import linregress
 
@@ -26,10 +26,11 @@ project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(project_root))
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from lib.loaders.selfloops import load_selfloops_csv, get_hrv_data
+from lib.loaders.selfloops import get_hrv_data, load_selfloops_csv
 
 
 def calculate_power_spectrum(rr_intervals, fs=4.0):
@@ -386,7 +387,7 @@ def analyze_1f_fluctuation(data_path, output_dir, warmup_seconds=60.0):
         'duration': np.sum(rr_intervals) / 1000.0  # 秒
     }
 
-    print(f'\nR-R間隔統計:')
+    print('\nR-R間隔統計:')
     print(f'  平均: {rr_stats["mean"]:.1f} ms')
     print(f'  標準偏差: {rr_stats["std"]:.1f} ms')
     print(f'  計測時間: {rr_stats["duration"]:.1f} 秒')
@@ -399,7 +400,7 @@ def analyze_1f_fluctuation(data_path, output_dir, warmup_seconds=60.0):
     print('計算中: 1/f傾き解析...')
     slope_result = calculate_1f_slope(freqs, power, freq_range=(0.01, 0.4))
 
-    print(f'\n1/f傾き解析結果:')
+    print('\n1/f傾き解析結果:')
     print(f'  傾き (Slope): {slope_result["slope"]:.3f}')
     print(f'  相関係数 (R): {slope_result["r_value"]:.3f}')
     print(f'  決定係数 (R²): {slope_result["r_value"]**2:.3f}')
