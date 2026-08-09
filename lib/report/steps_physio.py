@@ -182,13 +182,17 @@ def analyze_respiration(hrv_data, results):
         respiration_result = calculate_breathing_rate(
             hrv_data,
             target_fs=8.0,
-            peak_distance=8.0,
             window_minutes=3.0
         )
 
         # 結果を保存（内部処理用）
         results['respiration_result'] = respiration_result
 
-        print(f'  平均BR: {respiration_result.breathing_rate:.1f} bpm')
+        print(
+            f'  平均BR: {respiration_result.breathing_rate:.1f} bpm'
+            f' ({respiration_result.breathing_rate_method})'
+        )
+        if respiration_result.is_slow_breathing:
+            print('  注意: 呼吸が0.15Hz未満のためLF/HF比は自律神経バランスとして解釈不能')
 
     return respiration_result

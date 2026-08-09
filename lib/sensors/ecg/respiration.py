@@ -15,6 +15,16 @@ import numpy as np
 import pandas as pd
 from scipy import interpolate
 
+# スペクトル法で呼吸ピークを探索する周波数帯域（Hz）
+# 下限0.04Hz=2.4bpm。瞑想の超低速呼吸（4-6bpm、0.07-0.10Hz）を含む一方、
+# VLF帯のドリフト（<0.04Hz）は除外する。
+BR_SEARCH_BAND_HZ = (0.04, 0.40)
+
+# LF帯（0.04-0.15Hz）の上限。呼吸がこれを下回るとRSAがHFではなくLFに計上され、
+# LF/HF比が自律神経バランスの指標として成立しなくなる。
+LF_BAND_UPPER_HZ = 0.15
+SLOW_BREATHING_THRESHOLD_BPM = LF_BAND_UPPER_HZ * 60  # 9.0 bpm
+
 
 def calculate_respiratory_period(respiratory_rate):
     """
@@ -50,15 +60,22 @@ class RespirationResult:
     Attributes
     ----------
     breathing_rate : float
-        平均呼吸数（breaths per minute）
+        呼吸数の主推定値（bpm）。スペクトル法が有効ならその値、
+        失敗時はトラフ法にフォールバックする。
+    breathing_rate_method : str
+        breathing_rate の由来（'spectral' または 'trough'）
+    breathing_rate_trough : float
+        トラフ法による平均呼吸数（bpm）。peak_distance依存が強いため補助指標。
     breathing_rate_std : float
-        呼吸数の標準偏差
+        トラフ法による瞬時呼吸数の標準偏差
     peak_count : int
         検出された呼吸ピーク数
     trough_count : int
         検出された呼吸トラフ（谷）数
     spectral_breathing_rate : float
-        スペクトル法による呼吸数（bpm）
+        スペクトル法による呼吸数（bpm）。検出できない場合はNaN。
+    is_slow_breathing : bool
+        呼吸が0.15Hz（9bpm）を下回るか。TrueならLF/HF比は解釈不能。
     time_series : pd.DataFrame
         時系列メトリクス（Time, HR, RMSSD, LF/HF, LF Power, HF Power, BR）
     metadata : dict
@@ -66,10 +83,13 @@ class RespirationResult:
     """
 
     breathing_rate: float
+    breathing_rate_method: str
+    breathing_rate_trough: float
     breathing_rate_std: float
     peak_count: int
     trough_count: int
     spectral_breathing_rate: float
+    is_slow_breathing: bool
     time_series: pd.DataFrame
     metadata: dict
 
@@ -106,14 +126,16 @@ class ResonanceBreathingPaceResult:
 def calculate_breathing_rate(
     hrv_data: Dict[str, Any],
     target_fs: float = 8.0,
-    peak_distance: float = 8.0,
+    peak_distance: Optional[float] = None,
     window_minutes: float = 3.0,
+    edr_method: str = 'soni2019',
 ) -> RespirationResult:
     """
     ECG-Derived Respiration（EDR）法で呼吸数を計算
 
     NeuroKit2を使用してR-R間隔から呼吸成分を抽出し、呼吸数を推定します。
-    深い瞑想呼吸（4-6 bpm）に対応するため、peak_distanceを長めに設定しています。
+    主推定値はスペクトル法（EDRのPSDピーク）です。トラフ法は peak_distance の
+    設定に強く依存するため補助指標として併記します。
 
     Parameters
     ----------
@@ -126,13 +148,18 @@ def calculate_breathing_rate(
     target_fs : float
         リサンプリング周波数（Hz）
         デフォルト8.0Hz（NeuroKit2のフィルタに対応）
-    peak_distance : float
+    peak_distance : float, optional
         呼吸ピーク間の最小距離（秒）
-        デフォルト8.0秒（深い瞑想呼吸 4-6 bpmに対応）
-        一般的な呼吸には0.8秒が適切
+        Noneの場合、スペクトル推定値から呼吸周期の半分を自動設定する。
+        固定値を与えると検出可能な呼吸数に上限（60/peak_distance bpm）が
+        生じるため、通常はNoneのままにすること。
     window_minutes : float
         時系列メトリクス計算のウィンドウサイズ（分）
         デフォルト3分
+    edr_method : str
+        NeuroKit2のEDR抽出フィルタ。デフォルト'soni2019'（0-0.5Hz）。
+        'vangent2019'（0.1-0.4Hz = 6-24bpm）は瞑想の超低速呼吸を
+        通過帯域外で除去してしまうため使わないこと。
 
     Returns
     -------
@@ -169,9 +196,39 @@ def calculate_breathing_rate(
     hr_resampled = f(time_resampled)
 
     # 3. ECG-Derived Respiration（EDR）を抽出
-    edr_signal = nk.ecg_rsp(hr_resampled, sampling_rate=int(target_fs), method='vangent2019')
+    edr_signal = nk.ecg_rsp(hr_resampled, sampling_rate=int(target_fs), method=edr_method)
 
-    # 4. 呼吸信号のクリーニングとピーク検出
+    # 4. 周波数解析（スペクトル法）— 主推定値
+    # nperseg は 0.04Hz を分解できる長さが必要（2048サンプル @8Hz = 256秒 → 0.004Hz分解能）。
+    # 短すぎると超低速呼吸のピークが隣接ビンに埋もれる。
+    from scipy import signal as sp_signal
+    freqs, psd = sp_signal.welch(
+        edr_signal,
+        fs=target_fs,
+        nperseg=min(2048, len(edr_signal)),
+        scaling='density'
+    )
+
+    br_low, br_high = BR_SEARCH_BAND_HZ
+    br_mask = (freqs >= br_low) & (freqs <= br_high)
+    br_freqs = freqs[br_mask]
+    br_psd = psd[br_mask]
+
+    if len(br_psd) > 0:
+        breathing_rate_spectral = br_freqs[np.argmax(br_psd)] * 60
+    else:
+        breathing_rate_spectral = np.nan
+
+    # 5. ピーク間最小距離を決定
+    # 固定値は検出可能な呼吸数に上限を課す（8秒 → 7.5bpm以下しか測れない）。
+    # スペクトル推定値から呼吸周期の半分を取り、速い呼吸にも遅い呼吸にも追随させる。
+    if peak_distance is None:
+        if np.isfinite(breathing_rate_spectral) and breathing_rate_spectral > 0:
+            peak_distance = float(np.clip(0.5 * 60.0 / breathing_rate_spectral, 1.0, 15.0))
+        else:
+            peak_distance = 2.0
+
+    # 6. 呼吸信号のクリーニングとピーク検出
     rsp_cleaned = nk.rsp_clean(edr_signal, sampling_rate=target_fs)
     rsp_peaks_dict = nk.rsp_findpeaks(
         rsp_cleaned,
@@ -183,7 +240,6 @@ def calculate_breathing_rate(
     peaks_idx = rsp_peaks_dict['RSP_Peaks']
     troughs_idx = rsp_peaks_dict['RSP_Troughs']
 
-    # 5. 呼吸数を計算
     rsp_rate = nk.rsp_rate(
         rsp_cleaned,
         troughs=rsp_peaks_dict,
@@ -191,29 +247,16 @@ def calculate_breathing_rate(
         method='trough'
     )
 
-    mean_rate = np.nanmean(rsp_rate)
+    trough_rate = np.nanmean(rsp_rate)
     std_rate = np.nanstd(rsp_rate)
 
-    # 6. 周波数解析（スペクトル法）
-    from scipy import signal as sp_signal
-    freqs, psd = sp_signal.welch(
-        edr_signal,
-        fs=target_fs,
-        nperseg=min(256, len(edr_signal)),
-        scaling='density'
-    )
-
-    # 呼吸帯域（0.15-0.4 Hz = 9-24 bpm）でピーク検出
-    br_mask = (freqs >= 0.15) & (freqs <= 0.4)
-    br_freqs = freqs[br_mask]
-    br_psd = psd[br_mask]
-
-    if len(br_psd) > 0:
-        peak_idx = np.argmax(br_psd)
-        peak_freq = br_freqs[peak_idx]
-        breathing_rate_spectral = peak_freq * 60
+    # スペクトル法を主推定値とし、失敗時のみトラフ法へフォールバック
+    if np.isfinite(breathing_rate_spectral):
+        mean_rate = breathing_rate_spectral
+        rate_method = 'spectral'
     else:
-        breathing_rate_spectral = np.nan
+        mean_rate = trough_rate
+        rate_method = 'trough'
 
     # 7. 時系列メトリクス計算
     metrics_df = _calculate_windowed_metrics(
@@ -232,14 +275,21 @@ def calculate_breathing_rate(
         'peak_distance_seconds': peak_distance,
         'window_minutes': window_minutes,
         'resampled_samples': len(hr_resampled),
+        'edr_method': edr_method,
+        'br_search_band_hz': BR_SEARCH_BAND_HZ,
     }
 
     return RespirationResult(
         breathing_rate=mean_rate,
+        breathing_rate_method=rate_method,
+        breathing_rate_trough=trough_rate,
         breathing_rate_std=std_rate,
         peak_count=len(peaks_idx),
         trough_count=len(troughs_idx),
         spectral_breathing_rate=breathing_rate_spectral,
+        is_slow_breathing=bool(
+            np.isfinite(mean_rate) and mean_rate < SLOW_BREATHING_THRESHOLD_BPM
+        ),
         time_series=metrics_df,
         metadata=metadata
     )
@@ -424,7 +474,7 @@ def analyze_breathing_hrv_correlation(
 def estimate_resonance_breathing_pace(
     hrv_data: Dict[str, Any],
     target_fs: float = 8.0,
-    peak_distance: float = 8.0,
+    peak_distance: Optional[float] = None,
     window_minutes: float = 3.0,
     bin_width: float = 0.5
 ) -> tuple[RespirationResult, Optional[ResonanceBreathingPaceResult]]:
@@ -440,8 +490,8 @@ def estimate_resonance_breathing_pace(
         get_hrv_data()の戻り値
     target_fs : float
         リサンプリング周波数（Hz）
-    peak_distance : float
-        呼吸ピーク間の最小距離（秒）
+    peak_distance : float, optional
+        呼吸ピーク間の最小距離（秒）。Noneでスペクトル推定値から自動設定。
     window_minutes : float
         時系列メトリクス計算のウィンドウサイズ（分）
     bin_width : float

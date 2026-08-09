@@ -8,6 +8,7 @@
 > **時系列の見方**:
 > - **RMSSD**: 副交感神経活動の指標。高いほどリラックス状態。
 > - **LF/HF Ratio**: 自律神経バランス。1.0未満は副交感神経優位（リラックス）、1.0以上は交感神経優位（緊張）。
+>   ただし呼吸が0.15Hz（9 bpm）を下回る場合はこの解釈は成立しません（下記「周波数領域解析」参照）。
 
 {% endif %}
 {% if ecg.hrv_freq_img %}
@@ -19,6 +20,13 @@
 > - **VLF (0.0-0.04 Hz)**: Very Low Frequency - 長期的な調節機構
 > - **LF (0.04-0.15 Hz)**: Low Frequency - 交感神経＋副交感神経活動（圧受容体反射）
 > - **HF (0.15-0.4 Hz)**: High Frequency - 副交感神経活動（呼吸性洞性不整脈）
+{% if ecg.lf_hf_unreliable %}>
+> **⚠️ 本セッションではLF/HF比を自律神経バランスとして解釈できません**:
+> 呼吸数 {{ ecg.breathing_rate|number_format(1) }} bpm（{{ (ecg.breathing_rate / 60)|number_format(3) }} Hz）がLF帯域に入るため、
+> 呼吸性洞性不整脈がHFではなくLFに計上され、HFが空になります。
+> LF/HFの高値は交感神経優位ではなくslow breathingの帰結です。
+> 副交感神経活動はRMSSD・SD1で評価してください。
+{% endif %}
 
 {% endif %}
 {% if ecg.hrv_time_stats is not none or ecg.hrv_freq_stats is not none or ecg.hrv_nonlinear_stats is not none %}

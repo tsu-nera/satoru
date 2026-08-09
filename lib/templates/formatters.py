@@ -32,6 +32,7 @@ def format_respiratory_stats(respiration_result: Any) -> pd.DataFrame:
     """
     stats = []
 
+    # 主推定値（通常はスペクトル法）を先頭に置く
     stats.append({
         'Metric': 'Mean Breathing Rate',
         'Value': respiration_result.breathing_rate,
@@ -46,19 +47,25 @@ def format_respiratory_stats(respiration_result: Any) -> pd.DataFrame:
         'Unit': 's'
     })
 
-    stats.append({
-        'Metric': 'Breathing Rate (Std)',
-        'Value': respiration_result.breathing_rate_std,
-        'Unit': 'bpm'
-    })
-
-    if hasattr(respiration_result, 'spectral_breathing_rate') and \
-       respiration_result.spectral_breathing_rate is not None:
+    if hasattr(respiration_result, 'spectral_breathing_rate'):
         stats.append({
             'Metric': 'Breathing Rate (Spectral)',
             'Value': respiration_result.spectral_breathing_rate,
             'Unit': 'bpm'
         })
+
+    if hasattr(respiration_result, 'breathing_rate_trough'):
+        stats.append({
+            'Metric': 'Breathing Rate (Trough)',
+            'Value': respiration_result.breathing_rate_trough,
+            'Unit': 'bpm'
+        })
+
+    stats.append({
+        'Metric': 'Breathing Rate (Std)',
+        'Value': respiration_result.breathing_rate_std,
+        'Unit': 'bpm'
+    })
 
     stats.append({
         'Metric': 'Peak Count',
