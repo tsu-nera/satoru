@@ -45,9 +45,9 @@
 {{ ecg.hrv_freq_stats|df_to_markdown(floatfmt='.4f', index=False, standardize_columns=True) }}
 
 > **周波数領域指標**: 心拍変動を周波数解析。HFは副交感神経、LFは交感神経＋副交感神経の混合を示します。
-{% if ecg.respiratory_period %}
+{% if ecg.lf_hf_unreliable %}
 >
-> **⚠️ LF/HF比の解釈について**: 呼吸数が{{ ecg.respiratory_period.breathing_rate|number_format(1) }}回/分と非常に遅いため、呼吸性変動がLF帯域（2.4-9回/分）に集中しています。この場合、LF/HF比の従来解釈（>2.5=交感神経優位）は**適用できません**。むしろ深い瞑想状態を示唆しています。
+> **⚠️ LF/HF比の解釈について**: 呼吸数が{{ ecg.breathing_rate|number_format(1) }}回/分（{{ (ecg.breathing_rate / 60)|number_format(3) }} Hz）と遅く、LF帯域（0.04-0.15 Hz = 2.4-9回/分）に入っています。呼吸性洞性不整脈がHFではなくLFに計上されるため、LF/HF比の従来解釈（>1.0=交感神経優位）は**適用できません**。LF/HFの高値は緊張ではなくslow breathingの帰結です。
 {% else %}
 >
 > **LF/HF Ratio**: 1.0未満で副交感神経優位（リラックス）、1.0以上で交感神経優位（ストレス・緊張）が示唆されます。

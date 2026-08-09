@@ -257,9 +257,13 @@ class MeditationReportRenderer:
 
         # 呼吸データ
         if 'respiration_result' in results:
-            ecg['respiratory_period'] = results['respiration_result']
+            resp = results['respiration_result']
+            ecg['respiratory_period'] = resp
             # 呼吸統計テーブル（標準フォーマット）
-            ecg['respiratory_stats'] = format_respiratory_stats(results['respiration_result'])
+            ecg['respiratory_stats'] = format_respiratory_stats(resp)
+            # 呼吸がLF帯に入る場合、LF/HF比は自律神経バランスとして読めない
+            ecg['breathing_rate'] = resp.breathing_rate
+            ecg['lf_hf_unreliable'] = getattr(resp, 'is_slow_breathing', False)
 
         if ecg:
             context['ecg'] = ecg

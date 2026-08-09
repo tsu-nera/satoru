@@ -205,13 +205,15 @@ def analyze_hrv_session(data_path, output_dir, warmup_seconds=60.0):
     respiration_result, rbp_result = estimate_resonance_breathing_pace(
         hrv_data,
         target_fs=8.0,
-        peak_distance=8.0,
         window_minutes=3.0,
         bin_width=0.5
     )
 
     print('\n呼吸分析結果:')
-    print(f'  平均BR: {respiration_result.breathing_rate:.1f} bpm')
+    print(
+        f'  平均BR: {respiration_result.breathing_rate:.1f} bpm'
+        f' ({respiration_result.breathing_rate_method})'
+    )
     if rbp_result:
         print(f'  共鳴呼吸回数（RMSSD基準）: {rbp_result.optimal_rmssd["range"]} bpm')
         # RMSSD最大値は存在する場合のみ表示
@@ -262,6 +264,8 @@ def analyze_hrv_session(data_path, output_dir, warmup_seconds=60.0):
     # 呼吸データ
     ecg['respiratory_stats'] = format_respiratory_stats(respiration_result)
     ecg['respiratory_period'] = respiration_result
+    ecg['breathing_rate'] = respiration_result.breathing_rate
+    ecg['lf_hf_unreliable'] = respiration_result.is_slow_breathing
 
     # 共鳴呼吸データ
     if rbp_result and hasattr(rbp_result, 'bin_statistics'):
