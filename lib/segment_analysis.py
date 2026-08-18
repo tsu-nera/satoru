@@ -251,10 +251,17 @@ def calculate_segment_analysis(
         if hrv_df is not None and start in hrv_df.index:
             rmssd_mean = hrv_df.loc[start, 'rmssd_mean']
 
-        # 呼吸数を取得（オプション）
+        # 呼吸数・RSA振幅を取得（オプション）
         br_mean = np.nan
+        rsa_amp_mean = np.nan
+        edr_amp_mean = np.nan
         if respiration_df is not None and start in respiration_df.index:
-            br_mean = respiration_df.loc[start, 'br_mean']
+            if 'br_mean' in respiration_df.columns:
+                br_mean = respiration_df.loc[start, 'br_mean']
+            if 'rsa_amp_mean' in respiration_df.columns:
+                rsa_amp_mean = respiration_df.loc[start, 'rsa_amp_mean']
+            if 'edr_amp_mean' in respiration_df.columns:
+                edr_amp_mean = respiration_df.loc[start, 'edr_amp_mean']
 
         # Yaw RMS値を取得（オプション）
         yaw_rms = np.nan
@@ -335,6 +342,8 @@ def calculate_segment_analysis(
             'hr_mean': hr_mean,
             'rmssd_mean': rmssd_mean,
             'br_mean': br_mean,
+            'rsa_amp_mean': rsa_amp_mean,
+            'edr_amp_mean': edr_amp_mean,
             'yaw_rms': yaw_rms,
             'meditation_score': meditation_score,
             'excluded_ratio': excluded_ratio,
@@ -453,6 +462,8 @@ def calculate_segment_analysis(
             'HR': row['hr_mean'],
             'HRV': row['rmssd_mean'],
             'RP (s)': 60 / row['br_mean'] if pd.notna(row['br_mean']) and row['br_mean'] > 0 else None,
+            'RSA (ms)': row['rsa_amp_mean'],
+            'EDR amp': row['edr_amp_mean'],
             'Yaw RMS': row['yaw_rms'],
             '除外 (%)': row['excluded_ratio'] * 100 if pd.notna(row['excluded_ratio']) else None,
             '備考': note,

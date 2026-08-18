@@ -8,7 +8,9 @@
 > **時系列の見方**:
 > - **RMSSD**: 副交感神経活動の指標。高いほどリラックス状態。
 > - **LF/HF Ratio**: 自律神経バランス。1.0未満は副交感神経優位（リラックス）、1.0以上は交感神経優位（緊張）。
->   ただし呼吸が0.15Hz（9 bpm）を下回る場合はこの解釈は成立しません（下記「周波数領域解析」参照）。
+{% if ecg.lf_hf_unreliable %}>   **本セッションでは呼吸が0.15Hz（9 bpm）を下回るため、グラフのLF/HFパネルは読まないでください**（下記「周波数領域解析」参照）。
+{% else %}>   ただし呼吸が0.15Hz（9 bpm）を下回る場合はこの解釈は成立しません（下記「周波数領域解析」参照）。
+{% endif %}
 
 {% endif %}
 {% if ecg.hrv_freq_img %}
@@ -21,11 +23,21 @@
 > - **LF (0.04-0.15 Hz)**: Low Frequency - 交感神経＋副交感神経活動（圧受容体反射）
 > - **HF (0.15-0.4 Hz)**: High Frequency - 副交感神経活動（呼吸性洞性不整脈）
 {% if ecg.lf_hf_unreliable %}>
-> **⚠️ 本セッションではLF/HF比を自律神経バランスとして解釈できません**:
+> **⚠️ 本セッションではLF/HF比を出力していません**:
 > 呼吸数 {{ ecg.breathing_rate|number_format(1) }} bpm（{{ (ecg.breathing_rate / 60)|number_format(3) }} Hz）がLF帯域に入るため、
 > 呼吸性洞性不整脈がHFではなくLFに計上され、HFが空になります。
-> LF/HFの高値は交感神経優位ではなくslow breathingの帰結です。
-> 副交感神経活動はRMSSD・SD1で評価してください。
+> この条件下でのLF/HFは交感神経優位ではなくslow breathingの帰結にすぎないため、
+> 誤読を避けるべく統計指標の表から除外しています。
+> 副交感神経活動は下記のRSAバンドパワー・RSA振幅、およびRMSSD・SD1で評価してください。
+{% endif %}
+{% if ecg.rsa_band %}>
+> **RSAバンド（呼吸追従帯域）**:
+> 固定のHF帯（0.15-0.4Hz）は通常呼吸（12-24 bpm）を前提とした定義のため、
+> 呼吸数によってはRSAを取りこぼします。呼吸周波数
+> {{ ecg.rsa_band.center_hz|number_format(3) }} Hz を中心に帯域を切り直すと、
+> **{{ ecg.rsa_band.band_low_hz|number_format(3) }}-{{ ecg.rsa_band.band_high_hz|number_format(3) }} Hz**
+> のパワーは **{{ ecg.rsa_band.power|number_format(1) }} ms²** です。
+> 帯域幅は呼吸周波数の±25%（下限±0.02Hz）で、呼吸数によらず同じ構成概念を測ります。
 {% endif %}
 
 {% endif %}

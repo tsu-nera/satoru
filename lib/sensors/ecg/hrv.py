@@ -514,6 +514,84 @@ def _interpret_hrv_metric(metric_name: str, value: float) -> str:
     return '-'
 
 
+
+# RSAバンド（呼吸追従帯域）の半値幅。呼吸周波数 f0 に対し相対幅を基本とし、
+# 超低速呼吸で幅が潰れないよう絶対下限を設ける。
+RSA_BAND_REL_HALF_WIDTH = 0.25
+RSA_BAND_MIN_HALF_WIDTH_HZ = 0.02
+RSA_BAND_FLOOR_HZ = 0.003
+
+
+def calculate_rsa_band_power(
+    rr_intervals: np.ndarray,
+    breathing_rate_bpm: float,
+    sampling_rate: int = 1000,
+) -> dict | None:
+    """
+    呼吸周波数に追従するRSAバンドのパワーを計算
+
+    固定のHF帯（0.15-0.4Hz）は「人は12-24回/分で呼吸する」前提で作られており、
+    瞑想の超低速呼吸ではRSAがHFではなくLF帯に落ちて、HF・LF/HF比が意味を失う。
+    呼吸周波数 f0 を中心にバンドを切り直すことで、呼吸数によらず同じ構成概念
+    （呼吸性洞性不整脈の大きさ）を測る。
+
+    バンド幅は f0 に対する相対幅（±25%）を基本とし、超低速呼吸で幅が潰れない
+    よう絶対下限（±0.02Hz）を設ける。
+
+    Parameters
+    ----------
+    rr_intervals : np.ndarray
+        R-R間隔（ms）
+    breathing_rate_bpm : float
+        呼吸数（bpm）。RespirationResult.breathing_rate を渡す。
+    sampling_rate : int
+        R-R間隔の元となるサンプリングレート（Hz）
+
+    Returns
+    -------
+    dict or None
+        - center_hz: バンド中心 = 呼吸周波数（Hz）
+        - band_low_hz / band_high_hz: バンド境界（Hz）
+        - power: バンドパワー（ms²）
+        呼吸数が無効な場合や計算に失敗した場合はNone。
+
+    Notes
+    -----
+    パワーは nk.hrv_frequency の ``lf`` スロットにRSAバンドを差し込んで得る。
+    これは統計テーブルのVLF/LF/HF/TPと同一のPSD推定・同一スケール（normalize=False）
+    になるため、「LFのうち何割がRSAバンドか」をそのまま比較できる。
+    この呼び出しの戻り値のうち HRV_LF 以外（TP等）は帯域が標準と異なるため使わない。
+    """
+    if not np.isfinite(breathing_rate_bpm) or breathing_rate_bpm <= 0:
+        return None
+
+    center_hz = breathing_rate_bpm / 60.0
+    half_width = max(RSA_BAND_REL_HALF_WIDTH * center_hz, RSA_BAND_MIN_HALF_WIDTH_HZ)
+    band_low = max(center_hz - half_width, RSA_BAND_FLOOR_HZ)
+    band_high = center_hz + half_width
+
+    try:
+        peaks = nk.intervals_to_peaks(rr_intervals, sampling_rate=sampling_rate)
+        metrics = nk.hrv_frequency(
+            peaks,
+            sampling_rate=sampling_rate,
+            show=False,
+            normalize=False,
+            lf=(band_low, band_high),
+        )
+        power = float(metrics['HRV_LF'].iloc[0])
+    except Exception as e:
+        print(f'⚠️  RSAバンドパワーの計算に失敗: {e}')
+        return None
+
+    return {
+        'center_hz': center_hz,
+        'band_low_hz': band_low,
+        'band_high_hz': band_high,
+        'power': power,
+    }
+
+
 def find_peak_frequency(freqs, power, freq_range):
     """
     指定周波数範囲内のピーク周波数を見つける

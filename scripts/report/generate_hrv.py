@@ -31,7 +31,7 @@ from jinja2 import Environment, FileSystemLoader
 from lib.loaders.base import get_heart_rate_data
 from lib.loaders.selfloops import get_hrv_data, load_selfloops_csv
 from lib.sensors.ecg.analysis import analyze_hrv
-from lib.sensors.ecg.hrv import calculate_hrv_standard_set
+from lib.sensors.ecg.hrv import calculate_hrv_standard_set, calculate_rsa_band_power
 from lib.sensors.ecg.respiration import estimate_resonance_breathing_pace
 from lib.sensors.ecg.segment_analysis_hrv import calculate_segment_hrv_analysis
 from lib.sensors.ecg.visualization.hrv_plot import plot_hrv_frequency, plot_hrv_nonlinear, plot_hrv_time_series
@@ -266,6 +266,20 @@ def analyze_hrv_session(data_path, output_dir, warmup_seconds=60.0):
     ecg['respiratory_period'] = respiration_result
     ecg['breathing_rate'] = respiration_result.breathing_rate
     ecg['lf_hf_unreliable'] = respiration_result.is_slow_breathing
+
+    # RSAバンド（呼吸追従帯域）
+    rsa_band = calculate_rsa_band_power(
+        hrv_data['rr_intervals_clean'],
+        respiration_result.breathing_rate,
+        sampling_rate=hrv_data.get('sampling_rate', 1000),
+    )
+    if rsa_band is not None:
+        ecg['rsa_band'] = rsa_band
+
+    # LF/HF比が解釈不能なセッションでは値そのものを表から落とす
+    if ecg['lf_hf_unreliable'] and 'hrv_freq_stats' in ecg:
+        freq_stats = ecg['hrv_freq_stats']
+        ecg['hrv_freq_stats'] = freq_stats[freq_stats['Metric'] != 'LF/HF']
 
     # 共鳴呼吸データ
     if rbp_result and hasattr(rbp_result, 'bin_statistics'):

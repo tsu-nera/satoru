@@ -79,4 +79,26 @@ def format_respiratory_stats(respiration_result: Any) -> pd.DataFrame:
         'Unit': 'count'
     })
 
+    if getattr(respiration_result, 'rsa_cycle_count', 0):
+        stats.append({
+            'Metric': 'RSA Amplitude (peak-valley)',
+            'Value': respiration_result.rsa_amplitude_mean,
+            'Unit': 'ms'
+        })
+        stats.append({
+            'Metric': 'RSA Amplitude (median)',
+            'Value': respiration_result.rsa_amplitude_median,
+            'Unit': 'ms'
+        })
+        stats.append({
+            'Metric': 'RSA Amplitude (std)',
+            'Value': respiration_result.rsa_amplitude_std,
+            'Unit': 'ms'
+        })
+        stats.append({
+            'Metric': 'RSA Cycles',
+            'Value': respiration_result.rsa_cycle_count,
+            'Unit': 'count'
+        })
+
     return pd.DataFrame(stats)
