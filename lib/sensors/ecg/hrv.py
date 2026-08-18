@@ -137,6 +137,13 @@ def calculate_hrv_standard_set(
         peaks = nk.intervals_to_peaks(rr_intervals, sampling_rate=sampling_rate)
         full_metrics = nk.hrv(peaks, sampling_rate=sampling_rate, show=False)
 
+        # 周波数領域を実単位（ms²）で再計算して上書き
+        # nk.hrv() は hrv_frequency に kwargs を渡さないため normalize=True が効き、
+        # VLF/LF/HF/TP がPSD最大値で正規化された無次元量になる（LF/HF比のみ無影響）。
+        full_metrics.update(
+            nk.hrv_frequency(peaks, sampling_rate=sampling_rate, show=False, normalize=False)
+        )
+
         # DFAを論文準拠パラメータで再計算
         # Hoshiyama et al. (2008, 2010) 準拠: integrate=False, order=1
         # スケール: α1 = 4-16拍, α2 = 16-64拍
@@ -299,7 +306,7 @@ def _calculate_sliding_window_hrv(
                 rmssd = hrv_time['HRV_RMSSD'].iloc[0] if 'HRV_RMSSD' in hrv_time.columns else np.nan
 
                 # 周波数領域（LF, HF）
-                hrv_freq = nk.hrv_frequency(peaks, sampling_rate=sampling_rate, show=False)
+                hrv_freq = nk.hrv_frequency(peaks, sampling_rate=sampling_rate, show=False, normalize=False)
                 lf = hrv_freq['HRV_LF'].iloc[0] if 'HRV_LF' in hrv_freq.columns else np.nan
                 hf = hrv_freq['HRV_HF'].iloc[0] if 'HRV_HF' in hrv_freq.columns else np.nan
                 lfhf = lf / hf if hf > 0 and not np.isnan(hf) else np.nan

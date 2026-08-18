@@ -41,7 +41,7 @@
 {% if ecg.hrv_freq_stats is not none %}
 #### Frequency Domain
 
-{{ ecg.hrv_freq_stats|df_to_markdown(floatfmt='.4f', index=False, standardize_columns=True) }}
+{{ ecg.hrv_freq_stats|df_to_markdown(floatfmt='.3f', index=False, standardize_columns=True) }}
 
 {% endif %}
 {% if ecg.hrv_nonlinear_stats is not none %}

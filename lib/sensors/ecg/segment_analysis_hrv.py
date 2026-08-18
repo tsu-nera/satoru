@@ -158,7 +158,7 @@ def calculate_segment_hrv_analysis(
             sdnn = hrv_time['HRV_SDNN'].iloc[0] if 'HRV_SDNN' in hrv_time.columns else np.nan
 
             # 周波数領域
-            hrv_freq = nk.hrv_frequency(peaks, sampling_rate=sampling_rate, show=False)
+            hrv_freq = nk.hrv_frequency(peaks, sampling_rate=sampling_rate, show=False, normalize=False)
             lf_power = hrv_freq['HRV_LF'].iloc[0] if 'HRV_LF' in hrv_freq.columns else np.nan
             hf_power = hrv_freq['HRV_HF'].iloc[0] if 'HRV_HF' in hrv_freq.columns else np.nan
             lf_hf_ratio = hrv_freq['HRV_LFHF'].iloc[0] if 'HRV_LFHF' in hrv_freq.columns else np.nan
