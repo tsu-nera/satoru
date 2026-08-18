@@ -707,6 +707,42 @@ def create_statistical_dataframe(
         except Exception as e:
             print(f'警告: 呼吸統計量の計算に失敗しました ({e})')
 
+    # RSA振幅（peak-valley法）のセグメント別集計
+    # 呼吸周期ごとの値なので time_series とは行数が異なる。別途集計して結合する。
+    if respiration_result is not None and hasattr(respiration_result, 'rsa_cycles'):
+        try:
+            rsa_cycles = respiration_result.rsa_cycles
+            if isinstance(rsa_cycles, pd.DataFrame) and not rsa_cycles.empty:
+                rsa_indexed = rsa_cycles.copy()
+                rsa_indexed.index = session_start + pd.to_timedelta(
+                    rsa_indexed['Time (min)'], unit='m'
+                )
+                warmup_end = session_start + pd.Timedelta(minutes=warmup_minutes)
+                rsa_indexed = rsa_indexed[rsa_indexed.index >= warmup_end]
+
+                rsa_rows = []
+                for start_ts in timestamps:
+                    end_ts = start_ts + pd.Timedelta(minutes=segment_minutes)
+                    mask = (rsa_indexed.index >= start_ts) & (rsa_indexed.index < end_ts)
+                    segment_data = rsa_indexed.loc[mask]
+
+                    if len(segment_data) > 0:
+                        rsa_rows.append({
+                            'timestamp': start_ts,
+                            'rsa_amp_mean': segment_data['RSA Amplitude (ms)'].mean(),
+                            'edr_amp_mean': segment_data['EDR Amplitude (a.u.)'].mean(),
+                            'rsa_cycles': len(segment_data),
+                        })
+
+                if rsa_rows:
+                    rsa_df = pd.DataFrame(rsa_rows).set_index('timestamp')
+                    if respiration_df.empty:
+                        respiration_df = rsa_df
+                    else:
+                        respiration_df = respiration_df.join(rsa_df, how='outer')
+        except Exception as e:
+            print(f'警告: RSA振幅の計算に失敗しました ({e})')
+
     return {
         'band_powers': band_powers_df,
         'band_ratios': band_ratios_df,

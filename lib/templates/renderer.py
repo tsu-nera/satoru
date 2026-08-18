@@ -265,6 +265,16 @@ class MeditationReportRenderer:
             ecg['breathing_rate'] = resp.breathing_rate
             ecg['lf_hf_unreliable'] = getattr(resp, 'is_slow_breathing', False)
 
+        # RSAバンド（呼吸追従帯域）のパワー
+        if 'rsa_band' in results:
+            ecg['rsa_band'] = results['rsa_band']
+
+        # LF/HF比が解釈不能なセッションでは、値そのものを表から落とす。
+        # 警告文だけ添えても数字が残っていると読まれてしまうため。
+        if ecg.get('lf_hf_unreliable') and 'hrv_freq_stats' in ecg:
+            freq_stats = ecg['hrv_freq_stats']
+            ecg['hrv_freq_stats'] = freq_stats[freq_stats['Metric'] != 'LF/HF']
+
         if ecg:
             context['ecg'] = ecg
 

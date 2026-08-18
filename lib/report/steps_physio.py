@@ -192,7 +192,26 @@ def analyze_respiration(hrv_data, results):
             f'  平均BR: {respiration_result.breathing_rate:.1f} bpm'
             f' ({respiration_result.breathing_rate_method})'
         )
+        print(
+            f'  RSA振幅 (peak-valley): {respiration_result.rsa_amplitude_mean:.1f} ms'
+            f' ({respiration_result.rsa_cycle_count} cycles)'
+        )
         if respiration_result.is_slow_breathing:
             print('  注意: 呼吸が0.15Hz未満のためLF/HF比は自律神経バランスとして解釈不能')
+
+        # 呼吸周波数に追従するRSAバンドのパワー（固定HF帯の代替）
+        from lib.sensors.ecg.hrv import calculate_rsa_band_power
+
+        rsa_band = calculate_rsa_band_power(
+            hrv_data['rr_intervals_clean'],
+            respiration_result.breathing_rate,
+            sampling_rate=hrv_data.get('sampling_rate', 1000),
+        )
+        if rsa_band is not None:
+            results['rsa_band'] = rsa_band
+            print(
+                f'  RSAバンド: {rsa_band["band_low_hz"]:.3f}-{rsa_band["band_high_hz"]:.3f} Hz'
+                f' / {rsa_band["power"]:.1f} ms²'
+            )
 
     return respiration_result

@@ -76,6 +76,17 @@ class RespirationResult:
         スペクトル法による呼吸数（bpm）。検出できない場合はNaN。
     is_slow_breathing : bool
         呼吸が0.15Hz（9bpm）を下回るか。TrueならLF/HF比は解釈不能。
+    rsa_amplitude_mean : float
+        peak-valley法によるRSA振幅の平均（ms）。周波数帯域の定義に依存しないため、
+        超低速呼吸でもHF/LFの帯域境界に影響されずに副交感神経活動を評価できる。
+    rsa_amplitude_median : float
+        RSA振幅の中央値（ms）
+    rsa_amplitude_std : float
+        RSA振幅の標準偏差（ms）
+    rsa_cycle_count : int
+        RSA振幅を算出できた呼吸周期の数
+    rsa_cycles : pd.DataFrame
+        呼吸周期ごとの内訳。列: Time (min), RSA Amplitude (ms), EDR Amplitude (a.u.), Beats
     time_series : pd.DataFrame
         時系列メトリクス（Time, HR, RMSSD, LF/HF, LF Power, HF Power, BR）
     metadata : dict
@@ -90,6 +101,11 @@ class RespirationResult:
     trough_count: int
     spectral_breathing_rate: float
     is_slow_breathing: bool
+    rsa_amplitude_mean: float
+    rsa_amplitude_median: float
+    rsa_amplitude_std: float
+    rsa_cycle_count: int
+    rsa_cycles: pd.DataFrame
     time_series: pd.DataFrame
     metadata: dict
 
@@ -258,7 +274,19 @@ def calculate_breathing_rate(
         mean_rate = trough_rate
         rate_method = 'trough'
 
-    # 7. 時系列メトリクス計算
+    # 7. RSA振幅（peak-valley法）を呼吸周期ごとに算出
+    # トラフ間を1呼吸周期とみなす。帯域定義に依存しないため、超低速呼吸でも
+    # LF/HF比のように破綻せず副交感神経活動の推移を追える。
+    rsa_cycles = calculate_rsa_amplitude(
+        rr_intervals=rr_intervals,
+        rr_time_sec=time_original,
+        cycle_bounds_sec=np.asarray(troughs_idx, dtype=float) / target_fs,
+        edr_signal=rsp_cleaned,
+        edr_fs=target_fs,
+    )
+    rsa_values = rsa_cycles['RSA Amplitude (ms)'].to_numpy(dtype=float)
+
+    # 8. 時系列メトリクス計算
     metrics_df = _calculate_windowed_metrics(
         hrv_data,
         hr_resampled,
@@ -268,7 +296,7 @@ def calculate_breathing_rate(
         window_minutes
     )
 
-    # 8. メタデータ
+    # 9. メタデータ
     metadata = {
         'total_duration_minutes': rr_time[-1] / 60,
         'sampling_rate': target_fs,
@@ -290,9 +318,95 @@ def calculate_breathing_rate(
         is_slow_breathing=bool(
             np.isfinite(mean_rate) and mean_rate < SLOW_BREATHING_THRESHOLD_BPM
         ),
+        rsa_amplitude_mean=float(np.mean(rsa_values)) if len(rsa_values) else np.nan,
+        rsa_amplitude_median=float(np.median(rsa_values)) if len(rsa_values) else np.nan,
+        rsa_amplitude_std=float(np.std(rsa_values)) if len(rsa_values) else np.nan,
+        rsa_cycle_count=len(rsa_values),
+        rsa_cycles=rsa_cycles,
         time_series=metrics_df,
         metadata=metadata
     )
+
+
+def calculate_rsa_amplitude(
+    rr_intervals: np.ndarray,
+    rr_time_sec: np.ndarray,
+    cycle_bounds_sec: np.ndarray,
+    edr_signal: Optional[np.ndarray] = None,
+    edr_fs: Optional[float] = None,
+    min_beats: int = 3,
+) -> pd.DataFrame:
+    """
+    peak-valley法（Grossman）でRSA振幅を呼吸周期ごとに算出
+
+    各呼吸周期に含まれるR-R間隔の最大値と最小値の差を取る。周波数帯域の
+    定義を一切使わないため、呼吸が0.15Hz（9bpm）を下回りRSAがHF帯から
+    外れるセッションでも、通常呼吸のセッションと同じ意味で比較できる。
+
+    Parameters
+    ----------
+    rr_intervals : np.ndarray
+        R-R間隔（ms）
+    rr_time_sec : np.ndarray
+        各R-R間隔に対応する時刻（秒）。rr_intervals と同じ長さ。
+    cycle_bounds_sec : np.ndarray
+        呼吸周期の境界時刻（秒）。通常はEDRのトラフ時刻。
+        隣接する2要素が1呼吸周期を成すため、N個の境界からN-1周期が得られる。
+    edr_signal : np.ndarray, optional
+        クリーニング済みEDR信号。与えると周期ごとの振幅（呼吸の深さの代理指標）
+        も算出する。単位は任意（a.u.）でセッション内の相対推移のみ意味を持つ。
+    edr_fs : float, optional
+        edr_signal のサンプリング周波数（Hz）。edr_signal を与える場合は必須。
+    min_beats : int
+        1周期に必要な最小拍数。これ未満の周期は除外する。
+
+    Returns
+    -------
+    pd.DataFrame
+        列: Time (min), RSA Amplitude (ms), EDR Amplitude (a.u.), Beats
+        算出できる周期が無い場合は空のDataFrame。
+
+    References
+    ----------
+    - Grossman, P., van Beek, J., & Wientjes, C. (1990). A comparison of three
+      quantification methods for estimation of respiratory sinus arrhythmia.
+      Psychophysiology, 27(6), 702-714.
+    """
+    rr_intervals = np.asarray(rr_intervals, dtype=float)
+    rr_time_sec = np.asarray(rr_time_sec, dtype=float)
+    cycle_bounds_sec = np.asarray(cycle_bounds_sec, dtype=float)
+
+    if edr_signal is not None and edr_fs is None:
+        raise ValueError('edr_signal を指定する場合は edr_fs も必要です')
+
+    rows = []
+    for start, end in zip(cycle_bounds_sec[:-1], cycle_bounds_sec[1:]):
+        mask = (rr_time_sec >= start) & (rr_time_sec < end)
+        cycle_rr = rr_intervals[mask]
+        if len(cycle_rr) < min_beats:
+            continue
+
+        edr_amplitude = np.nan
+        if edr_signal is not None and edr_fs is not None:
+            i0 = int(round(start * edr_fs))
+            i1 = int(round(end * edr_fs))
+            cycle_edr = np.asarray(edr_signal, dtype=float)[i0:i1]
+            if len(cycle_edr) > 0:
+                edr_amplitude = float(np.max(cycle_edr) - np.min(cycle_edr))
+
+        rows.append({
+            'Time (min)': start / 60.0,
+            'RSA Amplitude (ms)': float(np.max(cycle_rr) - np.min(cycle_rr)),
+            'EDR Amplitude (a.u.)': edr_amplitude,
+            'Beats': len(cycle_rr),
+        })
+
+    if not rows:
+        return pd.DataFrame(
+            columns=['Time (min)', 'RSA Amplitude (ms)', 'EDR Amplitude (a.u.)', 'Beats']
+        )
+
+    return pd.DataFrame(rows)
 
 
 def _calculate_windowed_metrics(
