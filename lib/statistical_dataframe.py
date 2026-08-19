@@ -13,6 +13,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
+from .sensors.eeg.aperiodic import find_band_peak, fit_aperiodic, oscillatory_band_power
 from .sensors.eeg.artifact import (
     ARTIFACT_P2P_THRESHOLD_UV,
     ARTIFACT_WINDOW_SAMPLES,
@@ -20,6 +21,7 @@ from .sensors.eeg.artifact import (
     detect_artifact_windows,
     segment_valid_ratio,
 )
+from .sensors.eeg.constants import FREQ_BANDS
 
 # Spectral Entropy計算関数をインポート
 from .sensors.eeg.spectral_entropy import _calculate_shannon_entropy
@@ -352,30 +354,72 @@ def create_statistical_dataframe(
     # IAF時系列をSeriesに変換
     iaf_series = pd.Series(iaf_values, index=timestamps)
 
-    # ITF（Individual Theta Frequency）計算
-    # セグメントごとにシータ帯域のピーク周波数を計算
+    # ITF（Individual Theta Frequency）＋ 非周期成分（1/f）分離
+    # セグメントごとにspecparamで非周期成分を分離し、シータ帯域にピークが
+    # 検出された場合のみITFを返す。
+    # 旧実装は窓内argmaxで、PSDが1/fで単調減少する帯域では必ず窓の下限に
+    # 張り付いた値を返していた（Issue #31）。窓端への張り付きではなく
+    # 実際に検出されたピークのみを返すよう置き換える。
     itf_values = []
-    theta_range = (5.0, 7.0)
+    theta_band = FREQ_BANDS['Theta'][:2]
+    alpha_band = FREQ_BANDS['Alpha'][:2]
+
+    exponent_values = []
+    offset_values = []
+    r_squared_values = []
+    theta_osc_db_values = []
+    alpha_osc_db_values = []
 
     for seg_idx in range(n_segments):
         if not segment_usable[seg_idx]:
             itf_values.append(np.nan)
+            exponent_values.append(np.nan)
+            offset_values.append(np.nan)
+            r_squared_values.append(np.nan)
+            theta_osc_db_values.append(np.nan)
+            alpha_osc_db_values.append(np.nan)
             continue
 
-        # シータ帯域のマスク
-        theta_mask = (freqs >= theta_range[0]) & (freqs <= theta_range[1])
-        theta_freqs = freqs[theta_mask]
+        # 有効チャネルの平均PSD（全帯域）
+        psd_avg = np.nanmean(psds[seg_idx], axis=0)
+        aperiodic_result = fit_aperiodic(freqs, psd_avg)
 
-        # 有効チャネルの平均PSD（シータ帯域）
-        psd_theta_avg = np.nanmean(psds[seg_idx][:, theta_mask], axis=0)
+        if aperiodic_result is None:
+            itf_values.append(np.nan)
+            exponent_values.append(np.nan)
+            offset_values.append(np.nan)
+            r_squared_values.append(np.nan)
+            theta_osc_db_values.append(np.nan)
+            alpha_osc_db_values.append(np.nan)
+            continue
 
-        # ピーク周波数を検出
-        peak_idx = psd_theta_avg.argmax()
-        itf = theta_freqs[peak_idx]
-        itf_values.append(itf)
+        theta_peak = find_band_peak(aperiodic_result, theta_band)
+        itf_values.append(theta_peak['center_hz'] if theta_peak is not None else np.nan)
+
+        exponent_values.append(aperiodic_result.exponent)
+        offset_values.append(aperiodic_result.offset)
+        r_squared_values.append(aperiodic_result.r_squared)
+        theta_osc_db_values.append(
+            oscillatory_band_power(freqs, psd_avg, aperiodic_result, theta_band)
+        )
+        alpha_osc_db_values.append(
+            oscillatory_band_power(freqs, psd_avg, aperiodic_result, alpha_band)
+        )
 
     # ITF時系列をSeriesに変換
     itf_series = pd.Series(itf_values, index=timestamps)
+
+    # 非周期成分（1/f）時系列をDataFrameに変換
+    aperiodic_df = pd.DataFrame(
+        {
+            'exponent': exponent_values,
+            'offset': offset_values,
+            'alpha_osc_db': alpha_osc_db_values,
+            'theta_osc_db': theta_osc_db_values,
+            'r_squared': r_squared_values,
+        },
+        index=timestamps,
+    )
 
     # バンド比率計算
     ratios_dict = {}
@@ -749,6 +793,7 @@ def create_statistical_dataframe(
         'spectral_entropy': se_df,
         'iaf': iaf_series,
         'itf': itf_series,
+        'aperiodic': aperiodic_df,
         'fnirs': fnirs_df,
         'hr': hr_df,
         'posture': posture_df,

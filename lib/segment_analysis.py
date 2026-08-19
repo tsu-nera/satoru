@@ -121,6 +121,7 @@ def calculate_segment_analysis(
     posture_df = statistical_df.get('posture')
     hrv_df = statistical_df.get('hrv')
     respiration_df = statistical_df.get('respiration')
+    aperiodic_df = statistical_df.get('aperiodic')
     quality_df = statistical_df.get('quality')
 
     if 'TimeStamp' not in df_clean.columns:
@@ -251,6 +252,13 @@ def calculate_segment_analysis(
         if hrv_df is not None and start in hrv_df.index:
             rmssd_mean = hrv_df.loc[start, 'rmssd_mean']
 
+        # 非周期成分（1/f）を取得（オプション）
+        aperiodic_exponent = np.nan
+        aperiodic_alpha_osc_db = np.nan
+        if aperiodic_df is not None and start in aperiodic_df.index:
+            aperiodic_exponent = aperiodic_df.loc[start, 'exponent']
+            aperiodic_alpha_osc_db = aperiodic_df.loc[start, 'alpha_osc_db']
+
         # 呼吸数・RSA振幅を取得（オプション）
         br_mean = np.nan
         rsa_amp_mean = np.nan
@@ -344,6 +352,8 @@ def calculate_segment_analysis(
             'br_mean': br_mean,
             'rsa_amp_mean': rsa_amp_mean,
             'edr_amp_mean': edr_amp_mean,
+            'aperiodic_exponent': aperiodic_exponent,
+            'aperiodic_alpha_osc_db': aperiodic_alpha_osc_db,
             'yaw_rms': yaw_rms,
             'meditation_score': meditation_score,
             'excluded_ratio': excluded_ratio,
@@ -464,6 +474,8 @@ def calculate_segment_analysis(
             'RP (s)': 60 / row['br_mean'] if pd.notna(row['br_mean']) and row['br_mean'] > 0 else None,
             'RSA (ms)': row['rsa_amp_mean'],
             'EDR amp': row['edr_amp_mean'],
+            'exp': row['aperiodic_exponent'],
+            'α osc (dB)': row['aperiodic_alpha_osc_db'],
             'Yaw RMS': row['yaw_rms'],
             '除外 (%)': row['excluded_ratio'] * 100 if pd.notna(row['excluded_ratio']) else None,
             '備考': note,

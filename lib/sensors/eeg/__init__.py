@@ -3,6 +3,7 @@ EEG解析ライブラリ
 Muse脳波データの周波数バンド解析、PSD、PAF計算、可視化
 """
 
+# 非周期成分（1/f）分離
 # 定数
 # Alpha Power解析
 from .alpha_power import (
@@ -10,6 +11,15 @@ from .alpha_power import (
     AlphaPowerResult,
     calculate_alpha_power,
     calculate_alpha_power_from_raw,
+)
+from .aperiodic import (
+    FIT_RANGE_HZ,
+    MIN_REPORT_PEAK_HEIGHT,
+    PEAK_EDGE_MARGIN_HZ,
+    AperiodicResult,
+    find_band_peak,
+    fit_aperiodic,
+    oscillatory_band_power,
 )
 
 # アーチファクト検出（振幅ベース）
@@ -127,4 +137,12 @@ __all__ = [
     'SMRResult',
     'calculate_smr',
     'SMR_BAND',
+    # 非周期成分（1/f）分離
+    'AperiodicResult',
+    'fit_aperiodic',
+    'find_band_peak',
+    'oscillatory_band_power',
+    'FIT_RANGE_HZ',
+    'PEAK_EDGE_MARGIN_HZ',
+    'MIN_REPORT_PEAK_HEIGHT',
 ]

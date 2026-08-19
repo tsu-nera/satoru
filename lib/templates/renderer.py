@@ -10,7 +10,11 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from lib.templates.formatters import format_respiratory_stats
+from lib.templates.formatters import (
+    format_aperiodic_peaks,
+    format_aperiodic_stats,
+    format_respiratory_stats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -281,6 +285,14 @@ class MeditationReportRenderer:
         # 姿勢分析（ネスト構造をそのままコピー）
         if 'posture' in results:
             context['posture'] = results['posture']
+
+        # 非周期成分（1/f）分析
+        if 'aperiodic' in results:
+            context['aperiodic'] = {
+                'img': results.get('aperiodic_img'),
+                'stats': format_aperiodic_stats(results['aperiodic']),
+                'peaks': format_aperiodic_peaks(results['aperiodic'].get('peaks')),
+            }
 
         # 時間セグメント分析
         if 'segment_plot' in results or 'segment_table' in results:

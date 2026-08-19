@@ -1,0 +1,32 @@
+## 🌊 非周期成分（1/f）分析
+
+セッション全体の平均PSDに対して非周期成分（1/f）と周期成分（ピーク）を分離した結果です。
+バンドパワーやIAF/ITFの窓内argmaxは、PSDが1/fで単調減少する帯域では探索窓の端に
+張り付いた値を返すことがあります。specparamで非周期成分を差し引くことで、
+実際に振動として検出されたピークのみを扱います。
+
+{% if aperiodic.img %}
+![非周期成分フィット](img/{{ aperiodic.img }})
+
+{% endif %}
+{% if aperiodic.stats is not none %}
+{{ aperiodic.stats|df_to_markdown(index=False, standardize_columns=True) }}
+
+{% endif %}
+{% if aperiodic.peaks is not none and not aperiodic.peaks.empty %}
+### 検出されたピーク
+
+{{ aperiodic.peaks|df_to_markdown(floatfmt='.3f', index=False, standardize_columns=True) }}
+
+{% else %}
+検出されたピークはありません（ガード条件: フィット範囲端から0.5Hz以内、または高さ0.15未満のピークは棄却）。
+
+{% endif %}
+> **留保**:
+> - **Museの電極配置の限界**: AF7/AF8はfrontal midline thetaの発生源（Fz近傍）から
+>   外れています。「θ振動が検出されない」は「θが出ていない」より弱い主張であり、
+>   解析手法だけでは解決しません。電極配置由来の限界として読んでください。
+> - **exponentの解釈**: 興奮/抑制バランスの指標とする議論はありますが確立していません。
+>   セッション内の相対推移を追う量として扱い、絶対値に生理学的意味を読み込まないでください。
+
+

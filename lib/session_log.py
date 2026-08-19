@@ -10,7 +10,6 @@ import os
 from pathlib import Path
 from typing import Dict, List, Optional
 
-import numpy as np
 import pandas as pd
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -23,7 +22,7 @@ def _get_column_headers() -> List[str]:
     Returns
     -------
     list of str
-        14個のカラム名のリスト
+        20個のカラム名のリスト
     """
     return [
         'timestamp',
@@ -40,7 +39,39 @@ def _get_column_headers() -> List[str]:
         'theta_alpha_best',
         'hrv_mean',
         'hrv_best',
+        'aperiodic_exponent',
+        'aperiodic_offset',
+        'alpha_osc_db',
+        'theta_osc_db',
+        'alpha_cf_hz',
+        'theta_peak_detected',
     ]
+
+
+def _column_letter(n: int) -> str:
+    """
+    1始まりの列番号をA1記法の列文字に変換する（26列を超えるAA, AB, ...にも対応）。
+
+    Parameters
+    ----------
+    n : int
+        1始まりの列番号（1=A, 2=B, ..., 27=AA）。
+
+    Returns
+    -------
+    str
+        A1記法の列文字。
+    """
+    letters = ''
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return letters
+
+
+def _header_last_column() -> str:
+    """`_get_column_headers()` の列数からA1記法の最終列文字を求める。"""
+    return _column_letter(len(_get_column_headers()))
 
 
 def _extract_session_data(results: Dict) -> Dict:
@@ -55,10 +86,7 @@ def _extract_session_data(results: Dict) -> Dict:
     Returns
     -------
     dict
-        セッションデータの辞書。以下のキーを含む：
-        - timestamp: セッション開始時刻文字列 (YYYY-MM-DD HH:MM:SS)
-        - duration_min: 計測時間（分）
-        - fm_theta_mean, fm_theta_best, ...（全12カラム分）
+        セッションデータの辞書。`_get_column_headers()` と同じキー・順序を持つ。
 
     Raises
     ------
@@ -69,6 +97,9 @@ def _extract_session_data(results: Dict) -> Dict:
     info = results.get('data_info', {})
     mean_metrics = results.get('mean_metrics', {})
     best_metrics = results.get('best_metrics', {})
+    # 非周期成分（1/f）はmean_metrics/best_metricsに載らないため、
+    # resultsから直接読む（追加し忘れるとサイレントに欠落するため注意）。
+    aperiodic_info = results.get('aperiodic', {})
 
     # タイムスタンプ（記録開始時刻）
     start_time = info.get('start_time')
@@ -79,24 +110,33 @@ def _extract_session_data(results: Dict) -> Dict:
 
     # 計測時間（分）
     duration_sec = info.get('duration_sec')
-    duration_min = duration_sec / 60.0 if duration_sec is not None else np.nan
+    duration_min = duration_sec / 60.0 if duration_sec is not None else float('nan')
+
+    alpha_peak = aperiodic_info.get('alpha_peak')
+    theta_peak = aperiodic_info.get('theta_peak')
 
     # セッションデータ
     return {
         'timestamp': timestamp_str,
         'duration_min': duration_min,
-        'fm_theta_mean': mean_metrics.get('fm_theta_mean', np.nan),
-        'fm_theta_best': best_metrics.get('fm_theta_best', np.nan),
-        'iaf_mean': mean_metrics.get('iaf_mean', np.nan),
-        'iaf_best': best_metrics.get('iaf_best', np.nan),
-        'alpha_mean': mean_metrics.get('alpha_mean', np.nan),
-        'alpha_best': best_metrics.get('alpha_best', np.nan),
-        'beta_mean': mean_metrics.get('beta_mean', np.nan),
-        'beta_best': best_metrics.get('beta_best', np.nan),
-        'theta_alpha_mean': mean_metrics.get('theta_alpha_mean', np.nan),
-        'theta_alpha_best': best_metrics.get('theta_alpha_best', np.nan),
-        'hrv_mean': mean_metrics.get('hrv_mean', np.nan),
-        'hrv_best': best_metrics.get('hrv_best', np.nan),
+        'fm_theta_mean': mean_metrics.get('fm_theta_mean', float('nan')),
+        'fm_theta_best': best_metrics.get('fm_theta_best', float('nan')),
+        'iaf_mean': mean_metrics.get('iaf_mean', float('nan')),
+        'iaf_best': best_metrics.get('iaf_best', float('nan')),
+        'alpha_mean': mean_metrics.get('alpha_mean', float('nan')),
+        'alpha_best': best_metrics.get('alpha_best', float('nan')),
+        'beta_mean': mean_metrics.get('beta_mean', float('nan')),
+        'beta_best': best_metrics.get('beta_best', float('nan')),
+        'theta_alpha_mean': mean_metrics.get('theta_alpha_mean', float('nan')),
+        'theta_alpha_best': best_metrics.get('theta_alpha_best', float('nan')),
+        'hrv_mean': mean_metrics.get('hrv_mean', float('nan')),
+        'hrv_best': best_metrics.get('hrv_best', float('nan')),
+        'aperiodic_exponent': aperiodic_info.get('exponent', float('nan')),
+        'aperiodic_offset': aperiodic_info.get('offset', float('nan')),
+        'alpha_osc_db': aperiodic_info.get('alpha_osc_db', float('nan')),
+        'theta_osc_db': aperiodic_info.get('theta_osc_db', float('nan')),
+        'alpha_cf_hz': alpha_peak['center_hz'] if alpha_peak is not None else float('nan'),
+        'theta_peak_detected': theta_peak is not None,
     }
 
 
@@ -114,6 +154,7 @@ def write_to_csv(
         - 'data_info': {'start_time': pd.Timestamp, 'duration_sec': float}
         - 'mean_metrics': {'fm_theta_mean': float, 'iaf_mean': float, ...}
         - 'best_metrics': {'fm_theta_best': float, 'iaf_best': float, ...}
+        - 'aperiodic': {'exponent': float, 'offset': float, ...}（あれば）
     csv_path : Path, optional
         出力先CSVファイルパス。指定しない場合は
         'issues/007_daily_dashboard/session_log.csv' を使用。
@@ -125,7 +166,7 @@ def write_to_csv(
 
     Notes
     -----
-    CSVスキーマ（14カラム）:
+    CSVスキーマ（20カラム、`_get_column_headers()` が唯一の真実の源）:
     - timestamp: セッション開始時刻 (YYYY-MM-DD HH:MM:SS)
     - duration_min: 計測時間（分）
     - fm_theta_mean: Fmθ平均 (dB)
@@ -140,6 +181,12 @@ def write_to_csv(
     - theta_alpha_best: θ/α比最良値 (ratio)
     - hrv_mean: HRV (RMSSD) 平均 (ms)
     - hrv_best: HRV (RMSSD) 最良値 (ms)
+    - aperiodic_exponent: 非周期成分exponent
+    - aperiodic_offset: 非周期成分offset
+    - alpha_osc_db: α振動性パワー (dB)
+    - theta_osc_db: θ振動性パワー (dB)
+    - alpha_cf_hz: specparam由来のαピーク中心周波数 (Hz)
+    - theta_peak_detected: θピークが検出されたか (bool)
     """
     # デフォルトのCSVパス
     if csv_path is None:
@@ -196,6 +243,8 @@ def write_to_google_sheets(
     - データは既存データの末尾に追記されます
     - 最初の行がヘッダー行として扱われます
     - GitHub Actionsでは環境変数 GDRIVE_CREDS_JSON から認証情報を読み込みます
+    - 読み取り・ヘッダー書き込み・追記のレンジは `_get_column_headers()` の列数から
+      動的に算出する（列数が変わった際にA:Nのようなハードコードとズレるのを防ぐ）。
     """
     import json
 
@@ -230,6 +279,7 @@ def write_to_google_sheets(
 
     # データ抽出
     session_data = _extract_session_data(results)
+    last_col = _header_last_column()
 
     # 新しい行のデータ（文字列にフォーマット）
     new_row = []
@@ -237,7 +287,9 @@ def write_to_google_sheets(
         value = session_data[key]
         if key == 'timestamp':
             new_row.append(value)
-        elif np.isnan(value):
+        elif isinstance(value, bool):
+            new_row.append('TRUE' if value else 'FALSE')
+        elif pd.isna(value):
             new_row.append('')
         else:
             new_row.append(f'{value:.3f}')
@@ -246,7 +298,7 @@ def write_to_google_sheets(
     try:
         result = service.spreadsheets().values().get(
             spreadsheetId=spreadsheet_id,
-            range=f'{sheet_name}!A:N',
+            range=f'{sheet_name}!A:{last_col}',
         ).execute()
         values = result.get('values', [])
     except Exception:
@@ -259,7 +311,7 @@ def write_to_google_sheets(
         header_body = {'values': [_get_column_headers()]}
         service.spreadsheets().values().update(
             spreadsheetId=spreadsheet_id,
-            range=f'{sheet_name}!A1:N1',
+            range=f'{sheet_name}!A1:{last_col}1',
             valueInputOption='USER_ENTERED',
             body=header_body,
         ).execute()
@@ -267,7 +319,7 @@ def write_to_google_sheets(
 
     # 新しい行を追加
     next_row = len(values) + 1
-    range_name = f'{sheet_name}!A{next_row}:N{next_row}'
+    range_name = f'{sheet_name}!A{next_row}:{last_col}{next_row}'
 
     # データを書き込み
     body = {'values': [new_row]}

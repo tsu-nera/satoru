@@ -5,6 +5,9 @@ EEG可視化モジュール
 計算ロジックは親ディレクトリ（lib/sensors/eeg/）にあります。
 """
 
+# 非周期成分（1/f）可視化
+from .aperiodic_plot import plot_aperiodic_fit
+
 # 基本EEG可視化
 from .eeg_plots import (
     plot_band_power_time_series,
@@ -31,4 +34,6 @@ __all__ = [
     # 指標別可視化
     'plot_psd_peaks',
     'plot_harmonics',  # 後方互換性
+    # 非周期成分（1/f）可視化
+    'plot_aperiodic_fit',
 ]

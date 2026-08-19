@@ -14,6 +14,7 @@ scipy>=1.11
 
 # EEG Signal Processing
 mne>=1.10
+specparam==2.0.0rc7  # 1/f非周期成分分離（RC版のためピン留め、API変更の可能性あり）
 
 # HRV & Neurophysiological Signal Processing
 neurokit2>=0.2.12
