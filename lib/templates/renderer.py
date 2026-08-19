@@ -10,7 +10,11 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
-from lib.templates.formatters import format_aperiodic_stats, format_respiratory_stats
+from lib.templates.formatters import (
+    format_aperiodic_peaks,
+    format_aperiodic_stats,
+    format_respiratory_stats,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +291,7 @@ class MeditationReportRenderer:
             context['aperiodic'] = {
                 'img': results.get('aperiodic_img'),
                 'stats': format_aperiodic_stats(results['aperiodic']),
-                'peaks': results['aperiodic'].get('peaks'),
+                'peaks': format_aperiodic_peaks(results['aperiodic'].get('peaks')),
             }
 
         # 時間セグメント分析

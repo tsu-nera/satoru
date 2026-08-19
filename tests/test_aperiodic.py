@@ -5,11 +5,11 @@
 fit_aperiodic / find_band_peak / oscillatory_band_power が期待値を
 復元できるかを確認する。
 
-specparam自体が持つエッジ除外・SNR閾値の挙動と、本モジュールが追加で
-かけているガード（PEAK_EDGE_MARGIN_HZ / MIN_REPORT_PEAK_HEIGHT）を
-区別して検証するため、ガードのテストはspecparamの出力をモックして行う
-（specparamは端に近いピークやごく小さいピークをそもそも検出しないことが
-多く、実データだけではこちらのガードが実際に効く場面を再現しにくいため）。
+ガード（PEAK_EDGE_MARGIN_HZ / MIN_REPORT_PEAK_HEIGHT）のテストは
+specparamの出力をモックして行う。実データではガードは実際に発火しており
+（例: フィット下限ちょうどの2.00Hz、min_peak_heightを下回る高さ0.06の
+ピークがspecparamから返る）、モックは「発火しないから」ではなく
+data/ がgitignoreされておりCIで実データテストが全skipになるためである。
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from lib.sensors.eeg.aperiodic import (
@@ -27,6 +28,7 @@ from lib.sensors.eeg.aperiodic import (
     fit_aperiodic,
     oscillatory_band_power,
 )
+from lib.templates.formatters import format_aperiodic_peaks, format_aperiodic_stats
 
 
 def _synthesize_psd(offset, exponent, freqs, peak_cf=None, peak_height=0.0, peak_bw=1.5, noise=0.01, seed=0):
@@ -243,3 +245,62 @@ class TestOscillatoryBandPower:
 
         db = oscillatory_band_power(freqs, psd, result, (8.0, 13.0))
         assert db == pytest.approx(0.0, abs=1.0)
+
+
+class TestAperiodicFormatters:
+    """レポート表示用フォーマッタ"""
+
+    @staticmethod
+    def _info(theta_peak=None, alpha_peak=None):
+        return {
+            'exponent': 1.3402,
+            'offset': 1.0814,
+            'r_squared': 0.9431,
+            'error': 0.0752,
+            'n_peaks': 5,
+            'theta_peak': theta_peak,
+            'alpha_peak': alpha_peak,
+            'theta_osc_db': 0.1678,
+            'alpha_osc_db': 6.3729,
+        }
+
+    def _value_of(self, df, metric):
+        return df.loc[df['Metric'] == metric, 'Value'].iloc[0]
+
+    def test_undetected_peak_is_not_rendered_as_nan(self):
+        """
+        ピーク未検出は 'nan' ではなく 'N/A' で出す
+
+        生の 'nan' はクラッシュの痕跡に見え、「測定していない」という
+        意図が伝わらない。既存の format_score と同じ 'N/A' に揃える。
+        """
+        df = format_aperiodic_stats(self._info(theta_peak=None))
+
+        assert self._value_of(df, 'Theta Peak (CF)') == 'N/A'
+        assert 'nan' not in df['Value'].str.lower().tolist()
+
+    def test_detected_peak_is_rendered_with_three_decimals(self):
+        df = format_aperiodic_stats(self._info(alpha_peak={'center_hz': 8.70196}))
+
+        assert self._value_of(df, 'Alpha Peak (CF)') == '8.702'
+
+    def test_count_is_rendered_as_integer(self):
+        """count 単位の指標に小数を出さない"""
+        df = format_aperiodic_stats(self._info())
+
+        assert self._value_of(df, 'Detected Peaks') == '5'
+
+    def test_peaks_table_uses_display_column_names(self):
+        peaks = pd.DataFrame([
+            {'center_hz': 8.702, 'height': 1.147, 'bandwidth_hz': 1.0},
+        ])
+
+        formatted = format_aperiodic_peaks(peaks)
+
+        assert list(formatted.columns) == ['Center (Hz)', 'Height', 'Bandwidth (Hz)']
+
+    def test_empty_peaks_table_passes_through(self):
+        empty = pd.DataFrame(columns=['center_hz', 'height', 'bandwidth_hz'])
+
+        assert format_aperiodic_peaks(empty).empty
+        assert format_aperiodic_peaks(None) is None

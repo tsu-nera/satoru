@@ -127,37 +127,51 @@ def format_aperiodic_stats(aperiodic_info: dict) -> pd.DataFrame:
     >>> print(df.columns.tolist())
     ['Metric', 'Value', 'Unit']
     """
+    def _decimal(value) -> str:
+        """小数3桁。未測定はN/A（既存の format_score と同じ表記）"""
+        return 'N/A' if value is None or pd.isna(value) else f'{value:.3f}'
+
+    def _count(value) -> str:
+        return 'N/A' if value is None or pd.isna(value) else f'{int(value)}'
+
+    def _peak_cf(peak) -> str:
+        """ピーク未検出は中心周波数が定義できない。数値を捏造せずN/Aを返す"""
+        return 'N/A' if peak is None else _decimal(peak['center_hz'])
+
     stats = [
-        {'Metric': 'Exponent', 'Value': aperiodic_info['exponent'], 'Unit': 'a.u.'},
-        {'Metric': 'Offset', 'Value': aperiodic_info['offset'], 'Unit': 'a.u.'},
-        {'Metric': 'Fit R²', 'Value': aperiodic_info['r_squared'], 'Unit': 'ratio'},
-        {'Metric': 'Fit Error (MAE)', 'Value': aperiodic_info['error'], 'Unit': 'a.u.'},
-        {'Metric': 'Detected Peaks', 'Value': aperiodic_info['n_peaks'], 'Unit': 'count'},
+        {'Metric': 'Exponent', 'Value': _decimal(aperiodic_info['exponent']), 'Unit': 'a.u.'},
+        {'Metric': 'Offset', 'Value': _decimal(aperiodic_info['offset']), 'Unit': 'a.u.'},
+        {'Metric': 'Fit R²', 'Value': _decimal(aperiodic_info['r_squared']), 'Unit': 'ratio'},
+        {'Metric': 'Fit Error (MAE)', 'Value': _decimal(aperiodic_info['error']), 'Unit': 'a.u.'},
+        {'Metric': 'Detected Peaks', 'Value': _count(aperiodic_info['n_peaks']), 'Unit': 'count'},
+        {'Metric': 'Theta Peak (CF)', 'Value': _peak_cf(aperiodic_info.get('theta_peak')), 'Unit': 'Hz'},
+        {'Metric': 'Alpha Peak (CF)', 'Value': _peak_cf(aperiodic_info.get('alpha_peak')), 'Unit': 'Hz'},
+        {'Metric': 'Theta Oscillatory Power', 'Value': _decimal(aperiodic_info['theta_osc_db']), 'Unit': 'dB'},
+        {'Metric': 'Alpha Oscillatory Power', 'Value': _decimal(aperiodic_info['alpha_osc_db']), 'Unit': 'dB'},
     ]
 
-    theta_peak = aperiodic_info.get('theta_peak')
-    stats.append({
-        'Metric': 'Theta Peak (CF)',
-        'Value': theta_peak['center_hz'] if theta_peak is not None else float('nan'),
-        'Unit': 'Hz',
-    })
-
-    alpha_peak = aperiodic_info.get('alpha_peak')
-    stats.append({
-        'Metric': 'Alpha Peak (CF)',
-        'Value': alpha_peak['center_hz'] if alpha_peak is not None else float('nan'),
-        'Unit': 'Hz',
-    })
-
-    stats.append({
-        'Metric': 'Theta Oscillatory Power',
-        'Value': aperiodic_info['theta_osc_db'],
-        'Unit': 'dB',
-    })
-    stats.append({
-        'Metric': 'Alpha Oscillatory Power',
-        'Value': aperiodic_info['alpha_osc_db'],
-        'Unit': 'dB',
-    })
-
     return pd.DataFrame(stats)
+
+
+def format_aperiodic_peaks(peaks: pd.DataFrame) -> pd.DataFrame:
+    """
+    検出ピーク一覧を表示用の列名に整える
+
+    Parameters
+    ----------
+    peaks : pd.DataFrame
+        AperiodicResult.peaks（列: center_hz, height, bandwidth_hz）
+
+    Returns
+    -------
+    pd.DataFrame
+        表示用に列名を整えたDataFrame。入力が空なら空のまま返す。
+    """
+    if peaks is None or peaks.empty:
+        return peaks
+
+    return peaks.rename(columns={
+        'center_hz': 'Center (Hz)',
+        'height': 'Height',
+        'bandwidth_hz': 'Bandwidth (Hz)',
+    })

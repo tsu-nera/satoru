@@ -10,7 +10,7 @@
 
 {% endif %}
 {% if aperiodic.stats is not none %}
-{{ aperiodic.stats|df_to_markdown(floatfmt='.3f', index=False, standardize_columns=True) }}
+{{ aperiodic.stats|df_to_markdown(index=False, standardize_columns=True) }}
 
 {% endif %}
 {% if aperiodic.peaks is not none and not aperiodic.peaks.empty %}
