@@ -102,3 +102,62 @@ def format_respiratory_stats(respiration_result: Any) -> pd.DataFrame:
         })
 
     return pd.DataFrame(stats)
+
+
+def format_aperiodic_stats(aperiodic_info: dict) -> pd.DataFrame:
+    """
+    results['aperiodic'] dictをテーブル用DataFrameに変換
+
+    Parameters
+    ----------
+    aperiodic_info : dict
+        lib.report.steps_eeg.prepare_mne_and_spectral() が
+        results['aperiodic'] に格納する辞書。
+        {'offset', 'exponent', 'r_squared', 'error', 'n_peaks',
+         'theta_peak', 'alpha_peak', 'theta_osc_db', 'alpha_osc_db'}
+
+    Returns
+    -------
+    pd.DataFrame
+        Metric/Value/Unitの3カラムを持つDataFrame
+
+    Examples
+    --------
+    >>> df = format_aperiodic_stats(results['aperiodic'])
+    >>> print(df.columns.tolist())
+    ['Metric', 'Value', 'Unit']
+    """
+    stats = [
+        {'Metric': 'Exponent', 'Value': aperiodic_info['exponent'], 'Unit': 'a.u.'},
+        {'Metric': 'Offset', 'Value': aperiodic_info['offset'], 'Unit': 'a.u.'},
+        {'Metric': 'Fit R²', 'Value': aperiodic_info['r_squared'], 'Unit': 'ratio'},
+        {'Metric': 'Fit Error (MAE)', 'Value': aperiodic_info['error'], 'Unit': 'a.u.'},
+        {'Metric': 'Detected Peaks', 'Value': aperiodic_info['n_peaks'], 'Unit': 'count'},
+    ]
+
+    theta_peak = aperiodic_info.get('theta_peak')
+    stats.append({
+        'Metric': 'Theta Peak (CF)',
+        'Value': theta_peak['center_hz'] if theta_peak is not None else float('nan'),
+        'Unit': 'Hz',
+    })
+
+    alpha_peak = aperiodic_info.get('alpha_peak')
+    stats.append({
+        'Metric': 'Alpha Peak (CF)',
+        'Value': alpha_peak['center_hz'] if alpha_peak is not None else float('nan'),
+        'Unit': 'Hz',
+    })
+
+    stats.append({
+        'Metric': 'Theta Oscillatory Power',
+        'Value': aperiodic_info['theta_osc_db'],
+        'Unit': 'dB',
+    })
+    stats.append({
+        'Metric': 'Alpha Oscillatory Power',
+        'Value': aperiodic_info['alpha_osc_db'],
+        'Unit': 'dB',
+    })
+
+    return pd.DataFrame(stats)

@@ -29,11 +29,16 @@ from lib import (
     calculate_spectral_entropy_time_series,
     calculate_spectrogram_all_channels,
     filter_eeg_quality,
+    find_band_peak,
+    fit_aperiodic,
     get_psd_peak_frequencies,
+    oscillatory_band_power,
     prepare_mne_raw,
 )
 from lib.sensors.eeg.artifact import summarize_artifacts
+from lib.sensors.eeg.constants import FREQ_BANDS
 from lib.sensors.eeg.visualization import (
+    plot_aperiodic_fit,
     plot_band_power_time_series,
     plot_paf,
     plot_psd,
@@ -257,6 +262,43 @@ def prepare_mne_and_spectral(df, img_dir, results, artifact_window_samples):
             'peak': itf_dict['itf_peak'],
             'cog': itf_dict['itf_cog']
         }
+
+        # 非周期成分（1/f）分離
+        # 全チャネル平均PSDに対してspecparamでフィットする。
+        # IAF/ITFの窓内argmaxが1/fの単調減少域で窓端に張り付く問題（Issue #31）を
+        # 避けるため、ピーク検出はspecparamのイテレーティブなピーク除去に委ねる。
+        print('計算中: 非周期成分（1/f）分離...')
+        mean_psd = psd_dict['psds'].mean(axis=0)
+        aperiodic_result = fit_aperiodic(psd_dict['freqs'], mean_psd)
+        if aperiodic_result is not None:
+            theta_band = FREQ_BANDS['Theta'][:2]
+            alpha_band = FREQ_BANDS['Alpha'][:2]
+            results['aperiodic'] = {
+                'result': aperiodic_result,
+                'offset': aperiodic_result.offset,
+                'exponent': aperiodic_result.exponent,
+                'r_squared': aperiodic_result.r_squared,
+                'error': aperiodic_result.error,
+                'n_peaks': aperiodic_result.n_peaks,
+                'peaks': aperiodic_result.peaks,
+                'theta_peak': find_band_peak(aperiodic_result, theta_band),
+                'alpha_peak': find_band_peak(aperiodic_result, alpha_band),
+                'theta_osc_db': oscillatory_band_power(
+                    psd_dict['freqs'], mean_psd, aperiodic_result, theta_band
+                ),
+                'alpha_osc_db': oscillatory_band_power(
+                    psd_dict['freqs'], mean_psd, aperiodic_result, alpha_band
+                ),
+            }
+
+            print('プロット中: 非周期成分（1/f）フィット...')
+            plot_aperiodic_fit(
+                psd_dict['freqs'], mean_psd, aperiodic_result,
+                img_path=img_dir / 'aperiodic.png',
+            )
+            results['aperiodic_img'] = 'aperiodic.png'
+        else:
+            print('  警告: 非周期成分フィットに失敗したため、非周期成分セクションをスキップします。')
 
         # PSDピーク分析（SMR含む）
         analyze_psd_peaks(psd_dict, paf_dict, img_dir, results)

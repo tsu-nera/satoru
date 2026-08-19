@@ -161,6 +161,21 @@ def generate_session_summary(
         faa_df = results['faa_stats']
         summary['faa_mean'] = extract_metric_value(faa_df, 'Mean FAA')
 
+    # 非周期成分（1/f）分離
+    # mean_metrics/best_metricsには載らないため、resultsから直接読む。
+    if 'aperiodic' in results:
+        aperiodic_info = results['aperiodic']
+        summary['aperiodic_exponent'] = aperiodic_info.get('exponent')
+        summary['aperiodic_offset'] = aperiodic_info.get('offset')
+        summary['alpha_osc_db'] = aperiodic_info.get('alpha_osc_db')
+        summary['theta_osc_db'] = aperiodic_info.get('theta_osc_db')
+
+        alpha_peak = aperiodic_info.get('alpha_peak')
+        summary['alpha_cf_hz'] = alpha_peak['center_hz'] if alpha_peak is not None else None
+
+        theta_peak = aperiodic_info.get('theta_peak')
+        summary['theta_peak_detected'] = theta_peak is not None
+
     # 総合スコア
     if 'session_score' in results:
         summary['session_score'] = results['session_score']

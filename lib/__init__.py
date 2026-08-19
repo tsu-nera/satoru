@@ -12,10 +12,14 @@ from .segment_analysis import (
 )
 from .sensors.eeg import (
     DETAILED_FREQ_BANDS,
+    FIT_RANGE_HZ,
     FREQ_BANDS,
+    MIN_REPORT_PEAK_HEIGHT,
+    PEAK_EDGE_MARGIN_HZ,
     SMR_BAND,
     AlphaPowerMethod,
     AlphaPowerResult,
+    AperiodicResult,
     FrontalAsymmetryResult,
     FrontalThetaResult,
     HarmonicsResult,  # 後方互換性
@@ -43,7 +47,10 @@ from .sensors.eeg import (
     calculate_spectrogram_all_channels,
     detect_artifact_windows,
     filter_eeg_quality,
+    find_band_peak,
+    fit_aperiodic,
     get_psd_peak_frequencies,
+    oscillatory_band_power,
     prepare_mne_raw,
     summarize_artifacts,
 )
@@ -108,6 +115,14 @@ __all__ = [
     'SMRResult',
     'calculate_smr',
     'SMR_BAND',
+    # 非周期成分（1/f）分離
+    'AperiodicResult',
+    'fit_aperiodic',
+    'find_band_peak',
+    'oscillatory_band_power',
+    'FIT_RANGE_HZ',
+    'PEAK_EDGE_MARGIN_HZ',
+    'MIN_REPORT_PEAK_HEIGHT',
     # high-level eeg utilities
     'SegmentAnalysisResult',
     'calculate_segment_analysis',

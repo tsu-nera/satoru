@@ -37,6 +37,10 @@
 {% include "meditation/sections/posture.md.j2" %}
 {% endif %}
 
+{% if aperiodic %}
+{% include "meditation/sections/aperiodic.md.j2" %}
+{% endif %}
+
 {% if segments %}
 {% include "meditation/sections/time_segment.md.j2" %}
 {% endif %}
