@@ -256,11 +256,11 @@ def main():
     parser.add_argument(
         '--save-to',
         type=str,
-        choices=['none', 'csv', 'sheets'],
+        choices=['none', 'csv'],
         default='none',
         help=(
-            'セッションログの保存先: none=保存しない（デフォルト）, '
-            'csv=ローカルCSV（開発用）, sheets=Google Sheets（本番用）'
+            'セッションログの保存先: none=保存しない, '
+            'csv=logs/session_log.csv に upsert'
         )
     )
     parser.add_argument(

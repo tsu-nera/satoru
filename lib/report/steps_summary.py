@@ -3,15 +3,13 @@ Statistical DataFrame / セグメント分析 / バンド比率 / 総合スコ�
 サマリーCSV / セッションログ保存の解析ステップ
 """
 
-import os
-
 from lib import (
     calculate_best_metrics,
     calculate_meditation_score,
     calculate_segment_analysis,
 )
 from lib.sensors.eeg.visualization import plot_band_ratios
-from lib.session_log import write_to_csv, write_to_google_sheets
+from lib.session_log import write_to_csv
 from lib.statistical_dataframe import create_statistical_dataframe
 from lib.visualization import plot_segment_comparison
 
@@ -112,6 +110,10 @@ def analyze_segments(df_quality, fmtheta_result, smr_result, statistical_df, img
         'alpha_mean': segments['alpha_mean'].mean() if 'alpha_mean' in segments else None,
         'beta_mean': segments['beta_mean'].mean() if 'beta_mean' in segments else None,
         'theta_alpha_mean': segments['theta_alpha_ratio'].mean() if 'theta_alpha_ratio' in segments else None,
+        # 相対パワーはドリフト混入の判定に使うためセッションログに残す
+        'delta_rel_pct': segments['delta_relative'].mean() if 'delta_relative' in segments else None,
+        'theta_rel_pct': segments['theta_relative'].mean() if 'theta_relative' in segments else None,
+        'alpha_rel_pct': segments['alpha_relative'].mean() if 'alpha_relative' in segments else None,
     }
 
     # HRV (RMSSD) の mean/best を計算
@@ -254,27 +256,10 @@ def write_session_log_csv(results):
     return csv_path
 
 
-@analysis_step('Google Sheets更新')
-def write_session_log_sheets(results, spreadsheet_id):
-    write_to_google_sheets(
-        results=results,
-        spreadsheet_id=spreadsheet_id,
-    )
-    print(f'✓ Google Sheets更新: {spreadsheet_id}')
-    return spreadsheet_id
-
-
 def save_session_log(results, save_to):
-    """セッションログ保存（開発用CSV または 本番用Google Sheets）。"""
+    """セッションログ保存（logs/session_log.csv への upsert）。"""
     if save_to == 'csv':
         print('更新中: セッションログ（CSV）...')
         write_session_log_csv(results)
-    elif save_to == 'sheets':
-        print('更新中: セッションログ（Google Sheets）...')
-        spreadsheet_id = os.environ.get('GSHEET_SESSION_LOG_ID')
-        if not spreadsheet_id:
-            print('警告: 環境変数 GSHEET_SESSION_LOG_ID が設定されていません')
-        else:
-            write_session_log_sheets(results, spreadsheet_id)
     else:
         print('セッションログへの保存はスキップされました（--save-to オプションで指定）')

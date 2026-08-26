@@ -3,13 +3,13 @@
 # Muse脳波データ基本分析 実行スクリプト
 #
 # Usage: ./run_analysis.sh [--fetch] [CSV_FILE_PATH] [OUTPUT_DIR] [SAVE_TO]
-#        SAVE_TO=sheets ./run_analysis.sh
+#        SAVE_TO=none ./run_analysis.sh   # ログに残さない
 #
 # Arguments:
 #   --fetch     : Google Driveから最新データをダウンロード（オプション）
 #   CSV_FILE_PATH  : 分析するCSVファイルのパス（省略時は最新ファイル）
 #   OUTPUT_DIR     : 出力先ディレクトリ（デフォルト: tmp/）
-#   SAVE_TO        : セッションログ保存先（none/csv/sheets、デフォルト: none）
+#   SAVE_TO        : セッションログ保存先（none/csv、デフォルト: csv）
 #                    環境変数 SAVE_TO でも指定可能
 #
 
@@ -73,8 +73,7 @@ if [ $# -eq 0 ]; then
         echo "例："
         echo "  $0                                                              # 最新CSVをtmp/に出力（セッションログ保存なし）"
         echo "  $0 --fetch                                                   # Google Driveから最新データをダウンロードして分析"
-        echo "  SAVE_TO=csv $0                                                  # 最新CSVをtmp/に出力＆ローカルCSVに保存"
-        echo "  SAVE_TO=sheets $0 --fetch                                    # ダウンロード＆Google Sheetsに保存"
+        echo "  SAVE_TO=none $0                                                 # 最新CSVをtmp/に出力（セッションログには残さない）"
         echo "  $0 data/muse/mindMonitor_2025-11-04--16-59-52.csv                   # 指定CSVをtmp/に出力"
         echo "  $0 data/muse/mindMonitor_2025-11-04--16-59-52.csv tmp sheets        # Google Sheetsに保存（本番用）"
         exit 1
@@ -94,7 +93,7 @@ fi
 OUTPUT_DIR="${2:-$PROJECT_ROOT/tmp}"
 
 # セッションログ保存先（環境変数または引数、デフォルト: none）
-SAVE_TO="${3:-${SAVE_TO:-none}}"
+SAVE_TO="${3:-${SAVE_TO:-csv}}"
 
 # Selfloopsファイルの検出（タイムスタンプマッチング方式）
 SELFLOOPS_FILE=""

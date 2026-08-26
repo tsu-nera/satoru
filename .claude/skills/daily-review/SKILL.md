@@ -47,7 +47,7 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
 **落とし穴:**
 - fetch は `.env` の `GDRIVE_CREDENTIALS`・`GDRIVE_FOLDER_ID_MUSE`・`GDRIVE_FOLDER_ID_SELFLOOPS` が必須。`.env` が無い／認証エラーが出たら、その旨を報告し `--no-fetch` で手元データを使うよう促す（勝手に `.env` を作らない）。
 - SelfLoops が見つからない場合は EEG のみで生成される。これは正常動作。レビューでは HRV セクションが欠落する前提で扱う。
-- セッションログ（Google Sheets）への保存はしない。本番の記録は GitHub Actions 側が担うため、ローカルのレビュー再実行でログを二重化させない（`SAVE_TO` は既定の `none` のまま）。
+- セッションログ `logs/session_log.csv` に自動 upsert される（`SAVE_TO` 既定は `csv`）。timestamp キーなので再実行しても重複しない。
 
 エラーが出たら握りつぶさず内容を報告する。
 
@@ -104,5 +104,5 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
 ## スコープ（v1）
 
 - 単発セッションのレビューに絞る。
-- 過去セッションとの横断比較（Google Sheets のセッションログ活用）は未実装 — 将来の拡張点。
+- 過去セッションとの横断比較は `logs/session_log.csv` を読んで行う。ただしaperiodic系の列は2026-08-27以降の行にしか入っていない（Sheets運用時代に一度も書かれなかったため）。
 - レビュー結果の記録保存（journal相当）は未定。
