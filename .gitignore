@@ -38,3 +38,5 @@ dashboard/
 
 venv
 .env
+# セッションログはgit管理する（*.csv の除外に対する例外）
+!logs/session_log.csv
