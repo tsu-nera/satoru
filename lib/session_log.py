@@ -43,7 +43,11 @@ CANONICAL_COLUMNS: List[str] = [
     'alpha_rel_pct',
     'artifact_reject_pct',
     'breathing_rate_bpm',
+    'breathing_rate_std',
+    'respiratory_period_s',
     'rsa_amplitude_ms',
+    'rsa_band_power_ms2',
+    'sd1',
     'note',
 ]
 
@@ -67,6 +71,15 @@ def _order_columns(columns) -> List[str]:
     known = [c for c in CANONICAL_COLUMNS if c in columns]
     unknown = sorted(c for c in columns if c not in CANONICAL_COLUMNS)
     return known + unknown
+
+
+def _hrv_stat(results: Dict, metric: str) -> float:
+    """`results['hrv_stats']`（Domain/Metric/Value/Unit の縦持ち）から1指標を取り出す。"""
+    stats = results.get('hrv_stats')
+    if stats is None or getattr(stats, 'empty', True):
+        return float('nan')
+    matched = stats.loc[stats['Metric'] == metric, 'Value']
+    return float(matched.iloc[0]) if len(matched) else float('nan')
 
 
 def _extract_session_data(results: Dict) -> Dict:
@@ -145,9 +158,22 @@ def _extract_session_data(results: Dict) -> Dict:
         'breathing_rate_bpm': (
             respiration.breathing_rate if respiration is not None else float('nan')
         ),
+        'breathing_rate_std': (
+            respiration.breathing_rate_std if respiration is not None else float('nan')
+        ),
+        # 呼吸周期は breathing_rate の逆数だが、超低速呼吸の議論では秒で見るほうが早い
+        'respiratory_period_s': (
+            60.0 / respiration.breathing_rate
+            if respiration is not None and respiration.breathing_rate > 0
+            else float('nan')
+        ),
         'rsa_amplitude_ms': (
             respiration.rsa_amplitude_mean if respiration is not None else float('nan')
         ),
+        # 呼吸追従帯のパワー。超低速呼吸では固定HF帯が空になるため、
+        # 副交感神経活動の評価はこちらとRSA振幅・SD1で行う。
+        'rsa_band_power_ms2': (results.get('rsa_band') or {}).get('power', float('nan')),
+        'sd1': _hrv_stat(results, 'SD1'),
     }
 
 
