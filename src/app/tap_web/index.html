@@ -68,12 +68,43 @@
     position: absolute;
     bottom: 1.5em;
     right: 1.5em;
-    font-size: 0.8rem;
-    padding: 0.6em 1em;
-    background: #222;
-    color: #555;
-    opacity: 0.6;
+    font-size: 0.9rem;
+    padding: 0.7em 1.2em;
+    background: #2a2a2a;
+    color: #bbb;
+    border: 1px solid #555;
     z-index: 10;
+  }
+
+  /* 開始直後だけ表示し、デッドタイムをかけて黒へ溶ける案内 */
+  #recording-hint {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.8em;
+    color: #888;
+    text-align: center;
+    line-height: 1.8;
+    pointer-events: none;
+    opacity: 1;
+    z-index: 5;
+  }
+
+  #recording-hint.fade {
+    opacity: 0;
+    transition: opacity 1200ms ease-out;
+  }
+
+  #recording-hint .hint-main {
+    font-size: 1.4rem;
+    color: #ccc;
+  }
+
+  #recording-hint .hint-sub {
+    font-size: 0.85rem;
   }
 
   #tap-surface {
@@ -119,6 +150,10 @@
 
   <div id="screen-recording" class="screen">
     <div id="tap-surface"></div>
+    <div id="recording-hint">
+      <div class="hint-main">計測中</div>
+      <div class="hint-sub">3秒後からタップを記録します<br>終了は右下のストップを長押し</div>
+    </div>
     <button id="stop-button">ストップ</button>
   </div>
 
@@ -146,6 +181,7 @@
   const screenDone = document.getElementById('screen-done');
   const startButton = document.getElementById('start-button');
   const stopButton = document.getElementById('stop-button');
+  const recordingHint = document.getElementById('recording-hint');
   const restartButton = document.getElementById('restart-button');
   const tapSurface = document.getElementById('tap-surface');
   const flashOverlay = document.getElementById('flash-overlay');
@@ -157,6 +193,7 @@
   let tapCount = 0;
   let wakeLock = null;
   let stopArmedAt = 0;
+  let hintFadeTimer = null;
   let retryTimer = null;
   let currentSessionId = '';
 
@@ -250,14 +287,16 @@
   // --- フィードバック ---
 
   function feedback() {
+    let vibrated = false;
     if (navigator.vibrate) {
       try {
-        navigator.vibrate(20);
-        return;
+        // 平文HTTP等の非 secure context では例外を投げずに false を返す
+        vibrated = navigator.vibrate(20) === true;
       } catch (e) {
-        // フォールバックへ
+        vibrated = false;
       }
     }
+    if (vibrated) return;
     flashOverlay.classList.add('flash');
     setTimeout(() => flashOverlay.classList.remove('flash'), 80);
   }
@@ -298,6 +337,9 @@
     recordingStartedAt = Date.now();
     stopArmedAt = 0;
     showScreen(screenRecording);
+    recordingHint.classList.remove('fade');
+    if (hintFadeTimer) clearTimeout(hintFadeTimer);
+    hintFadeTimer = setTimeout(() => recordingHint.classList.add('fade'), DEAD_TIME_MS);
     requestWakeLock();
     enqueue({ path: '/api/session/start', body: { client_ts: nowIso() } });
     startRetryLoop();
@@ -305,6 +347,10 @@
 
   function endSession() {
     recording = false;
+    if (hintFadeTimer) {
+      clearTimeout(hintFadeTimer);
+      hintFadeTimer = null;
+    }
     enqueue({ path: '/api/session/stop', body: { client_ts: nowIso() } });
     releaseWakeLock();
     doneTapCount.textContent = 'タップ数: ' + tapCount;

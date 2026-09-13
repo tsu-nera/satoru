@@ -130,7 +130,7 @@ def main() -> None:
     print(f'スマホのブラウザで開く: http://{lan_ip}:{args.port}/')
     print()
     print('Ctrl+C で終了')
-    print('=' * 60)
+    print('=' * 60, flush=True)
 
     try:
         server.serve_forever()
