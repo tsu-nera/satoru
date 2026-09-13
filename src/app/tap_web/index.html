@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Tap Logger</title>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #111;
+    color: #eee;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    touch-action: manipulation;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  #app {
+    position: fixed;
+    inset: 0;
+  }
+
+  .screen {
+    position: absolute;
+    inset: 0;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .screen.active {
+    display: flex;
+  }
+
+  #screen-idle {
+    background: #111;
+  }
+
+  #screen-recording {
+    background: #000;
+  }
+
+  #screen-done {
+    background: #111;
+  }
+
+  button {
+    font-size: 1.2rem;
+    padding: 1em 2em;
+    border-radius: 0.5em;
+    border: none;
+    background: #333;
+    color: #eee;
+  }
+
+  #start-button {
+    font-size: 1.8rem;
+    padding: 1em 2.5em;
+    background: #2a6;
+  }
+
+  #stop-button {
+    position: absolute;
+    bottom: 1.5em;
+    right: 1.5em;
+    font-size: 0.8rem;
+    padding: 0.6em 1em;
+    background: #222;
+    color: #555;
+    opacity: 0.6;
+    z-index: 10;
+  }
+
+  #tap-surface {
+    position: absolute;
+    inset: 0;
+  }
+
+  #flash-overlay {
+    position: fixed;
+    inset: 0;
+    background: #fff;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 80ms ease-out;
+    z-index: 20;
+  }
+
+  #flash-overlay.flash {
+    opacity: 0.25;
+  }
+
+  .done-info {
+    text-align: center;
+    line-height: 1.8;
+  }
+
+  .done-info .session-id {
+    font-size: 0.9rem;
+    color: #999;
+    word-break: break-all;
+  }
+
+  .done-info .tap-count {
+    font-size: 1.4rem;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="screen-idle" class="screen active">
+    <button id="start-button">スタート</button>
+  </div>
+
+  <div id="screen-recording" class="screen">
+    <div id="tap-surface"></div>
+    <button id="stop-button">ストップ</button>
+  </div>
+
+  <div id="screen-done" class="screen">
+    <div class="done-info">
+      <div class="tap-count" id="done-tap-count"></div>
+      <div class="session-id" id="done-session-id"></div>
+      <button id="restart-button" style="margin-top:1.5em;">もどる</button>
+    </div>
+  </div>
+</div>
+<div id="flash-overlay"></div>
+
+<script>
+(function () {
+  'use strict';
+
+  const QUEUE_KEY = 'tap_logger_queue_v1';
+  const DEAD_TIME_MS = 3000;
+  const STOP_CONFIRM_MS = 1000;
+  const RETRY_INTERVAL_MS = 4000;
+
+  const screenIdle = document.getElementById('screen-idle');
+  const screenRecording = document.getElementById('screen-recording');
+  const screenDone = document.getElementById('screen-done');
+  const startButton = document.getElementById('start-button');
+  const stopButton = document.getElementById('stop-button');
+  const restartButton = document.getElementById('restart-button');
+  const tapSurface = document.getElementById('tap-surface');
+  const flashOverlay = document.getElementById('flash-overlay');
+  const doneTapCount = document.getElementById('done-tap-count');
+  const doneSessionId = document.getElementById('done-session-id');
+
+  let recording = false;
+  let recordingStartedAt = 0;
+  let tapCount = 0;
+  let wakeLock = null;
+  let stopArmedAt = 0;
+  let retryTimer = null;
+  let currentSessionId = '';
+
+  function showScreen(screen) {
+    [screenIdle, screenRecording, screenDone].forEach((s) => s.classList.remove('active'));
+    screen.classList.add('active');
+  }
+
+  // --- localStorage キュー ---
+
+  function loadQueue() {
+    try {
+      const raw = localStorage.getItem(QUEUE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveQueue(queue) {
+    try {
+      localStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
+    } catch (e) {
+      // localStorage が使えない場合は諦める（送信自体は試みる）
+    }
+  }
+
+  function enqueue(item) {
+    const queue = loadQueue();
+    queue.push(item);
+    saveQueue(queue);
+    processQueue();
+  }
+
+  let sending = false;
+
+  function processQueue() {
+    if (sending) return;
+    const queue = loadQueue();
+    if (queue.length === 0) return;
+    sending = true;
+
+    (async () => {
+      const remaining = [];
+      for (const item of queue) {
+        const ok = await sendItem(item);
+        if (!ok) {
+          remaining.push(item);
+        }
+      }
+      saveQueue(remaining);
+      sending = false;
+    })();
+  }
+
+  async function sendItem(item) {
+    try {
+      const res = await fetch(item.path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(item.body),
+      });
+      if (res.ok && item.path === '/api/session/start') {
+        try {
+          const data = await res.json();
+          if (data && data.session_id) {
+            currentSessionId = data.session_id;
+          }
+        } catch (e) {
+          // レスポンスのパースに失敗しても記録自体は成功しているので無視
+        }
+      }
+      return res.ok;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function startRetryLoop() {
+    if (retryTimer) return;
+    retryTimer = setInterval(processQueue, RETRY_INTERVAL_MS);
+  }
+
+  function stopRetryLoop() {
+    if (retryTimer) {
+      clearInterval(retryTimer);
+      retryTimer = null;
+    }
+  }
+
+  // --- フィードバック ---
+
+  function feedback() {
+    if (navigator.vibrate) {
+      try {
+        navigator.vibrate(20);
+        return;
+      } catch (e) {
+        // フォールバックへ
+      }
+    }
+    flashOverlay.classList.add('flash');
+    setTimeout(() => flashOverlay.classList.remove('flash'), 80);
+  }
+
+  // --- Wake Lock ---
+
+  async function requestWakeLock() {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLock = await navigator.wakeLock.request('screen');
+      }
+    } catch (e) {
+      // secure context でない等の理由で失敗しても無視して続行する
+      wakeLock = null;
+    }
+  }
+
+  function releaseWakeLock() {
+    if (wakeLock) {
+      try {
+        wakeLock.release();
+      } catch (e) {
+        // 無視
+      }
+      wakeLock = null;
+    }
+  }
+
+  // --- セッション制御 ---
+
+  function nowIso() {
+    return new Date().toISOString();
+  }
+
+  function startSession() {
+    tapCount = 0;
+    recording = true;
+    recordingStartedAt = Date.now();
+    stopArmedAt = 0;
+    showScreen(screenRecording);
+    requestWakeLock();
+    enqueue({ path: '/api/session/start', body: { client_ts: nowIso() } });
+    startRetryLoop();
+  }
+
+  function endSession() {
+    recording = false;
+    enqueue({ path: '/api/session/stop', body: { client_ts: nowIso() } });
+    releaseWakeLock();
+    doneTapCount.textContent = 'タップ数: ' + tapCount;
+    doneSessionId.textContent = currentSessionId ? ('session: ' + currentSessionId) : '';
+    showScreen(screenDone);
+  }
+
+  function recordTap() {
+    if (!recording) return;
+    if (Date.now() - recordingStartedAt < DEAD_TIME_MS) return;
+    tapCount += 1;
+    feedback();
+    enqueue({ path: '/api/tap', body: { client_ts: nowIso() } });
+  }
+
+  // --- イベント配線 ---
+
+  startButton.addEventListener('click', startSession);
+
+  tapSurface.addEventListener('pointerdown', recordTap);
+
+  restartButton.addEventListener('click', () => showScreen(screenIdle));
+
+  // ストップは長押し(1秒) or 二度押しで確定
+  let stopPressTimer = null;
+
+  function armOrConfirmStop() {
+    const now = Date.now();
+    if (now - stopArmedAt < STOP_CONFIRM_MS) {
+      endSession();
+      return;
+    }
+    stopArmedAt = now;
+  }
+
+  stopButton.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    stopPressTimer = setTimeout(() => {
+      endSession();
+    }, STOP_CONFIRM_MS);
+  });
+
+  stopButton.addEventListener('pointerup', (e) => {
+    e.stopPropagation();
+    if (stopPressTimer) {
+      clearTimeout(stopPressTimer);
+      stopPressTimer = null;
+      armOrConfirmStop();
+    }
+  });
+
+  stopButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+  });
+
+  // ページ再読み込み時に未送信キューがあれば送信を試みる
+  window.addEventListener('load', () => {
+    processQueue();
+    startRetryLoop();
+  });
+})();
+</script>
+</body>
+</html>
