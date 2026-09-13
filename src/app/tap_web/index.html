@@ -112,6 +112,45 @@
     inset: 0;
   }
 
+  /* 計測中の経過時間・タップ数。タップを吸わないよう pointer-events は殺す */
+  #stats {
+    position: absolute;
+    top: 2.5em;
+    left: 0;
+    right: 0;
+    text-align: center;
+    color: #666;
+    pointer-events: none;
+    z-index: 5;
+  }
+
+  #stats.hidden {
+    display: none;
+  }
+
+  #stats .elapsed {
+    font-size: 2.6rem;
+    font-variant-numeric: tabular-nums;
+    color: #888;
+  }
+
+  #stats .count {
+    font-size: 1rem;
+    margin-top: 0.4em;
+  }
+
+  #toggle-stats {
+    position: absolute;
+    bottom: 1.5em;
+    left: 1.5em;
+    font-size: 0.9rem;
+    padding: 0.7em 1.2em;
+    background: #2a2a2a;
+    color: #bbb;
+    border: 1px solid #555;
+    z-index: 10;
+  }
+
   #flash-overlay {
     position: fixed;
     inset: 0;
@@ -150,6 +189,11 @@
 
   <div id="screen-recording" class="screen">
     <div id="tap-surface"></div>
+    <div id="stats">
+      <div class="elapsed" id="stats-elapsed">00:00</div>
+      <div class="count" id="stats-count">0 回</div>
+    </div>
+    <button id="toggle-stats">表示オフ</button>
     <div id="recording-hint">
       <div class="hint-main">計測中</div>
       <div class="hint-sub">3秒後からタップを記録します<br>終了は右下のストップを長押し</div>
@@ -172,6 +216,7 @@
   'use strict';
 
   const QUEUE_KEY = 'tap_logger_queue_v1';
+  const STATS_KEY = 'tap_logger_show_stats_v1';
   const DEAD_TIME_MS = 3000;
   const STOP_CONFIRM_MS = 1000;
   const RETRY_INTERVAL_MS = 4000;
@@ -185,6 +230,10 @@
   const restartButton = document.getElementById('restart-button');
   const tapSurface = document.getElementById('tap-surface');
   const flashOverlay = document.getElementById('flash-overlay');
+  const stats = document.getElementById('stats');
+  const statsElapsed = document.getElementById('stats-elapsed');
+  const statsCount = document.getElementById('stats-count');
+  const toggleStatsButton = document.getElementById('toggle-stats');
   const doneTapCount = document.getElementById('done-tap-count');
   const doneSessionId = document.getElementById('done-session-id');
 
@@ -195,11 +244,54 @@
   let stopArmedAt = 0;
   let hintFadeTimer = null;
   let retryTimer = null;
+  let tickTimer = null;
   let currentSessionId = '';
 
   function showScreen(screen) {
     [screenIdle, screenRecording, screenDone].forEach((s) => s.classList.remove('active'));
     screen.classList.add('active');
+  }
+
+  // --- 計測中の表示（経過時間・タップ数） ---
+
+  function statsVisible() {
+    try {
+      // 未設定なら表示する
+      return localStorage.getItem(STATS_KEY) !== '0';
+    } catch (e) {
+      return true;
+    }
+  }
+
+  function applyStatsVisibility() {
+    const visible = statsVisible();
+    stats.classList.toggle('hidden', !visible);
+    toggleStatsButton.textContent = visible ? '表示オフ' : '表示オン';
+  }
+
+  function formatElapsed(ms) {
+    const total = Math.max(0, Math.floor(ms / 1000));
+    const mm = String(Math.floor(total / 60)).padStart(2, '0');
+    const ss = String(total % 60).padStart(2, '0');
+    return mm + ':' + ss;
+  }
+
+  function renderStats() {
+    statsElapsed.textContent = formatElapsed(Date.now() - recordingStartedAt);
+    statsCount.textContent = tapCount + ' 回';
+  }
+
+  function startTick() {
+    stopTick();
+    renderStats();
+    tickTimer = setInterval(renderStats, 1000);
+  }
+
+  function stopTick() {
+    if (tickTimer) {
+      clearInterval(tickTimer);
+      tickTimer = null;
+    }
   }
 
   // --- localStorage キュー ---
@@ -337,6 +429,8 @@
     recordingStartedAt = Date.now();
     stopArmedAt = 0;
     showScreen(screenRecording);
+    applyStatsVisibility();
+    startTick();
     recordingHint.classList.remove('fade');
     if (hintFadeTimer) clearTimeout(hintFadeTimer);
     hintFadeTimer = setTimeout(() => recordingHint.classList.add('fade'), DEAD_TIME_MS);
@@ -347,6 +441,7 @@
 
   function endSession() {
     recording = false;
+    stopTick();
     if (hintFadeTimer) {
       clearTimeout(hintFadeTimer);
       hintFadeTimer = null;
@@ -362,6 +457,7 @@
     if (!recording) return;
     if (Date.now() - recordingStartedAt < DEAD_TIME_MS) return;
     tapCount += 1;
+    renderStats();
     feedback();
     enqueue({ path: '/api/tap', body: { client_ts: nowIso() } });
   }
@@ -373,6 +469,17 @@
   tapSurface.addEventListener('pointerdown', recordTap);
 
   restartButton.addEventListener('click', () => showScreen(screenIdle));
+
+  toggleStatsButton.addEventListener('pointerdown', (e) => e.stopPropagation());
+  toggleStatsButton.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try {
+      localStorage.setItem(STATS_KEY, statsVisible() ? '0' : '1');
+    } catch (err) {
+      // localStorage が使えない環境では設定を保持しない
+    }
+    applyStatsVisibility();
+  });
 
   // ストップは長押し(1秒) or 二度押しで確定
   let stopPressTimer = null;
