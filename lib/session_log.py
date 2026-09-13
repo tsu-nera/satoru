@@ -32,6 +32,11 @@ CANONICAL_COLUMNS: List[str] = [
     'theta_alpha_best',
     'hrv_mean',
     'hrv_best',
+    'mw_count',
+    'mw_rate_per_min',
+    'mw_time_to_first_tap_s',
+    'mw_median_iti_s',
+    'mw_iti_cv',
     'aperiodic_exponent',
     'aperiodic_offset',
     'alpha_osc_db',
@@ -80,6 +85,20 @@ def _hrv_stat(results: Dict, metric: str) -> float:
         return float('nan')
     matched = stats.loc[stats['Metric'] == metric, 'Value']
     return float(matched.iloc[0]) if len(matched) else float('nan')
+
+
+def _mw_stat(results: Dict, key: str) -> float:
+    """`results['mind_wandering']` から1指標を取り出す。
+
+    タップログが無い日は `mind_wandering` キー自体が無いため NaN になる
+    （未記録とタップ0回を区別するため、`or` によるフォールバックで
+    0 を NaN に潰さないよう注意すること。0 はfalsyだが有効な値）。
+    """
+    mind_wandering = results.get('mind_wandering')
+    if mind_wandering is None:
+        return float('nan')
+    value = mind_wandering.get(key)
+    return float('nan') if value is None else float(value)
 
 
 def _extract_session_data(results: Dict) -> Dict:
@@ -141,6 +160,11 @@ def _extract_session_data(results: Dict) -> Dict:
         'theta_alpha_best': best_metrics.get('theta_alpha_best', float('nan')),
         'hrv_mean': mean_metrics.get('hrv_mean', float('nan')),
         'hrv_best': best_metrics.get('hrv_best', float('nan')),
+        'mw_count': _mw_stat(results, 'tap_count'),
+        'mw_rate_per_min': _mw_stat(results, 'tap_rate_per_min'),
+        'mw_time_to_first_tap_s': _mw_stat(results, 'time_to_first_tap_s'),
+        'mw_median_iti_s': _mw_stat(results, 'median_iti_s'),
+        'mw_iti_cv': _mw_stat(results, 'iti_cv'),
         'aperiodic_exponent': aperiodic_info.get('exponent', float('nan')),
         'aperiodic_offset': aperiodic_info.get('offset', float('nan')),
         'alpha_osc_db': aperiodic_info.get('alpha_osc_db', float('nan')),

@@ -95,37 +95,59 @@ OUTPUT_DIR="${2:-$PROJECT_ROOT/tmp}"
 # セッションログ保存先（環境変数または引数、デフォルト: none）
 SAVE_TO="${3:-${SAVE_TO:-csv}}"
 
+# Museファイル名からタイムスタンプを抽出
+# 例: mindMonitor_2026-01-10--16-08-53_1294036912907381397.csv
+#     → 2026-01-10--16-08-53
+CSV_BASENAME=$(basename "$CSV_FILE")
+TIMESTAMP=$(echo "$CSV_BASENAME" | grep -oP 'mindMonitor_\K[0-9]{4}-[0-9]{2}-[0-9]{2}--[0-9]{2}-[0-9]{2}-[0-9]{2}')
+
+if [ -z "$TIMESTAMP" ]; then
+    echo "警告: Museファイル名からタイムスタンプを抽出できませんでした"
+fi
+
 # Selfloopsファイルの検出（タイムスタンプマッチング方式）
 SELFLOOPS_FILE=""
-if [ -d "$PROJECT_ROOT/data/selfloops" ]; then
-    # Museファイル名からタイムスタンプを抽出
-    # 例: mindMonitor_2026-01-10--16-08-53_1294036912907381397.csv
-    #     → 2026-01-10--16-08-53
-    CSV_BASENAME=$(basename "$CSV_FILE")
-    TIMESTAMP=$(echo "$CSV_BASENAME" | grep -oP 'mindMonitor_\K[0-9]{4}-[0-9]{2}-[0-9]{2}--[0-9]{2}-[0-9]{2}-[0-9]{2}')
+if [ -n "$TIMESTAMP" ] && [ -d "$PROJECT_ROOT/data/selfloops" ]; then
+    # 同じタイムスタンプのSelfloopsファイルを検索
+    # 例: selfloops_2026-01-10--16-08-50.csv（数秒のズレは許容）
+    # 完全一致を優先、なければ同じ分（HH-MM）で検索
+    SELFLOOPS_EXACT="${PROJECT_ROOT}/data/selfloops/selfloops_${TIMESTAMP}.csv"
 
-    if [ -n "$TIMESTAMP" ]; then
-        # 同じタイムスタンプのSelfloopsファイルを検索
-        # 例: selfloops_2026-01-10--16-08-50.csv（数秒のズレは許容）
-        # 完全一致を優先、なければ同じ分（HH-MM）で検索
-        SELFLOOPS_EXACT="${PROJECT_ROOT}/data/selfloops/selfloops_${TIMESTAMP}.csv"
-
-        if [ -f "$SELFLOOPS_EXACT" ]; then
-            SELFLOOPS_FILE="$SELFLOOPS_EXACT"
-            echo "検出されたSelfloopsファイル（完全一致）: $SELFLOOPS_FILE"
-        else
-            # 完全一致がない場合、同じ分（秒は無視）で検索
-            TIMESTAMP_PREFIX=$(echo "$TIMESTAMP" | cut -d'-' -f1-5)  # YYYY-MM-DD--HH-MM
-            SELFLOOPS_FILE=$(find "$PROJECT_ROOT/data/selfloops" -name "selfloops_${TIMESTAMP_PREFIX}-*.csv" -type f | head -1)
-
-            if [ -n "$SELFLOOPS_FILE" ]; then
-                echo "検出されたSelfloopsファイル（同一分）: $SELFLOOPS_FILE"
-            else
-                echo "Selfloopsファイルが見つかりませんでした（Muse心拍数を使用）"
-            fi
-        fi
+    if [ -f "$SELFLOOPS_EXACT" ]; then
+        SELFLOOPS_FILE="$SELFLOOPS_EXACT"
+        echo "検出されたSelfloopsファイル（完全一致）: $SELFLOOPS_FILE"
     else
-        echo "警告: Museファイル名からタイムスタンプを抽出できませんでした"
+        # 完全一致がない場合、同じ分（秒は無視）で検索
+        TIMESTAMP_PREFIX=$(echo "$TIMESTAMP" | cut -d'-' -f1-5)  # YYYY-MM-DD--HH-MM
+        SELFLOOPS_FILE=$(find "$PROJECT_ROOT/data/selfloops" -name "selfloops_${TIMESTAMP_PREFIX}-*.csv" -type f | head -1)
+
+        if [ -n "$SELFLOOPS_FILE" ]; then
+            echo "検出されたSelfloopsファイル（同一分）: $SELFLOOPS_FILE"
+        else
+            echo "Selfloopsファイルが見つかりませんでした（Muse心拍数を使用）"
+        fi
+    fi
+fi
+
+# タップ打刻ログの検出（Museセッション開始時刻から±5分以内の最近傍、bashではなくPython側でマッチング）
+TAP_FILE=""
+if [ -n "$TIMESTAMP" ] && [ -d "$PROJECT_ROOT/data/taps" ]; then
+    TAP_FILE=$("$PROJECT_ROOT/venv/bin/python" -c "
+import sys
+sys.path.insert(0, '$PROJECT_ROOT')
+import pandas as pd
+from lib.loaders.tap_log import find_tap_log_for_session
+
+session_start = pd.to_datetime(sys.argv[1], format='%Y-%m-%d--%H-%M-%S')
+result = find_tap_log_for_session('$PROJECT_ROOT/data/taps', session_start)
+if result is not None:
+    print(result)
+" "$TIMESTAMP" 2>/dev/null || true)
+
+    if [ -n "$TAP_FILE" ]; then
+        echo "検出されたタップログファイル: $TAP_FILE"
+    else
+        echo "タップログファイルが見つかりませんでした（マインドワンダリング分析をスキップ）"
     fi
 fi
 
@@ -146,12 +168,12 @@ echo "セッションログ保存先: $SAVE_TO"
 echo ""
 
 # プロジェクトルートの共通スクリプトを使用
-# Selfloopsファイルがあれば渡す
-if [ -n "$SELFLOOPS_FILE" ]; then
-    python "$PROJECT_ROOT/scripts/generate_report.py" --data "$CSV_FILE" --output "$OUTPUT_DIR" --save-to "$SAVE_TO" --selfloops-data "$SELFLOOPS_FILE"
-else
-    python "$PROJECT_ROOT/scripts/generate_report.py" --data "$CSV_FILE" --output "$OUTPUT_DIR" --save-to "$SAVE_TO"
-fi
+# 任意データ（Selfloops/タップログ）は、あるときだけ引数を積む
+GENERATE_REPORT_ARGS=(--data "$CSV_FILE" --output "$OUTPUT_DIR" --save-to "$SAVE_TO")
+[ -n "$SELFLOOPS_FILE" ] && GENERATE_REPORT_ARGS+=(--selfloops-data "$SELFLOOPS_FILE")
+[ -n "$TAP_FILE" ] && GENERATE_REPORT_ARGS+=(--tap-data "$TAP_FILE")
+
+python "$PROJECT_ROOT/scripts/generate_report.py" "${GENERATE_REPORT_ARGS[@]}"
 
 echo ""
 echo "============================================================"

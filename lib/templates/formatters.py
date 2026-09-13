@@ -175,3 +175,66 @@ def format_aperiodic_peaks(peaks: pd.DataFrame) -> pd.DataFrame:
         'height': 'Height',
         'bandwidth_hz': 'Bandwidth (Hz)',
     })
+
+
+def format_mind_wandering_stats(stats: dict) -> pd.DataFrame:
+    """
+    `results['mind_wandering']`（`calculate_mind_wandering_stats()` の戻り値）を
+    テーブル用DataFrameに変換する
+
+    Parameters
+    ----------
+    stats : dict
+        {'tap_count', 'duration_min', 'tap_rate_per_min', 'time_to_first_tap_s',
+         'median_iti_s', 'iti_cv'}
+
+    Returns
+    -------
+    pd.DataFrame
+        Metric/Value/Unitの3カラムを持つDataFrame
+    """
+    def _decimal(value) -> str:
+        """小数1桁。未測定はN/A（format_aperiodic_stats の _decimal に倣う）"""
+        return 'N/A' if value is None or pd.isna(value) else f'{value:.1f}'
+
+    def _count(value) -> str:
+        return 'N/A' if value is None or pd.isna(value) else f'{int(value)}'
+
+    rows = [
+        {'Metric': 'Tap Count', 'Value': _count(stats.get('tap_count')), 'Unit': 'count'},
+        {'Metric': 'Tap Rate', 'Value': _decimal(stats.get('tap_rate_per_min')), 'Unit': 'taps/min'},
+        {'Metric': 'Time to First Tap', 'Value': _decimal(stats.get('time_to_first_tap_s')), 'Unit': 's'},
+        {'Metric': 'Median Inter-Tap Interval', 'Value': _decimal(stats.get('median_iti_s')), 'Unit': 's'},
+        {'Metric': 'Inter-Tap Interval CV', 'Value': _decimal(stats.get('iti_cv')), 'Unit': '-'},
+    ]
+
+    return pd.DataFrame(rows)
+
+
+def format_mind_wandering_segments(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    `results['mind_wandering_segments']`（`calculate_segment_tap_counts()` の
+    戻り値）を表示用の列名に整える
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        `segment_index`, `segment_start`, `segment_end`, `tap_count` の4列
+
+    Returns
+    -------
+    pd.DataFrame
+        `Segment`, `Time Range`, `Tap Count` の3列を持つDataFrame
+    """
+    if df is None or df.empty:
+        return df
+
+    time_range = (
+        df['segment_start'].dt.strftime('%H:%M:%S') + ' - ' + df['segment_end'].dt.strftime('%H:%M:%S')
+    )
+
+    return pd.DataFrame({
+        'Segment': df['segment_index'],
+        'Time Range': time_range,
+        'Tap Count': df['tap_count'],
+    })

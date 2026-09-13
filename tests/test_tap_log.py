@@ -34,7 +34,7 @@ class TestTapLogRecorder:
         recorder.tap('2026-01-01T00:00:01.000Z')
         recorder.stop('2026-01-01T00:00:02.000Z')
 
-        csv_path = tmp_path / f'{recorder.session_id}_taps.csv'
+        csv_path = tmp_path / f'taps_{recorder.session_id}.csv'
         assert csv_path.exists()
 
         with open(csv_path, newline='') as f:
@@ -53,7 +53,7 @@ class TestTapLogRecorder:
         recorder.tap('t2')
         recorder.stop('t3')
 
-        csv_path = tmp_path / f'{recorder.session_id}_taps.csv'
+        csv_path = tmp_path / f'taps_{recorder.session_id}.csv'
         rows = _read_csv_rows(csv_path)
         seqs = [int(row['seq']) for row in rows]
 
@@ -66,7 +66,7 @@ class TestTapLogRecorder:
         recorder.tap('t2')
         recorder.stop('t3')
 
-        csv_path = tmp_path / f'{recorder.session_id}_taps.csv'
+        csv_path = tmp_path / f'taps_{recorder.session_id}.csv'
         rows = _read_csv_rows(csv_path)
         elapsed = [float(row['elapsed_s']) for row in rows]
 
@@ -79,7 +79,7 @@ class TestTapLogRecorder:
         recorder.start('2026-01-01T00:00:00.000Z')
         recorder.tap('2026-01-01T00:00:01.000Z')
 
-        csv_path = tmp_path / f'{recorder.session_id}_taps.csv'
+        csv_path = tmp_path / f'taps_{recorder.session_id}.csv'
         rows = _read_csv_rows(csv_path)
 
         for row in rows:
@@ -141,7 +141,7 @@ class TestTapServer:
         assert status == 200
         assert data == {'ok': True}
 
-        csv_path = tmp_path / f'{session_id}_taps.csv'
+        csv_path = tmp_path / f'taps_{session_id}.csv'
         assert csv_path.exists()
 
         rows = _read_csv_rows(csv_path)

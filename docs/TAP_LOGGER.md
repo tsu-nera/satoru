@@ -33,7 +33,7 @@ venv/bin/python scripts/tap_server.py --port 8765 --output-dir data/taps
 
 ## CSVスキーマ
 
-出力先: `data/taps/<YYYY-MM-DDTHH-MM-SS>_taps.csv`（1セッション1ファイル）
+出力先: `data/taps/taps_<YYYY-MM-DD--HH-MM-SS>.csv`（1セッション1ファイル）
 
 | カラム | 意味 |
 |--------|------|

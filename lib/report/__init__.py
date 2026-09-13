@@ -17,8 +17,10 @@ from .steps_eeg import (
 from .steps_physio import (
     analyze_fnirs,
     analyze_hrv,
+    analyze_mind_wandering,
     analyze_motion_and_hr,
     analyze_respiration,
+    load_tap_log_step,
 )
 from .steps_summary import (
     analyze_segments,
@@ -34,6 +36,8 @@ __all__ = [
     'analyze_motion_and_hr',
     'analyze_hrv',
     'analyze_respiration',
+    'load_tap_log_step',
+    'analyze_mind_wandering',
     'plot_band_power_series',
     'prepare_mne_and_spectral',
     'analyze_frontal_theta_step',

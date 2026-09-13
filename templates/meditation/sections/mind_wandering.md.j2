@@ -1,0 +1,23 @@
+## 🧠 マインドワンダリング（主観）
+
+{% if mind_wandering.stats is not none %}
+### サマリー
+
+{{ mind_wandering.stats|df_to_markdown(index=False, standardize_columns=True) }}
+
+> **指標の読み方**: タップは「注意がそれたことに気づいた瞬間」の記録であり、
+> 逸脱そのものの開始時刻ではない。Tap Rate が高いほど自覚頻度が高く、
+> Time to First Tap が短いほど早い段階で注意がそれている。Median Inter-Tap
+> Interval と CV は、タップの間隔が安定しているか（低CV）ばらついているか
+> （高CV）を示す。
+
+{% endif %}
+{% if mind_wandering.segments is not none %}
+### セグメント別タップ数
+
+{{ mind_wandering.segments|df_to_markdown(index=False, standardize_columns=True) }}
+
+> 時間帯とバンドパワーの対応は「バンドパワー時系列」グラフの縦線（タップ時刻）
+> も併せて参照すること。
+
+{% endif %}

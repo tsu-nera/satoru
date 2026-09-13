@@ -50,21 +50,29 @@ from lib.sensors.eeg.visualization import (
 from .step import analysis_step
 
 
-def plot_band_power_series(df, img_dir, results):
+def plot_band_power_series(df, img_dir, results, tap_df=None):
     """バンドパワー時系列（Museアプリ風）をプロットする。
+
+    `tap_df` があればタップ時刻を縦線でオーバーレイする（任意データ）。
 
     元コードで try/except に包まれていないため、失敗時は例外をそのまま伝播させる。
     """
     print('プロット中: バンドパワー時系列...')
     df_quality, quality_mask = filter_eeg_quality(df)
     df_for_band = df_quality if not df_quality.empty else df
+
+    event_times = None
+    if tap_df is not None:
+        event_times = tap_df.loc[tap_df['event'] == 'tap', 'TimeStamp']
+
     plot_band_power_time_series(
         df_for_band,
         img_path=img_dir / 'band_power_time_series.png',
         rolling_window=200,
         resample_interval='10s',
         smooth_window=5,
-        clip_percentile=98.0
+        clip_percentile=98.0,
+        event_times=event_times
     )
     results['band_power_img'] = 'band_power_time_series.png'
     results['band_power_quality_ratio'] = float(quality_mask.mean())

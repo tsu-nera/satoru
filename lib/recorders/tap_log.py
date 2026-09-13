@@ -35,8 +35,8 @@ class TapLogRecorder:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         now = datetime.now()
-        self.session_id = now.strftime('%Y-%m-%dT%H-%M-%S')
-        self.csv_path = self.output_dir / f'{self.session_id}_taps.csv'
+        self.session_id = now.strftime('%Y-%m-%d--%H-%M-%S')
+        self.csv_path = self.output_dir / f'taps_{self.session_id}.csv'
         self.start_server_time = now.astimezone()
         self._seq = 0
 
