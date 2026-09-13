@@ -36,12 +36,14 @@ from lib.report import (
     analyze_fnirs,
     analyze_frontal_theta_step,
     analyze_hrv,
+    analyze_mind_wandering,
     analyze_motion_and_hr,
     analyze_respiration,
     analyze_segments,
     analyze_smr_step,
     build_statistical_dataframe,
     calculate_session_score,
+    load_tap_log_step,
     plot_band_power_series,
     plot_band_ratios_step,
     prepare_mne_and_spectral,
@@ -83,7 +85,7 @@ def generate_markdown_report(data_path, output_dir, results):
 
 
 def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0, selfloops_data=None,
-                      artifact_window_samples=ARTIFACT_WINDOW_SAMPLES):
+                      tap_data=None, artifact_window_samples=ARTIFACT_WINDOW_SAMPLES):
     """
     完全な分析を実行
 
@@ -102,6 +104,8 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         ウォームアップ除外時間（分）。短い記録の場合は0を指定。
     selfloops_data : Path, default=None
         Selfloops HRVデータファイルパス（オプション）
+    tap_data : Path, default=None
+        タップ打刻ログファイルパス（オプション）。マインドワンダリング分析に使用
     artifact_window_samples : int, default=ARTIFACT_WINDOW_SAMPLES
         アーチファクト判定兼PSDのWelch窓長（サンプル）。窓長を変えると除外率が
         大きく動くため、比較実験用に上書きできる（docs/adr/001）
@@ -175,8 +179,11 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
     # 呼吸分析（ECG-Derived Respiration）
     respiration_result = analyze_respiration(hrv_data, results)
 
+    # タップ打刻ログ読み込み（オプション。プロットのオーバーレイで使うため早めに読む）
+    tap_df = load_tap_log_step(tap_data, results)
+
     # バンドパワー時系列（Museアプリ風）
-    df_quality = plot_band_power_series(df, img_dir, results)
+    df_quality = plot_band_power_series(df, img_dir, results, tap_df)
 
     # MNE RAW準備 + PSD/スペクトログラム/PAF/ITF + EEGスペクトル解析
     # （PSDピーク・Alpha Power・FAA・Spectral Entropyを含む）
@@ -199,7 +206,12 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         )
 
     # 時間セグメント分析
-    analyze_segments(df_quality, fmtheta_result, smr_result, statistical_df, img_dir, results, warmup_minutes)
+    segment_result = analyze_segments(
+        df_quality, fmtheta_result, smr_result, statistical_df, img_dir, results, warmup_minutes
+    )
+
+    # マインドワンダリング分析（タップ打刻ログがある場合のみ）
+    analyze_mind_wandering(tap_df, segment_result, results)
 
     # バンド比率（Statistical DFから取得）
     if statistical_df is not None:
@@ -282,6 +294,12 @@ def main():
         default=None,
         help='Selfloops HRVデータファイルパス（オプション）。指定された場合、Muse心拍数の代わりに使用'
     )
+    parser.add_argument(
+        '--tap-data',
+        type=Path,
+        default=None,
+        help='タップ打刻ログファイルパス（オプション）。指定された場合、マインドワンダリング分析を実行'
+    )
 
     args = parser.parse_args()
 
@@ -299,6 +317,7 @@ def main():
         save_to=args.save_to,
         warmup_minutes=args.warmup,
         selfloops_data=args.selfloops_data,
+        tap_data=args.tap_data,
         artifact_window_samples=args.artifact_window_samples,
     )
 

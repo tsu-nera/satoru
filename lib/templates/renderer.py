@@ -13,6 +13,8 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from lib.templates.formatters import (
     format_aperiodic_peaks,
     format_aperiodic_stats,
+    format_mind_wandering_segments,
+    format_mind_wandering_stats,
     format_respiratory_stats,
 )
 
@@ -281,6 +283,15 @@ class MeditationReportRenderer:
 
         if ecg:
             context['ecg'] = ecg
+
+        # マインドワンダリング（タップ打刻ログがある場合のみ、任意データ）
+        mind_wandering = {}
+        if 'mind_wandering' in results:
+            mind_wandering['stats'] = format_mind_wandering_stats(results['mind_wandering'])
+        if 'mind_wandering_segments' in results:
+            mind_wandering['segments'] = format_mind_wandering_segments(results['mind_wandering_segments'])
+        if mind_wandering:
+            context['mind_wandering'] = mind_wandering
 
         # 姿勢分析（ネスト構造をそのままコピー）
         if 'posture' in results:

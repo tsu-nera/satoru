@@ -18,6 +18,7 @@ from .selfloops import (
     parse_selfloops_timestamp,
     rename_selfloops_file,
 )
+from .tap_log import find_tap_log_for_session, load_tap_log_csv
 
 __all__ = [
     # Base utilities
@@ -38,4 +39,7 @@ __all__ = [
     'generate_selfloops_filename',
     'load_selfloops_csv',
     'get_hrv_data',
+    # Tap log
+    'load_tap_log_csv',
+    'find_tap_log_for_session',
 ]

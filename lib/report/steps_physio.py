@@ -215,3 +215,34 @@ def analyze_respiration(hrv_data, results):
             )
 
     return respiration_result
+
+
+@analysis_step('タップログ読み込み', show_traceback=True)
+def load_tap_log_step(tap_data, results):
+    """タップ打刻ログを読み込む。無ければ None を返す（任意データ）。"""
+    if not (tap_data and tap_data.exists()):
+        return None
+
+    print(f'Loading tap log: {tap_data}')
+    from lib.loaders.tap_log import load_tap_log_csv
+
+    tap_df = load_tap_log_csv(tap_data)
+    results['tap_log_file'] = tap_data.name
+    return tap_df
+
+
+@analysis_step('マインドワンダリング分析', show_traceback=True)
+def analyze_mind_wandering(tap_df, segment_result, results):
+    """タップ打刻ログからマインドワンダリング指標を計算する。"""
+    if tap_df is None:
+        return None
+
+    print('計算中: マインドワンダリング分析...')
+    from lib.mind_wandering import calculate_mind_wandering_stats, calculate_segment_tap_counts
+
+    results['mind_wandering'] = calculate_mind_wandering_stats(tap_df)
+    if segment_result is not None:
+        results['mind_wandering_segments'] = calculate_segment_tap_counts(
+            tap_df, segment_result.segments
+        )
+    return results['mind_wandering']

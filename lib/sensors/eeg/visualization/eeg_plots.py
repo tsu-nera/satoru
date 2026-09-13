@@ -125,7 +125,8 @@ def plot_band_power_time_series(
     rolling_window=50,
     resample_interval='10s',
     smooth_window=5,
-    clip_percentile=None
+    clip_percentile=None,
+    event_times=None
 ):
     """
     Plot band power time series in Muse App style
@@ -146,6 +147,10 @@ def plot_band_power_time_series(
         Rolling window size (samples) for additional smoothing (centered)
     clip_percentile : float, optional
         Upper percentile threshold to clip extreme spikes (None to disable)
+    event_times : iterable of pandas.Timestamp, optional
+        Absolute timestamps to mark as vertical dashed lines (e.g. tap log
+        events). Timestamps outside the plotted range are skipped. When
+        None (default), behavior is identical to the original function.
 
     Returns
     -------
@@ -213,6 +218,23 @@ def plot_band_power_time_series(
         )
 
     format_time_axis(ax, elapsed_seconds, unit='minutes')
+
+    if event_times is not None:
+        event_seconds = (pd.DatetimeIndex(event_times) - band_data.index[0]).total_seconds()
+        max_seconds = elapsed_seconds.max() if len(elapsed_seconds) else 0.0
+        first_line = True
+        for event_second in event_seconds:
+            if event_second < 0 or event_second > max_seconds:
+                continue
+            ax.axvline(
+                event_second,
+                color='gray',
+                linestyle='--',
+                alpha=0.5,
+                linewidth=1.0,
+                label='Tap' if first_line else None,
+            )
+            first_line = False
 
     ax.set_title('Brainwave Powerbands', fontsize=16, fontweight='bold', pad=20)
     ax.set_ylabel('Power (μV²)', fontsize=12)
