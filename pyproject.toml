@@ -25,6 +25,11 @@ quote-style = "single"
 python_version = "3.12"
 files = ["lib", "scripts", "tests"]
 exclude = "^(venv|issues|analysis)/"
+# tests/ から scripts.xxx を import する際、scripts に __init__.py が無いことに起因する
+# 「同じファイルが tap_server / scripts.tap_server の二重名で見つかる」エラーを避けるため、
+# ディレクトリ構造からモジュール名を決定させる。
+mypy_path = "."
+explicit_package_bases = true
 # 科学計算ライブラリ（pandas/mne/neurokit2 等）は型スタブを持たないため無視する
 ignore_missing_imports = true
 # 段階導入。未注釈関数の本体もチェックし、明らかな誤りは拾う
