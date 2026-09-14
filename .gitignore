@@ -40,3 +40,6 @@ dashboard/
 .env
 # セッションログはgit管理する（*.csv の除外に対する例外）
 !logs/session_log.csv
+
+# Claude Code のエージェント用 worktree
+.claude/worktrees/
