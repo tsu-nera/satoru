@@ -1,3 +1,38 @@
+[project]
+name = "satoru"
+version = "0.1.0"
+description = "Muse Headband EEG / HRV analysis"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+  # NeuroKit2 が np.trapz を使うため numpy は 2.0 未満に制限
+  "numpy>=1.25,<2.0",
+  "pandas>=3.0",
+  "matplotlib>=3.7",
+  "seaborn>=0.12",
+  "scipy>=1.11",
+  "mne>=1.10",
+  # 1/f 非周期成分分離。RC 版のためピン留め（API 変更の可能性あり）
+  "specparam==2.0.0rc7",
+  "neurokit2>=0.2.12",
+  "tabulate>=0.9",
+  "jinja2>=3.1.0",
+  "google-auth>=2.23.0",
+  "google-api-python-client>=2.100.0",
+  "python-dotenv>=1.0.0",
+  "python-osc>=1.8",
+]
+
+[dependency-groups]
+dev = [
+  "ruff>=0.16",
+  "mypy>=2.3",
+  "pytest>=8.0",
+  "jupyterlab>=4.0",
+]
+
+[tool.uv]
+package = false
+
 [tool.ruff]
 target-version = "py312"
 line-length = 120

@@ -6,8 +6,8 @@ data/taps/ 配下にセッションごとの CSV として記録する。
 標準ライブラリのみで実装しており、新規の依存追加はしていない。
 
 使い方:
-    venv/bin/python scripts/tap_server.py
-    venv/bin/python scripts/tap_server.py --port 8765 --output-dir data/taps
+    uv run python scripts/tap_server.py
+    uv run python scripts/tap_server.py --port 8765 --output-dir data/taps
 """
 
 import argparse

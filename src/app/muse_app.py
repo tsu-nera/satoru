@@ -5,8 +5,7 @@ Mind Monitor経由でpre-computed band power（AF7, AF8）を受信し、
 β/α比からMind State分類 + Recoveries検出 → チャイム音でフィードバック。
 
 使い方:
-    source venv/bin/activate
-    python src/app/muse_app.py [options]
+    uv run python src/app/muse_app.py [options]
 
 オプション:
     --ip IP             リッスンIP (default: 0.0.0.0)

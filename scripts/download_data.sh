@@ -81,24 +81,6 @@ if [ ! -f "$GDRIVE_CREDENTIALS" ]; then
     exit 1
 fi
 
-# 仮想環境の確認
-if [ -z "$VIRTUAL_ENV" ]; then
-    echo "⚠️  警告: 仮想環境が有効になっていません"
-    echo "   仮想環境をアクティベートしますか？ (y/n)"
-    read -r answer
-    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
-        if [ -f "$PROJECT_ROOT/venv/bin/activate" ]; then
-            source "$PROJECT_ROOT/venv/bin/activate"
-            echo "✅ 仮想環境をアクティベートしました"
-        else
-            echo "❌ エラー: venv/bin/activate が見つかりません"
-            exit 1
-        fi
-    else
-        echo "仮想環境なしで続行します..."
-    fi
-fi
-
 # データダウンロード関数
 download_source_data() {
     local source_name=$1
@@ -124,14 +106,14 @@ download_source_data() {
     # CSVファイルをダウンロード
     if [ "$DATE_OPTION" = "latest" ]; then
         echo "最新ファイルをダウンロード中..."
-        python scripts/fetch_from_gdrive.py \
+        uv run python scripts/fetch_from_gdrive.py \
             --credentials "$GDRIVE_CREDENTIALS" \
             --folder-id "$folder_id" \
             --download latest \
             --output "$data_dir"
     else
         echo "日付指定でダウンロード中: $DATE_OPTION"
-        python scripts/fetch_from_gdrive.py \
+        uv run python scripts/fetch_from_gdrive.py \
             --credentials "$GDRIVE_CREDENTIALS" \
             --folder-id "$folder_id" \
             --download "$DATE_OPTION" \

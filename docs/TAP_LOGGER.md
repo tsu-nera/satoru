@@ -5,7 +5,7 @@
 ## 起動手順
 
 ```bash
-venv/bin/python scripts/tap_server.py
+uv run python scripts/tap_server.py
 ```
 
 CLI 引数:
@@ -19,7 +19,7 @@ CLI 引数:
 起動すると、スマホから開くべきURL（`http://<PCのLAN IP>:<port>/`）が標準出力に表示される。
 
 ```bash
-venv/bin/python scripts/tap_server.py --port 8765 --output-dir data/taps
+uv run python scripts/tap_server.py --port 8765 --output-dir data/taps
 ```
 
 ## スマホからの接続手順

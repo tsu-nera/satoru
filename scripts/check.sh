@@ -17,13 +17,6 @@ set -uo pipefail
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT" || exit 1
 
-PY=venv/bin/python
-if [ ! -x "$PY" ]; then
-    echo "❌ venv が見つかりません: $PROJECT_ROOT/venv"
-    echo "   セットアップ: uv venv venv && VIRTUAL_ENV=venv uv pip install -r requirements-dev.txt"
-    exit 1
-fi
-
 TARGET="${1:-all}"
 FAILED=()
 
@@ -43,21 +36,21 @@ run_stage() {
 
 case "$TARGET" in
     fix)
-        exec $PY -m ruff check . --fix
+        exec uv run ruff check . --fix
         ;;
     lint)
-        run_stage "ruff (lint)" $PY -m ruff check .
+        run_stage "ruff (lint)" uv run ruff check .
         ;;
     types)
-        run_stage "mypy (型チェック)" $PY -m mypy
+        run_stage "mypy (型チェック)" uv run mypy
         ;;
     test)
-        run_stage "pytest" $PY -m pytest
+        run_stage "pytest" uv run python -m pytest
         ;;
     all)
-        run_stage "ruff (lint)" $PY -m ruff check .
-        run_stage "mypy (型チェック)" $PY -m mypy
-        run_stage "pytest" $PY -m pytest
+        run_stage "ruff (lint)" uv run ruff check .
+        run_stage "mypy (型チェック)" uv run mypy
+        run_stage "pytest" uv run python -m pytest
         ;;
     *)
         echo "❌ 不明な引数: $TARGET (使えるのは all|lint|types|test|fix)"

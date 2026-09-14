@@ -17,6 +17,7 @@ pom.xml.asc
 /.cpcache
 
 resources/creds.edn
+.venv
 venv
 .ipynb_checkpoints
 __pycache__/
@@ -36,7 +37,6 @@ private/
 # Generated dashboard
 dashboard/
 
-venv
 .env
 # セッションログはgit管理する（*.csv の除外に対する例外）
 !logs/session_log.csv

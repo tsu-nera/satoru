@@ -12,19 +12,17 @@ Muse Headband（脳波測定デバイス）から取得したデータの解析�
 
 ## Python 仮想環境
 
-### 環境名
-- `venv`
+### 環境管理
+[uv](https://docs.astral.sh/uv/) のプロジェクト管理モードを使用します。依存関係は `pyproject.toml` の `[project].dependencies` / `[dependency-groups] dev` に定義し、解決結果は `uv.lock` に固定してコミットします。
 
 ### セットアップ手順
 ```bash
-# 環境の作成
-python3 -m venv venv
+# 依存関係のインストール（本番 + 開発用グループ）
+uv sync --all-groups
 
-# 有効化 (WSL/Linux)
-source venv/bin/activate
-
-# パッケージインストール
-pip install -r requirements.txt
+# コマンド実行（activate 不要）
+uv run python scripts/xxx.py
+uv run pytest
 ```
 
 ### インストール済みパッケージ
@@ -42,7 +40,7 @@ pip install -r requirements.txt
 ### Jupyter Lab
 分析用ノートブックは以下で起動します：
 ```bash
-jupyter lab
+uv run jupyter lab
 ```
 
 ### WSL2 環境
@@ -91,7 +89,7 @@ satoru/
 ├── docs/              # ドキュメント
 ├── notebooks/         # Jupyter notebooks
 ├── scripts/           # Python スクリプト
-└── venv/              # Python 仮想環境
+└── .venv/             # Python 仮想環境（uv sync で生成）
 ```
 
 ### 命名規則
