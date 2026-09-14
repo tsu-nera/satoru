@@ -7,9 +7,9 @@
 ## Codex-specific Settings
 
 ### Virtual Environment
-Ensure the `venv` virtual environment is activated:
+Dependencies are managed with `uv` (project mode). Install once, then run commands via `uv run` (no activation needed):
 ```bash
-source venv/bin/activate
+uv sync --all-groups
 ```
 
 ---
@@ -18,11 +18,11 @@ source venv/bin/activate
 
 ### Common Commands
 ```bash
-# Activate environment
-source venv/bin/activate
+# Install dependencies
+uv sync --all-groups
 
 # Start Jupyter Lab
-jupyter lab
+uv run jupyter lab
 ```
 
 ### Key Documentation

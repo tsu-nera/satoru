@@ -5,8 +5,7 @@ Muse S + Mind Monitor からOSCでpre-computed帯域パワーを受信し、
 Alpha相対パワーが高い（リラックス状態）ときに音声・視覚フィードバックを返す。
 
 使い方:
-    source venv/bin/activate
-    python src/app/alpha_neurofeedback.py [options]
+    uv run python src/app/alpha_neurofeedback.py [options]
 
 オプション:
     --ip IP           リッスンIP (default: 0.0.0.0)

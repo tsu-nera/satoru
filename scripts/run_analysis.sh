@@ -31,20 +31,6 @@ if [ "$1" = "--fetch" ]; then
     shift  # --fetchを引数リストから削除
 fi
 
-# 仮想環境のチェック
-if [ ! -d "$PROJECT_ROOT/venv" ]; then
-    echo "エラー: 仮想環境 'venv' が見つかりません"
-    echo "以下のコマンドでセットアップしてください:"
-    echo "  cd $PROJECT_ROOT"
-    echo "  python3 -m venv venv"
-    echo "  source venv/bin/activate"
-    echo "  pip install -r requirements.txt"
-    exit 1
-fi
-
-# 仮想環境の有効化
-source "$PROJECT_ROOT/venv/bin/activate"
-
 # データダウンロード処理
 if [ "$FETCH_DATA" = true ]; then
     echo "============================================================"
@@ -132,7 +118,7 @@ fi
 # タップ打刻ログの検出（Museセッション開始時刻から±5分以内の最近傍、bashではなくPython側でマッチング）
 TAP_FILE=""
 if [ -n "$TIMESTAMP" ] && [ -d "$PROJECT_ROOT/data/taps" ]; then
-    TAP_FILE=$("$PROJECT_ROOT/venv/bin/python" -c "
+    TAP_FILE=$(cd "$PROJECT_ROOT" && uv run python -c "
 import sys
 sys.path.insert(0, '$PROJECT_ROOT')
 import pandas as pd

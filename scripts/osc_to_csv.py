@@ -6,9 +6,8 @@ Muse App / Mind Monitor 両対応。
 --source で切り替え。
 
 使い方:
-    source venv/bin/activate
-    python scripts/osc_to_csv.py --source muse_app_osc --port 5000
-    python scripts/osc_to_csv.py --source mind_monitor --port 5000
+    uv run python scripts/osc_to_csv.py --source muse_app_osc --port 5000
+    uv run python scripts/osc_to_csv.py --source mind_monitor --port 5000
 """
 
 import argparse

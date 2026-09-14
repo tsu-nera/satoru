@@ -153,8 +153,7 @@ hostname -I
 ### 4. OSCサーバー起動
 
 ```bash
-source venv/bin/activate
-python scripts/osc_receiver.py --port 5000
+uv run python scripts/osc_receiver.py --port 5000
 ```
 
 ### 5. Muse Appで接続
@@ -169,8 +168,7 @@ python scripts/osc_receiver.py --port 5000
 
 ```bash
 # 実行方法
-source venv/bin/activate
-python scripts/osc_receiver.py --port 5000
+uv run python scripts/osc_receiver.py --port 5000
 ```
 
 ## 注意事項

@@ -53,24 +53,6 @@ if [ ! -f "$GDRIVE_CREDENTIALS" ]; then
     exit 1
 fi
 
-# 仮想環境の確認
-if [ -z "$VIRTUAL_ENV" ]; then
-    echo "⚠️  警告: 仮想環境が有効になっていません"
-    echo "   仮想環境をアクティベートしますか？ (y/n)"
-    read -r answer
-    if [ "$answer" = "y" ] || [ "$answer" = "Y" ]; then
-        if [ -f "$PROJECT_ROOT/venv/bin/activate" ]; then
-            source "$PROJECT_ROOT/venv/bin/activate"
-            echo "✅ 仮想環境をアクティベートしました"
-        else
-            echo "❌ エラー: venv/bin/activate が見つかりません"
-            exit 1
-        fi
-    else
-        echo "仮想環境なしで続行します..."
-    fi
-fi
-
 # コマンドライン引数を解析
 DRY_RUN=""
 DAYS=""
@@ -117,7 +99,7 @@ else
     echo "古いファイルを削除中..."
 fi
 
-python scripts/cleanup_old_gdrive_data.py \
+uv run python scripts/cleanup_old_gdrive_data.py \
     --credentials "$GDRIVE_CREDENTIALS" \
     --folder-id "$GDRIVE_FOLDER_ID" \
     $DAYS \
