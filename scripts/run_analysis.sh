@@ -159,7 +159,7 @@ GENERATE_REPORT_ARGS=(--data "$CSV_FILE" --output "$OUTPUT_DIR" --save-to "$SAVE
 [ -n "$SELFLOOPS_FILE" ] && GENERATE_REPORT_ARGS+=(--selfloops-data "$SELFLOOPS_FILE")
 [ -n "$TAP_FILE" ] && GENERATE_REPORT_ARGS+=(--tap-data "$TAP_FILE")
 
-python "$PROJECT_ROOT/scripts/generate_report.py" "${GENERATE_REPORT_ARGS[@]}"
+uv run --project "$PROJECT_ROOT" python "$PROJECT_ROOT/scripts/generate_report.py" "${GENERATE_REPORT_ARGS[@]}"
 
 echo ""
 echo "============================================================"

@@ -6,7 +6,7 @@ Muse各種センサーデータ（EEG、fNIRS、ECG、IMU）を統合的に分�
 マークダウンレポートを生成します。
 
 Usage:
-    python generate_report.py --data <CSV_PATH> [--output <REPORT_PATH>]
+    uv run python scripts/generate_report.py --data <CSV_PATH> [--output <REPORT_PATH>]
 """
 
 import argparse
