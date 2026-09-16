@@ -94,7 +94,8 @@ def compress_file(csv_path: Path, delete_original: bool = False) -> Path:
         shutil.copyfileobj(f_in, f_out)
 
     try:
-        sys.modules[__name__].verify_compressed(csv_path, gz_path)
+        # モジュールグローバル経由で呼ぶ（テストが monkeypatch で差し替えるため）
+        verify_compressed(csv_path, gz_path)
     except VerificationError:
         gz_path.unlink(missing_ok=True)
         raise
