@@ -14,7 +14,7 @@ AIレビューの本体は Claude 自身がレポートの数値を読んで解�
 
 | オプション | 説明 | デフォルト |
 |------------|------|------------|
-| `--no-fetch` | Step 1（データ取得）をスキップし、`data/muse/` の既存CSVを使う | fetchあり |
+| `--no-fetch` | Step 1（データ取得）をスキップし、`data/muse/` の既存CSVを使う（`.csv`/`.csv.gz` どちらも対象） | fetchあり |
 | `--date YYYY-MM-DD` | 対象セッションの日付を指定 | latest（最新ファイル） |
 
 例:
@@ -42,7 +42,7 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
   bash scripts/download_data.sh all 2026-01-10
   bash scripts/run_analysis.sh data/muse/mindMonitor_2026-01-10--*.csv
   ```
-- `--no-fetch` 時は `--fetch` を付けず `bash scripts/run_analysis.sh`（`data/muse/` の最新CSVを自動選択）。
+- `--no-fetch` 時は `--fetch` を付けず `bash scripts/run_analysis.sh`（`data/muse/` の最新CSVを自動選択。`.csv.gz` はそのまま渡せば pandas が自動展開する）。
 
 **落とし穴:**
 - fetch は `.env` の `GDRIVE_CREDENTIALS`・`GDRIVE_FOLDER_ID_MUSE`・`GDRIVE_FOLDER_ID_SELFLOOPS` が必須。`.env` が無い／認証エラーが出たら、その旨を報告し `--no-fetch` で手元データを使うよう促す（勝手に `.env` を作らない）。
