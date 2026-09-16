@@ -69,7 +69,6 @@ def calculate_segment_analysis(
     segment_minutes: int = 5,
     warmup_minutes: float = 0.0,
     exclude_first_segment: bool = False,
-    exclude_last_segment: bool = False,
     smr_series: Optional[pd.Series] = None,
 ) -> SegmentAnalysisResult:
     """
@@ -90,8 +89,6 @@ def calculate_segment_analysis(
         セッション開始後の除外期間（分単位）。アーティファクト除去のため。
     exclude_first_segment : bool, default False
         最初のセグメントをスコア計算・ピーク判定から除外（relaxing phase）。
-    exclude_last_segment : bool, default False
-        最後のセグメントをスコア計算・ピーク判定から除外（post meditation stage）。
     smr_series : pd.Series, optional
         SMR（12-15Hz）の時系列データ（indexはタイムスタンプ）。
 
@@ -104,7 +101,7 @@ def calculate_segment_analysis(
     -----
     バンドパワー・比率・IAFはstatistical_dfから自動取得されます（MNE Epochsベース）。
     df_cleanのバンドパワー列は使用されません。
-    exclude_first/last_segmentはピーク判定・best値計算のみに影響し、
+    exclude_first_segmentはピーク判定・best値計算のみに影響し、
     レポートのテーブルには全セグメントが表示されます。
     """
     # Statistical DFのバリデーション
@@ -387,8 +384,6 @@ def calculate_segment_analysis(
     excluded_indices = set()
     if exclude_first_segment and len(all_indices) > 0:
         excluded_indices.add(all_indices[0])
-    if exclude_last_segment and len(all_indices) > 0:
-        excluded_indices.add(all_indices[-1])
 
     # アーチファクト除去率が高いセグメントをピーク判定・best値から除外する。
     # これを入れないと、まばたき等の大振幅アーチファクトがθ/αとFmθを押し上げ、
@@ -422,12 +417,11 @@ def calculate_segment_analysis(
     band_power_rows = []
     metrics_rows = []
     first_idx = all_indices[0] if all_indices else None
-    last_idx = all_indices[-1] if all_indices else None
 
     for _idx, row in segment_frame.iterrows():
         seg_idx = int(row['segment_index'])
 
-        # 備考列: 最初/最後/ピークを表示
+        # 備考列: 最初/ピーク/データ由来の除外理由を表示
         note = ''
         if seg_idx in artifact_indices:
             note = 'artifact'
@@ -435,8 +429,6 @@ def calculate_segment_analysis(
             note = 'noisy'
         elif exclude_first_segment and seg_idx == first_idx:
             note = 'relaxing'
-        elif exclude_last_segment and seg_idx == last_idx:
-            note = 'post meditation'
         elif peak_idx is not None and seg_idx == peak_idx:
             note = 'peak'
 
@@ -725,7 +717,8 @@ def calculate_best_metrics(segment_result: SegmentAnalysisResult) -> Dict[str, f
     集中瞑想の観点から各指標の選定基準を決定:
     - fm_theta, iaf, alpha, theta_alpha: 最大値（高いほど良い）
     - beta: 最小値（低いほど良い）
-    除外セグメント（relaxing/post meditation）はbest値計算から除外されます。
+    除外セグメント（relaxing、およびartifact/noisyなどデータ由来の除外）は
+    best値計算から除外されます。
     """
     segments = segment_result.segments
 

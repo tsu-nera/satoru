@@ -82,7 +82,6 @@ def analyze_segments(df_quality, fmtheta_result, smr_result, statistical_df, img
         segment_minutes=3,
         warmup_minutes=warmup_minutes,
         exclude_first_segment=True,  # relaxing phase
-        exclude_last_segment=True,   # post meditation stage
         smr_series=smr_result.time_series if smr_result else None,
     )
     print('プロット中: 時間セグメント比較...')
