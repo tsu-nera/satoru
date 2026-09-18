@@ -52,6 +52,14 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
 
 エラーが出たら握りつぶさず内容を報告する。
 
+レポート生成が成功したら、そのセッションの Muse CSV を圧縮する（`run_analysis.sh` が出力する「使用するCSVファイル」のパスを使う）。
+
+```bash
+[[ "$CSV_PATH" == *.csv ]] && uv run python scripts/compress_muse_data.py --file "$CSV_PATH" --delete-original
+```
+
+`.csv.gz` を使った実行では何もしない。
+
 ## Step 3: AIレビュー
 
 `tmp/REPORT.md` を読み、下記観点で解釈する。レポートに含まれる図（`tmp/img/*.png`）は必要に応じて参照する。
