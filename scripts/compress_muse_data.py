@@ -13,6 +13,9 @@ data/muse/ 配下の Muse CSV をその場で gzip 圧縮するスクリプト
 
     # 対象ディレクトリを変更する（テスト等）
     uv run python scripts/compress_muse_data.py --data-dir /path/to/dir
+
+    # 単一ファイルのみを圧縮する（セッション単位の圧縮）
+    uv run python scripts/compress_muse_data.py --file data/muse/mindMonitor_2026-01-01--00-00-00.csv
 """
 
 from __future__ import annotations
@@ -108,11 +111,17 @@ def compress_file(csv_path: Path, delete_original: bool = False) -> Path:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description='data/muse/ 配下の Muse CSV を gzip 圧縮する')
-    parser.add_argument(
+    target_group = parser.add_mutually_exclusive_group()
+    target_group.add_argument(
         '--data-dir',
         type=Path,
-        default=DEFAULT_DATA_DIR,
+        default=None,
         help=f'対象ディレクトリ（デフォルト: {DEFAULT_DATA_DIR}）',
+    )
+    target_group.add_argument(
+        '--file',
+        type=Path,
+        help='単一の .csv ファイルを圧縮する（--data-dir と同時指定不可）',
     )
     parser.add_argument(
         '--delete-original',
@@ -121,15 +130,24 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
-    data_dir: Path = args.data_dir
-    if not data_dir.is_dir():
-        print(f'エラー: ディレクトリが見つかりません: {data_dir}', file=sys.stderr)
-        return 1
+    if args.file is not None:
+        if not args.file.is_file():
+            print(f'エラー: ファイルが見つかりません: {args.file}', file=sys.stderr)
+            return 1
+        if args.file.suffix != '.csv':
+            print(f'エラー: .csv ファイルではありません: {args.file}', file=sys.stderr)
+            return 1
+        csv_files = [args.file]
+    else:
+        data_dir = args.data_dir if args.data_dir is not None else DEFAULT_DATA_DIR
+        if not data_dir.is_dir():
+            print(f'エラー: ディレクトリが見つかりません: {data_dir}', file=sys.stderr)
+            return 1
 
-    csv_files = sorted(data_dir.glob('*.csv'))
-    if not csv_files:
-        print(f'圧縮対象のCSVファイルが見つかりません: {data_dir}')
-        return 0
+        csv_files = sorted(data_dir.glob('*.csv'))
+        if not csv_files:
+            print(f'圧縮対象のCSVファイルが見つかりません: {data_dir}')
+            return 0
 
     failure_count = 0
 

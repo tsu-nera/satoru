@@ -107,3 +107,81 @@ class TestMain:
         gz_path = csv_path.with_suffix(csv_path.suffix + '.gz')
         assert csv_path.exists()
         assert not gz_path.exists()
+
+
+class TestMainFile:
+    """main の --file 単一ファイル指定のユニットテスト"""
+
+    def test_compresses_single_file_and_keeps_original(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / 'mindMonitor_2026-01-01--00-00-00.csv'
+        _write_sample_csv(csv_path)
+
+        result = main(['--file', str(csv_path)])
+
+        assert result == 0
+        gz_path = csv_path.with_suffix(csv_path.suffix + '.gz')
+        assert gz_path.exists()
+        assert csv_path.exists()
+
+    def test_delete_original_removes_source_after_success(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / 'mindMonitor_2026-01-01--00-00-00.csv'
+        _write_sample_csv(csv_path)
+
+        result = main(['--file', str(csv_path), '--delete-original'])
+
+        assert result == 0
+        gz_path = csv_path.with_suffix(csv_path.suffix + '.gz')
+        assert gz_path.exists()
+        assert not csv_path.exists()
+
+    def test_file_and_data_dir_together_is_mutually_exclusive(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / 'mindMonitor_2026-01-01--00-00-00.csv'
+        _write_sample_csv(csv_path)
+
+        with pytest.raises(SystemExit) as excinfo:
+            main(['--file', str(csv_path), '--data-dir', str(tmp_path)])
+
+        assert excinfo.value.code != 0
+
+    def test_nonexistent_file_returns_nonzero(self, tmp_path: Path) -> None:
+        result = main(['--file', str(tmp_path / 'does-not-exist.csv')])
+
+        assert result != 0
+
+    def test_non_csv_extension_returns_nonzero(self, tmp_path: Path) -> None:
+        txt_path = tmp_path / 'not-a-csv.txt'
+        txt_path.write_text('dummy')
+
+        result = main(['--file', str(txt_path)])
+
+        assert result != 0
+
+    def test_verification_failure_keeps_original_and_removes_gz(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        csv_path = tmp_path / 'mindMonitor_2026-01-01--00-00-00.csv'
+        _write_sample_csv(csv_path)
+
+        def _fail_verify(csv_path: Path, gz_path: Path) -> None:
+            raise VerificationError('検証失敗（テスト用）')
+
+        monkeypatch.setattr(compress_muse_data, 'verify_compressed', _fail_verify)
+
+        result = main(['--file', str(csv_path)])
+
+        assert result != 0
+        gz_path = csv_path.with_suffix(csv_path.suffix + '.gz')
+        assert csv_path.exists()
+        assert not gz_path.exists()
+
+    def test_skips_when_gz_already_exists(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / 'mindMonitor_2026-01-01--00-00-00.csv'
+        _write_sample_csv(csv_path)
+        gz_path = csv_path.with_suffix(csv_path.suffix + '.gz')
+        gz_path.write_bytes(b'dummy-existing-gz')
+
+        result = main(['--file', str(csv_path), '--delete-original'])
+
+        assert result == 0
+        assert csv_path.exists()
+        assert gz_path.read_bytes() == b'dummy-existing-gz'
