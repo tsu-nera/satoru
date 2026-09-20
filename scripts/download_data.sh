@@ -5,12 +5,13 @@
 #   ./scripts/download_data.sh <source> [date]
 #
 # Arguments:
-#   source  : データソース (muse, selfloops, all)
+#   source  : データソース (muse, selfloops, taps, all)
 #   date    : ダウンロード対象日付 (latest または YYYY-MM-DD、デフォルト: latest)
 #
 # Examples:
 #   ./scripts/download_data.sh muse latest
 #   ./scripts/download_data.sh selfloops 2025-01-10
+#   ./scripts/download_data.sh taps latest
 #   ./scripts/download_data.sh all latest
 
 set -e  # エラー時に停止
@@ -25,12 +26,13 @@ show_help() {
     echo "Usage: $0 <source> [date]"
     echo ""
     echo "Arguments:"
-    echo "  source  : データソース (muse, selfloops, all)"
+    echo "  source  : データソース (muse, selfloops, taps, all)"
     echo "  date    : ダウンロード対象日付 (latest または YYYY-MM-DD、デフォルト: latest)"
     echo ""
     echo "Examples:"
     echo "  $0 muse latest"
     echo "  $0 selfloops 2025-01-10"
+    echo "  $0 taps latest"
     echo "  $0 all latest"
     exit 0
 }
@@ -44,9 +46,9 @@ SOURCE="$1"
 DATE_OPTION="${2:-latest}"
 
 # データソースの検証
-if [ "$SOURCE" != "muse" ] && [ "$SOURCE" != "selfloops" ] && [ "$SOURCE" != "all" ]; then
+if [ "$SOURCE" != "muse" ] && [ "$SOURCE" != "selfloops" ] && [ "$SOURCE" != "taps" ] && [ "$SOURCE" != "all" ]; then
     echo "❌ エラー: 無効なデータソース: $SOURCE"
-    echo "   有効な値: muse, selfloops, all"
+    echo "   有効な値: muse, selfloops, taps, all"
     echo ""
     show_help
 fi
@@ -140,14 +142,18 @@ download_source_data() {
 # ダウンロード実行
 case "$SOURCE" in
     "muse")
-        download_source_data "Muse" "GDRIVE_FOLDER_ID_MUSE" "$PROJECT_ROOT/data/muse"
+        download_source_data "Muse" "GDRIVE_FOLDER_ID_MUSE" "$PROJECT_ROOT/data/muse" || true
         ;;
     "selfloops")
-        download_source_data "Selfloops" "GDRIVE_FOLDER_ID_SELFLOOPS" "$PROJECT_ROOT/data/selfloops"
+        download_source_data "Selfloops" "GDRIVE_FOLDER_ID_SELFLOOPS" "$PROJECT_ROOT/data/selfloops" || true
+        ;;
+    "taps")
+        download_source_data "Taps" "GDRIVE_FOLDER_ID_TAPS" "$PROJECT_ROOT/data/taps" || true
         ;;
     "all")
-        download_source_data "Muse" "GDRIVE_FOLDER_ID_MUSE" "$PROJECT_ROOT/data/muse"
-        download_source_data "Selfloops" "GDRIVE_FOLDER_ID_SELFLOOPS" "$PROJECT_ROOT/data/selfloops"
+        download_source_data "Muse" "GDRIVE_FOLDER_ID_MUSE" "$PROJECT_ROOT/data/muse" || true
+        download_source_data "Selfloops" "GDRIVE_FOLDER_ID_SELFLOOPS" "$PROJECT_ROOT/data/selfloops" || true
+        download_source_data "Taps" "GDRIVE_FOLDER_ID_TAPS" "$PROJECT_ROOT/data/taps" || true
         ;;
 esac
 

@@ -63,6 +63,14 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
 
 `.csv.gz` を使った実行では何もしない。
 
+タップログもアップロードする（当日のタップログファイルを指定）。
+
+```bash
+uv run python scripts/upload_to_gdrive.py --file data/taps/<当日のタップログ>.csv
+```
+
+`GDRIVE_FOLDER_ID_TAPS` 未設定なら警告を出してスキップする。冪等なので再実行しても重複しない。
+
 ## Step 3: AIレビュー
 
 `tmp/REPORT.md` を読み、下記観点で解釈する。レポートに含まれる図（`tmp/img/*.png`）は必要に応じて参照する。
