@@ -54,6 +54,12 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from googleapiclient.http import MediaFileUpload
 
+# プロジェクトルートをパスに追加
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.env import load_env
+
+load_env()
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DATA_DIR = PROJECT_ROOT / 'data' / 'taps'
 

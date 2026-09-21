@@ -20,10 +20,17 @@ import argparse
 import os
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+
+# プロジェクトルートをパスに追加
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.env import load_env
+
+load_env()
 
 # APIスコープ（削除のために書き込み権限が必要）
 SCOPES = ['https://www.googleapis.com/auth/drive']
