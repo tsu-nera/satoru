@@ -30,7 +30,10 @@ from googleapiclient.http import MediaIoBaseDownload
 
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.env import load_env
 from lib.loaders.selfloops import generate_selfloops_filename, parse_selfloops_timestamp
+
+load_env()
 
 # APIスコープ（リネームのために書き込み権限が必要）
 SCOPES = ['https://www.googleapis.com/auth/drive']

@@ -28,7 +28,10 @@ from googleapiclient.http import MediaIoBaseDownload
 
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.env import load_env
 from lib.loaders.selfloops import rename_selfloops_file
+
+load_env()
 
 # APIスコープ（読み取り専用）
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
