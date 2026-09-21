@@ -15,6 +15,7 @@ Google DriveからMind Monitor CSVファイルを取得するスクリプト
 
 import argparse
 import os
+import re
 import sys
 import zipfile
 from datetime import datetime
@@ -234,6 +235,63 @@ def extract_zip(zip_path: str, output_dir: str) -> Optional[str]:
         return str(extracted_path)
 
 
+# ファイル名に埋め込まれた日時（例: mindMonitor_2026-09-21--07-39-38_5022520958388465773.zip）
+FILENAME_DATETIME_PATTERN = re.compile(r"(\d{4})-(\d{2})-(\d{2})--(\d{2})-(\d{2})-(\d{2})")
+
+
+def parse_filename_datetime(name: str) -> Optional[datetime]:
+    """
+    ファイル名から YYYY-MM-DD--HH-MM-SS 形式の日時を取り出す
+
+    Args:
+        name: ファイル名
+
+    Returns:
+        日時、取り出せない場合はNone
+    """
+    match = FILENAME_DATETIME_PATTERN.search(name)
+    if match is None:
+        return None
+
+    try:
+        year, month, day, hour, minute, second = (int(g) for g in match.groups())
+        return datetime(year, month, day, hour, minute, second)
+    except ValueError:
+        return None
+
+
+def select_latest_file(files: List[Dict]) -> Optional[Dict]:
+    """
+    セッションが最も新しいファイルを選ぶ
+
+    Driveの modifiedTime はアップロード順・リネーム・コピーで変わるため、
+    セッションの新しさを表さない（過去分をまとめて上げ直すと順序が崩れる）。
+    ファイル名に埋め込まれた日時を優先し、名前から日時を取り出せるファイルが
+    1つも無い場合のみ modifiedTime 降順の先頭にフォールバックする。
+
+    Args:
+        files: ファイル一覧（modifiedTime降順）
+
+    Returns:
+        選択されたファイル、一覧が空の場合はNone
+    """
+    if not files:
+        return None
+
+    dated = [(parse_filename_datetime(f["name"]), f) for f in files]
+    parsed = [(timestamp, f) for timestamp, f in dated if timestamp is not None]
+
+    if not parsed:
+        print("⚠️  ファイル名から日時を取得できませんでした。更新日時が最新のファイルを使用します")
+        return files[0]
+
+    if len(parsed) < len(files):
+        skipped = len(files) - len(parsed)
+        print(f"⚠️  ファイル名から日時を取得できないファイルが {skipped} 個あります（選択対象から除外）")
+
+    return max(parsed, key=lambda item: item[0])[1]
+
+
 def find_file_by_date(files: List[Dict], date_str: str) -> Optional[Dict]:
     """
     日付文字列を含むファイル名を検索
@@ -328,8 +386,11 @@ def main():
         if args.download:
             target_file: Optional[Dict]
             if args.download.lower() == 'latest':
-                # 最新ファイル
-                target_file = files[0]
+                # 最新セッションのファイル（modifiedTimeではなくファイル名の日時で判定）
+                target_file = select_latest_file(files)
+                if not target_file:
+                    print("❌ ダウンロード対象のファイルがありません")
+                    sys.exit(1)
                 print(f"\n最新ファイルを選択: {target_file['name']}")
             else:
                 # 日付指定
