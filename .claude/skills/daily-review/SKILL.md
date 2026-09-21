@@ -63,6 +63,14 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
 
 `.csv.gz` を使った実行では何もしない。
 
+タップログもアップロードする（当日のタップログファイルを指定）。
+
+```bash
+uv run python scripts/upload_to_gdrive.py --file data/taps/<当日のタップログ>.csv
+```
+
+`GDRIVE_FOLDER_ID_TAPS` 未設定なら警告を出してスキップする。冪等だが、Drive UI から手動で置かれた同名ファイルは検出できない（drive.file スコープの制約）。認証はOAuthユーザー認証（初回のみブラウザ同意、テスト状態のOAuth同意画面だと約7日でトークン失効し再同意が必要）。
+
 ## Step 3: AIレビュー
 
 `tmp/REPORT.md` を読み、下記観点で解釈する。レポートに含まれる図（`tmp/img/*.png`）は必要に応じて参照する。

@@ -20,6 +20,7 @@ dependencies = [
   "google-api-python-client>=2.100.0",
   "python-dotenv>=1.0.0",
   "python-osc>=1.8",
+  "google-auth-oauthlib>=1.4.1",
 ]
 
 [dependency-groups]
