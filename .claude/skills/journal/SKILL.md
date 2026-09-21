@@ -1,6 +1,6 @@
 ---
 name: journal
-description: 瞑想セッションのレビュー結果とディスカッションを reports/journal/ に蓄積する。daily-review の後に自動で呼ばれる。
+description: 瞑想セッションのレビュー結果とディスカッションを reports/journal/ に蓄積する。session-review の後に自動で呼ばれる。
 argument-hint: "[YYYY-MM-DD]"
 user-invocable: true
 allowed-tools: Bash, Read, Write, Edit
@@ -8,7 +8,7 @@ allowed-tools: Bash, Read, Write, Edit
 
 # Journal Skill
 
-`daily-review` の解釈・文脈・次に試すことを `reports/journal/YYYY-MM.md` に残す。月ファイル1本のみ。索引も状態ファイルも台帳も持たない。
+`session-review` の解釈・文脈・次に試すことを `reports/journal/YYYY-MM.md` に残す。月ファイル1本のみ。索引も状態ファイルも台帳も持たない。
 
 **読み手は将来の agent。** 人が読み返す前提で書かない。
 

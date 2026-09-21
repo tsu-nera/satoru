@@ -1,11 +1,11 @@
 ---
-name: daily-review
-description: 瞑想セッションの日次AIレビュー。Muse脳波＋SelfLoops HRVデータを取得・分析してレポートを生成し、Claudeが脳波・自律神経・前頭前野・時系列の観点で解釈して対話する。「今日の瞑想をレビューして」「瞑想の振り返り」「daily-review」「瞑想セッションを分析して」等で起動。瞑想・EEG・HRV・Muse・SelfLoopsの振り返りや所感を求められたら、明示的に「レポート生成」と言われなくても使う。
+name: session-review
+description: 瞑想セッション単位のAIレビュー。Muse脳波＋SelfLoops HRVデータを取得・分析してレポートを生成し、Claudeが脳波・自律神経・前頭前野・時系列の観点で解釈して対話する。「今日の瞑想をレビューして」「瞑想の振り返り」「session-review」「瞑想セッションを分析して」等で起動。瞑想・EEG・HRV・Muse・SelfLoopsの振り返りや所感を求められたら、明示的に「レポート生成」と言われなくても使う。
 user-invocable: true
 allowed-tools: Bash, Read, Glob
 ---
 
-# 瞑想日次レビュースキル
+# 瞑想セッションレビュースキル
 
 データ取得 → レポート生成 → AIレビュー を1フローで実行し、レビュー後に対話する。
 AIレビューの本体は Claude 自身がレポートの数値を読んで解釈すること。ローカルで完結させる（GitHub Actions は使わない）。
@@ -15,12 +15,12 @@ AIレビューの本体は Claude 自身がレポートの数値を読んで解�
 | オプション | 説明 | デフォルト |
 |------------|------|------------|
 | `--no-fetch` | Step 1（データ取得）をスキップし、`data/muse/` の既存CSVを使う（`.csv`/`.csv.gz` どちらも対象） | fetchあり |
-| `--date YYYY-MM-DD` | 対象セッションの日付を指定 | latest（最新ファイル） |
+| `--date YYYY-MM-DD` | 対象セッションの日付を指定。同一日に複数セッションがある日は下記の落とし穴を読む | latest（最新ファイル） |
 
 例:
-- `/daily-review` → 取得→生成→レビュー
-- `/daily-review --no-fetch` → 取得スキップ、手元データでレビュー
-- `/daily-review --date 2026-01-10` → 日付指定
+- `/session-review` → 取得→生成→レビュー
+- `/session-review --no-fetch` → 取得スキップ、手元データでレビュー
+- `/session-review --date 2026-01-10` → 日付指定
 
 ## Step 0: 起動時刻と前回エントリの確認
 
@@ -45,6 +45,7 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
   bash scripts/download_data.sh all 2026-01-10
   bash scripts/run_analysis.sh data/muse/mindMonitor_2026-01-10--*.csv
   ```
+  **glob が2本以上に展開する日（1日に複数セッション）は壊れる。** `run_analysis.sh` の第2引数は出力先ディレクトリなので、2本目のCSVパスが `OUTPUT_DIR` として渡る。`ls data/muse/mindMonitor_<date>--*.csv` で本数を確認し、複数あればどのセッションかをユーザーに確認してフルパス1本だけを渡す。
 - `--no-fetch` 時は `--fetch` を付けず `bash scripts/run_analysis.sh`（`data/muse/` の最新CSVを自動選択。`.csv.gz` はそのまま渡せば pandas が自動展開する）。
 
 **落とし穴:**
