@@ -22,6 +22,8 @@ CANONICAL_COLUMNS: List[str] = [
     'duration_min',
     'fm_theta_mean',
     'fm_theta_best',
+    'fm_theta_rel_mean',
+    'fm_theta_rel_best',
     'iaf_mean',
     'iaf_best',
     'alpha_mean',
@@ -148,8 +150,10 @@ def _extract_session_data(results: Dict) -> Dict:
     return {
         'timestamp': start_time.strftime('%Y-%m-%d %H:%M:%S'),
         'duration_min': duration_min,
-        'fm_theta_mean': mean_metrics.get('fm_theta_mean', float('nan')),
-        'fm_theta_best': best_metrics.get('fm_theta_best', float('nan')),
+        # Fmθは全帯域に対する相対値。旧 fm_theta_mean/best は絶対値で、
+        # 電極ゲインに支配され比較できないため列を分けている（旧列は過去行のみ）。
+        'fm_theta_rel_mean': mean_metrics.get('fm_theta_mean', float('nan')),
+        'fm_theta_rel_best': best_metrics.get('fm_theta_best', float('nan')),
         'iaf_mean': mean_metrics.get('iaf_mean', float('nan')),
         'iaf_best': best_metrics.get('iaf_best', float('nan')),
         'alpha_mean': mean_metrics.get('alpha_mean', float('nan')),

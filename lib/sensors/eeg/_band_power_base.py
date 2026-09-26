@@ -82,6 +82,7 @@ def calculate_band_power(
     rolling_window_seconds: float = 8.0,
     raw: Optional[mne.io.BaseRaw] = None,
     default_channels: Sequence[str] = ('RAW_AF7', 'RAW_AF8'),
+    reference_band: Optional[Tuple[float, float]] = None,
 ) -> BandPowerComputation:
     """
     帯域パワー（dB単位）の時系列・統計・メタデータを計算する共通処理。
@@ -126,6 +127,23 @@ def calculate_band_power(
         outlier_percentile=0.90,
     )
 
+    # 参照帯域パワーを差し引いて相対値（dB）にする。絶対パワーは電極の接触・装着で
+    # 全帯域が一様に上下し、セッション間比較では帯域固有の変化より支配的になるため。
+    # 呼び出し側はノッチ未適用のrawを渡すことがあり、全帯域の上端から電源ノイズ（50/60Hz）が
+    # FIRの遷移帯越しに漏れて分母を膨らませるため、参照側だけノッチを掛けてから計算する。
+    if reference_band is not None:
+        reference = calculate_channel_average_power(
+            raw=raw.copy().notch_filter(freqs=[50.0, 60.0], verbose=False),
+            band=reference_band,
+            channels=channel_list,
+            start_time=start_time,
+            resample_interval=resample_interval,
+            smoothing_seconds=smoothing_seconds,
+            rolling_window_seconds=rolling_window_seconds,
+            outlier_percentile=0.90,
+        )
+        series = (series - reference).dropna()
+
     if series.empty:
         raise ValueError(empty_series_message)
 
@@ -147,7 +165,7 @@ def calculate_band_power(
         channels=channel_list,
         sfreq=float(raw.info['sfreq']),
         processing_params=processing_params,
-        extra={'band_key': band_label, **(metadata_extra or {})},
+        extra={'band_key': band_label, 'reference_band': reference_band, **(metadata_extra or {})},
     )
 
     # 後方互換性のためのキー追加
