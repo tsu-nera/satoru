@@ -83,19 +83,54 @@ def test_faa_bels_output():
     print(f"  Right power range: {result.right_power.min():.2f} - {result.right_power.max():.2f} dB")
 
 
+def test_fmtheta_is_gain_invariant():
+    """Fmθは全帯域に対する相対値なので、信号全体のゲインが変わっても値が変わらない"""
+    rng = np.random.default_rng(0)
+    n_samples = 256 * 60
+    t = np.arange(n_samples) / 256
+    base = {ch: rng.standard_normal(n_samples) * 10 + 5 * np.sin(2 * np.pi * 6.5 * t) for ch in ('RAW_AF7', 'RAW_AF8')}
+    stamps = pd.date_range('2025-01-01', periods=n_samples, freq='3.90625ms')
+
+    def fm_mean(gain):
+        df = pd.DataFrame({'TimeStamp': stamps, **{ch: v * gain for ch, v in base.items()}})
+        return calculate_frontal_theta(df).time_series.mean()
+
+    # ゲイン3倍は絶対パワーで+9.5dBに相当する
+    assert abs(fm_mean(3.0) - fm_mean(1.0)) < 0.1
+
+
+def test_fmtheta_ignores_line_noise_on_unfiltered_raw():
+    """ノッチ未適用のrawを渡しても、電源ノイズで分母が膨らまない（レポートはこの経路で呼ぶ）"""
+    from lib.sensors.eeg.preprocessing import prepare_mne_raw
+
+    rng = np.random.default_rng(0)
+    n_samples = 256 * 60
+    t = np.arange(n_samples) / 256
+    stamps = pd.date_range('2025-01-01', periods=n_samples, freq='3.90625ms')
+    clean = {ch: rng.standard_normal(n_samples) * 10 + 5 * np.sin(2 * np.pi * 6.5 * t) for ch in ('RAW_AF7', 'RAW_AF8')}
+
+    def fm_mean(line_amp):
+        line = line_amp * np.sin(2 * np.pi * 50 * t)
+        df = pd.DataFrame({'TimeStamp': stamps, **{ch: v + line for ch, v in clean.items()}})
+        raw = prepare_mne_raw(df, apply_bandpass=False, apply_notch=False)['raw']
+        return calculate_frontal_theta(df, raw=raw).time_series.mean()
+
+    assert abs(fm_mean(100.0) - fm_mean(0.0)) < 1.0
+
+
 def test_meditation_score_normalization():
     """総合スコアの正規化範囲がdBに対応していることを確認"""
-    # Fmθ: -5.0 ~ +5.0 dB の範囲でテスト（実測分布に基づくレンジ）
-    score_min = calculate_meditation_score(fmtheta=-5.0)
-    score_max = calculate_meditation_score(fmtheta=5.0)
-    score_mid = calculate_meditation_score(fmtheta=0.0)
+    # Fmθ（全帯域に対する相対値）: -15.0 ~ -7.0 dB の範囲でテスト（実測分布に基づくレンジ）
+    score_min = calculate_meditation_score(fmtheta=-15.0)
+    score_max = calculate_meditation_score(fmtheta=-7.0)
+    score_mid = calculate_meditation_score(fmtheta=-11.0)
 
     assert score_min['scores']['fmtheta'] == 0.0  # min値で0
     assert score_max['scores']['fmtheta'] == 1.0  # max値で1
     assert 0.4 < score_mid['scores']['fmtheta'] < 0.6  # 中間値で約0.5
 
     # 実測レンジのFmθがクリップされず中間域に入ること（回帰防止）
-    for observed in (-2.37, -1.34, 0.35):
+    for observed in (-14.57, -11.29, -9.87):
         s = calculate_meditation_score(fmtheta=observed)['scores']['fmtheta']
         assert 0.0 < s < 1.0, f'Fmθ={observed} がクリップされている'
 

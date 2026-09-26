@@ -454,7 +454,7 @@ def calculate_segment_analysis(
             'θ/α': row['theta_alpha_ratio'],
             'β/α': row['beta_alpha_ratio'],
             'β/θ': row['beta_theta_ratio'],
-            'Fmθ (dB)': row['fmtheta_mean'],
+            'Fmθ rel (dB)': row['fmtheta_mean'],
             'SMR (dB)': row['smr_mean'],
             'SE': row['spectral_entropy'],
             'IAF (Hz)': row['iaf_mean'],
@@ -611,13 +611,10 @@ def calculate_meditation_score(
     scores = {}
 
     # Fmθスコア（高いほど良い）
-    # レンジは実測分布から決定（2026-06〜07の5セッション）:
-    #   セッション平均 -2.37〜+0.35 dB、瞬時値 -5.18〜+6.20 dB
-    # 単位をμV²からdBへ移行した際、旧レンジ50-200 μV²に10*log10を適用した
-    # 17-23 dBが残っていたが、これは実測値と全く重ならず常時下限クリップされ、
-    # 重み最大(0.3125)のFmθスコアが恒常的に0となり総合スコアの上限が68.8だった。
+    # Fmθは全帯域（1-45Hz）に対する相対値（dB）。レンジは2026-06〜09の23セッションの
+    # 実測分布から決定: セッション平均 -14.6〜-9.9 dB、瞬時値 -20.7〜-7.0 dB。
     if fmtheta is not None:
-        scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=-5.0, max_val=5.0)
+        scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=-15.0, max_val=-7.0)
     else:
         scores['fmtheta'] = 0.5
 

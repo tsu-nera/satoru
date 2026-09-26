@@ -4,7 +4,9 @@ Frontal Midline Theta (Fmθ) 解析モジュール
 AF7/AF8チャネルをMNE-Pythonの処理パイプラインでバンドパス→ヒルベルト包絡へ変換し、
 Fmθパワーの時系列と統計指標を算出する。
 
-パワーは dB 単位（10*log10(μV²)）で出力される。
+出力は同じチャネルの全帯域（1-45Hz）パワーに対する相対値（dB）。
+絶対パワーはセッション間でAF7/AF8の全帯域ゲイン（接触・装着）に支配され、
+θ固有の変化を表さないため（2026-06〜09の23セッションで分散の81%がゲインで説明された）。
 """
 
 from __future__ import annotations
@@ -24,6 +26,9 @@ FMTHETA_BAND_OPTIONS: Dict[str, Tuple[float, float]] = {
     'medium': (5.0, 7.0),
     'wide': (4.0, 8.0),
 }
+
+#: 相対化の分母にする全帯域
+FMTHETA_REFERENCE_BAND: Tuple[float, float] = (1.0, 45.0)
 
 
 @dataclass
@@ -76,7 +81,7 @@ def calculate_frontal_theta(
     -------
     FrontalThetaResult
         時系列・統計情報・メタデータを含む解析結果。
-        時系列パワーはdB単位（10*log10(μV²)）で出力される。
+        時系列は全帯域パワーに対する相対値（dB）。
         include_alpha=Trueの場合、alpha_seriesにアルファ波時系列も含まれる。
     """
     computation = calculate_band_power(
@@ -92,6 +97,7 @@ def calculate_frontal_theta(
         smoothing_seconds=smoothing_seconds,
         rolling_window_seconds=rolling_window_seconds,
         raw=raw,
+        reference_band=FMTHETA_REFERENCE_BAND,
     )
 
     # アルファ波の計算（オプション）
