@@ -32,6 +32,10 @@ def load_tap_log_csv(csv_path: Union[str, Path]) -> pd.DataFrame:
     先頭行のオフセットを一度取り出し、UTC変換後の時刻へ明示的に足し戻してから
     tzを落とす。
 
+    `start` より前の `client_ts` を持つ行は前セッションの残骸として除外する。
+    スマホ側が送信できなかったイベントを次セッション開始時にまとめて送るため、
+    前セッションの `tap` / `stop` が今回の `start` 直後に混入することがある。
+
     Parameters
     ----------
     csv_path : str or Path
@@ -54,6 +58,11 @@ def load_tap_log_csv(csv_path: Union[str, Path]) -> pd.DataFrame:
     missing = [c for c in _REQUIRED_COLUMNS if c not in df.columns]
     if missing:
         raise ValueError(f'タップログに必須列が欠けています: {missing}')
+
+    client_ts = pd.to_datetime(df['client_ts'], format='ISO8601', utc=True)
+    start_mask = df['event'] == 'start'
+    if start_mask.any():
+        df = df.loc[client_ts >= client_ts[start_mask].iloc[0]].reset_index(drop=True)
 
     parsed = pd.to_datetime(df['server_ts'], format='ISO8601', utc=True)
 

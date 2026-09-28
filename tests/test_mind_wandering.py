@@ -16,6 +16,7 @@ matplotlib.use('Agg')
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from lib.loaders.tap_log import find_tap_log_for_session, load_tap_log_csv
 from lib.mind_wandering import calculate_mind_wandering_stats, calculate_segment_tap_counts
@@ -52,6 +53,23 @@ class TestLoadTapLogCsv:
         assert df['TimeStamp'].dt.tz is None
 
         assert df.attrs['session_start'] == pd.Timestamp('2026-01-10 16:08:53')
+
+    def test_drops_stale_events_from_previous_session(self, tmp_path: Path) -> None:
+        csv_path = tmp_path / 'taps_2026-09-22--08-08-44.csv'
+        _write_tap_csv(csv_path, [
+            [0, 'start', '2026-09-21T23:08:44.021Z', '2026-09-22T08:08:44.571+09:00', 0.0],
+            [1, 'tap', '2026-09-20T22:49:55.216Z', '2026-09-22T08:08:48.556+09:00', 3.985],
+            [2, 'stop', '2026-09-20T22:54:26.322Z', '2026-09-22T08:08:48.625+09:00', 4.054],
+            [3, 'tap', '2026-09-21T23:09:25.111Z', '2026-09-22T08:09:25.567+09:00', 40.995],
+            [4, 'stop', '2026-09-21T23:18:44.000Z', '2026-09-22T08:18:44.500+09:00', 600.0],
+        ])
+
+        df = load_tap_log_csv(csv_path)
+
+        assert df['seq'].tolist() == [0, 3, 4]
+        stats = calculate_mind_wandering_stats(df)
+        assert stats['tap_count'] == 1
+        assert stats['duration_min'] == pytest.approx(10.0)
 
     def test_missing_required_column_raises(self, tmp_path: Path) -> None:
         csv_path = tmp_path / 'taps_bad.csv'
