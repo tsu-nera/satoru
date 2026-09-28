@@ -20,8 +20,6 @@ import pandas as pd
 CANONICAL_COLUMNS: List[str] = [
     'timestamp',
     'duration_min',
-    'fm_theta_mean',
-    'fm_theta_best',
     'fm_theta_rel_mean',
     'fm_theta_rel_best',
     'iaf_mean',
@@ -37,35 +35,20 @@ CANONICAL_COLUMNS: List[str] = [
     'mw_count',
     'mw_rate_per_min',
     'mw_time_to_first_tap_s',
-    'mw_median_iti_s',
-    'mw_iti_cv',
     'aperiodic_exponent',
-    'aperiodic_offset',
     'alpha_osc_db',
-    'theta_osc_db',
     'alpha_cf_hz',
-    'theta_peak_detected',
     'delta_rel_pct',
     'theta_rel_pct',
     'alpha_rel_pct',
     'artifact_reject_pct',
     'breathing_rate_bpm',
     'breathing_rate_std',
-    'respiratory_period_s',
     'rsa_amplitude_ms',
     'rsa_band_power_ms2',
-    'sd1',
     'note',
 ]
 
-
-#: CSV往復でfloat/文字列に化けたbool値を戻すための対応表。
-# True/1/1.0 はPythonでは同一キーなので True/False のみで数値も拾える。
-_BOOL_MAP = {
-    True: True, False: False,
-    'True': True, 'False': False,
-    'TRUE': True, 'FALSE': False,
-}
 
 
 def default_log_path() -> Path:
@@ -78,15 +61,6 @@ def _order_columns(columns) -> List[str]:
     known = [c for c in CANONICAL_COLUMNS if c in columns]
     unknown = sorted(c for c in columns if c not in CANONICAL_COLUMNS)
     return known + unknown
-
-
-def _hrv_stat(results: Dict, metric: str) -> float:
-    """`results['hrv_stats']`（Domain/Metric/Value/Unit の縦持ち）から1指標を取り出す。"""
-    stats = results.get('hrv_stats')
-    if stats is None or getattr(stats, 'empty', True):
-        return float('nan')
-    matched = stats.loc[stats['Metric'] == metric, 'Value']
-    return float(matched.iloc[0]) if len(matched) else float('nan')
 
 
 def _mw_stat(results: Dict, key: str) -> float:
@@ -140,7 +114,6 @@ def _extract_session_data(results: Dict) -> Dict:
     duration_min = duration_sec / 60.0 if duration_sec is not None else float('nan')
 
     alpha_peak = aperiodic_info.get('alpha_peak')
-    theta_peak = aperiodic_info.get('theta_peak')
 
     artifact_summary = results.get('artifact_summary') or {}
     rejected_ratio = artifact_summary.get('rejected_ratio')
@@ -150,8 +123,7 @@ def _extract_session_data(results: Dict) -> Dict:
     return {
         'timestamp': start_time.strftime('%Y-%m-%d %H:%M:%S'),
         'duration_min': duration_min,
-        # Fmθは全帯域に対する相対値。旧 fm_theta_mean/best は絶対値で、
-        # 電極ゲインに支配され比較できないため列を分けている（旧列は過去行のみ）。
+        # Fmθは全帯域に対する相対値。絶対値は電極ゲインに支配され比較できない。
         'fm_theta_rel_mean': mean_metrics.get('fm_theta_mean', float('nan')),
         'fm_theta_rel_best': best_metrics.get('fm_theta_best', float('nan')),
         'iaf_mean': mean_metrics.get('iaf_mean', float('nan')),
@@ -167,14 +139,9 @@ def _extract_session_data(results: Dict) -> Dict:
         'mw_count': _mw_stat(results, 'tap_count'),
         'mw_rate_per_min': _mw_stat(results, 'tap_rate_per_min'),
         'mw_time_to_first_tap_s': _mw_stat(results, 'time_to_first_tap_s'),
-        'mw_median_iti_s': _mw_stat(results, 'median_iti_s'),
-        'mw_iti_cv': _mw_stat(results, 'iti_cv'),
         'aperiodic_exponent': aperiodic_info.get('exponent', float('nan')),
-        'aperiodic_offset': aperiodic_info.get('offset', float('nan')),
         'alpha_osc_db': aperiodic_info.get('alpha_osc_db', float('nan')),
-        'theta_osc_db': aperiodic_info.get('theta_osc_db', float('nan')),
         'alpha_cf_hz': alpha_peak['center_hz'] if alpha_peak is not None else float('nan'),
-        'theta_peak_detected': theta_peak is not None,
         # δ相対パワーと振幅除外率は低周波ドリフト混入の判定に使う
         # （両者が並走して高いときはδ/θ由来の指標を割り引いて読む）。
         'delta_rel_pct': mean_metrics.get('delta_rel_pct', float('nan')),
@@ -189,19 +156,12 @@ def _extract_session_data(results: Dict) -> Dict:
         'breathing_rate_std': (
             respiration.breathing_rate_std if respiration is not None else float('nan')
         ),
-        # 呼吸周期は breathing_rate の逆数だが、超低速呼吸の議論では秒で見るほうが早い
-        'respiratory_period_s': (
-            60.0 / respiration.breathing_rate
-            if respiration is not None and respiration.breathing_rate > 0
-            else float('nan')
-        ),
         'rsa_amplitude_ms': (
             respiration.rsa_amplitude_mean if respiration is not None else float('nan')
         ),
         # 呼吸追従帯のパワー。超低速呼吸では固定HF帯が空になるため、
-        # 副交感神経活動の評価はこちらとRSA振幅・SD1で行う。
+        # 副交感神経活動の評価はこちらとRSA振幅・RMSSD（hrv_mean）で行う。
         'rsa_band_power_ms2': (results.get('rsa_band') or {}).get('power', float('nan')),
-        'sd1': _hrv_stat(results, 'SD1'),
     }
 
 
@@ -275,12 +235,6 @@ def write_to_csv(
         df = pd.concat([df, df_new], ignore_index=True)
     else:
         df = df_new
-
-    # bool列はconcatでfloat化する（既存行のNaNと混ざるため）。
-    # float_formatが効いて True が 0.000/1.000 になるのを防ぐ。
-    for key, value in new_record.items():
-        if isinstance(value, bool):
-            df[key] = df[key].map(_BOOL_MAP).astype('boolean')
 
     df = df[_order_columns(df.columns)]
     if 'timestamp' in df.columns:
