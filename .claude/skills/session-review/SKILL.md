@@ -64,7 +64,7 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
 
 `.csv.gz` を使った実行では何もしない。
 
-タップログもアップロードする（当日のタップログファイルを指定）。
+タップログもアップロードする（当日のタップログファイルを指定。無い日は黙ってスキップ）。
 
 ```bash
 uv run python scripts/upload_to_gdrive.py --file data/taps/<当日のタップログ>.csv
@@ -101,7 +101,7 @@ uv run python scripts/upload_to_gdrive.py --file data/taps/<当日のタップ�
 - α/θ の傾向、FAA、IAF/PAF の所感
 
 ### 自律神経（HRV）
-- リラックス到達度の傾向（データなしなら明記）
+- リラックス到達度の傾向（SelfLoops が無い日はセクションごと省略する）
 
 ### 前頭前野
 - 集中・弛緩のバランス
