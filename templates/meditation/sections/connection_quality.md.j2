@@ -13,6 +13,14 @@
 > **注**: 1.0=Good, 2.0=Medium, 4.0=Bad
 
 {% endif %}
+{% if hsi.excluded_channels %}
+> ⚠️ **解析から除外したチャネル**: {{ hsi.excluded_channels|join(', ') }}
+>
+> HSIがGood以外の時間が半分を超えたため、接触不良とみなしてPSD・バンドパワー・IAF・
+> 非周期成分・Alpha Power・セッションログの算出から外しています。
+> TP9/TP10が除外された場合、FAAはmastoid referenceを使わずMuse既定の基準（Fpz）で計算しています。
+
+{% endif %}
 {% if hsi.amplitude_statistics is not none and not hsi.amplitude_statistics.empty %}
 ### RAW振幅品質（EEG）
 

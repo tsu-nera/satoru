@@ -149,6 +149,9 @@ class MeditationReportRenderer:
                     'rejected_ratio': artifact.get('rejected_ratio') if artifact else None,
                     'threshold_uv': artifact.get('threshold_uv') if artifact else None,
                     'window_samples': artifact.get('window_samples') if artifact else None,
+                    'excluded_channels': [
+                        ch.replace('RAW_', '') for ch in results.get('excluded_channels', [])
+                    ],
                 }
 
         # 生データプレビュー
