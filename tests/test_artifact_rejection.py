@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -20,6 +21,7 @@ from lib.sensors.eeg.artifact import (  # noqa: E402
     calculate_amplitude_statistics,
     channel_thresholds,
     detect_artifact_windows,
+    find_bad_channels_by_hsi,
     segment_valid_ratio,
     summarize_artifacts,
 )
@@ -203,3 +205,35 @@ class TestSegmentValidRatio:
     def test_empty_range_returns_zero(self):
         valid = np.ones((4, 10), dtype=bool)
         assert segment_valid_ratio(valid, 3, 3) == 0.0
+
+
+class TestFindBadChannelsByHsi:
+    """接触不良チャネルはHSIで丸ごと外す（窓単位の振幅除去を通る汚染があるため）。"""
+
+    @staticmethod
+    def make_hsi(bad_ratio_by_site, n=1000):
+        data = {}
+        for site in ('TP9', 'AF7', 'AF8', 'TP10'):
+            n_bad = int(n * bad_ratio_by_site.get(site, 0.0))
+            data[f'HSI_{site}'] = [2.0] * n_bad + [1.0] * (n - n_bad)
+        return pd.DataFrame(data)
+
+    def test_clean_session_excludes_nothing(self):
+        assert find_bad_channels_by_hsi(self.make_hsi({'TP9': 0.01})) == []
+
+    def test_mostly_medium_channels_are_excluded(self):
+        df = self.make_hsi({'TP9': 0.996, 'TP10': 0.999})
+        assert find_bad_channels_by_hsi(df) == ['RAW_TP9', 'RAW_TP10']
+
+    def test_partial_contact_loss_is_kept(self):
+        # 2026-10-05相当（TP9で約32%）は窓単位の除去に任せる
+        assert find_bad_channels_by_hsi(self.make_hsi({'TP9': 0.32})) == []
+
+    def test_never_excludes_every_channel(self):
+        df = self.make_hsi({site: 1.0 for site in ('TP9', 'AF7', 'AF8', 'TP10')})
+        assert find_bad_channels_by_hsi(df) == []
+
+    def test_nan_rows_are_ignored(self):
+        df = self.make_hsi({'TP10': 0.9})
+        df.loc[:, 'HSI_TP9'] = np.nan
+        assert find_bad_channels_by_hsi(df) == ['RAW_TP10']

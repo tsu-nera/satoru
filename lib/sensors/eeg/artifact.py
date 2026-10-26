@@ -12,7 +12,7 @@ PSDは窓単位で汚染されるため、それより細かい粒度で除去�
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 import pandas as pd
@@ -43,6 +43,14 @@ SEGMENT_MIN_VALID_RATIO = 0.5
 # 指標として表示はするが、データの1/5超を捨てた区間を「最高パフォーマンス区間」に
 # 選ばせない。除去は8秒窓単位なので、閾値未満の残留汚染は必ずある。
 PEAK_MAX_EXCLUDED_RATIO = 0.2
+
+# HSIがGood以外だったサンプルの割合がこれを超えたチャネルは、セッション全体の解析から外す。
+#
+# 窓単位の振幅除去では防げない。2026-10-27はTP9/TP10の接触不良でHSIがほぼ全時間Mediumになり、
+# TP9は振幅判定を79%の窓が通過したが、その窓にも約7Hzの倍音列（+17〜+30dB）が乗っていた。
+# 全チャネル平均のα・θ/αが桁外れになり、TP9/TP10を基準電極にするFAAも壊れた。
+# 正常なセッションのGood以外の割合は0〜1%台、部分的に不良だった2026-10-05でもTP9で約32%。
+HSI_BAD_CHANNEL_RATIO = 0.5
 
 
 def _window_p2p(data_uv: np.ndarray, window_samples: int) -> np.ndarray:
@@ -204,6 +212,33 @@ def summarize_artifacts(
         'threshold_uv': threshold_uv,
         'channels': [name.replace('RAW_', '') for name in channel_names],
     }
+
+
+def find_bad_channels_by_hsi(
+    df: pd.DataFrame,
+    max_bad_ratio: float = HSI_BAD_CHANNEL_RATIO,
+) -> List[str]:
+    """
+    HSIがGood（1.0）でなかった時間の割合が max_bad_ratio を超えるチャネルを返す。
+
+    Returns
+    -------
+    list
+        除外すべきRAWチャネル名（例: ['RAW_TP9', 'RAW_TP10']）。
+        全チャネルが該当する場合は空リストを返す（解析対象が無くなるため除外しない）
+    """
+    hsi_cols = [c for c in df.columns if c.startswith('HSI_')]
+    bad = []
+    for col in hsi_cols:
+        values = pd.to_numeric(df[col], errors='coerce').dropna()
+        if values.empty:
+            continue
+        if float((values > 1.0).mean()) > max_bad_ratio:
+            bad.append(col.replace('HSI_', 'RAW_'))
+
+    if len(bad) == len(hsi_cols):
+        return []
+    return bad
 
 
 def segment_valid_ratio(

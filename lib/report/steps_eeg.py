@@ -35,7 +35,7 @@ from lib import (
     oscillatory_band_power,
     prepare_mne_raw,
 )
-from lib.sensors.eeg.artifact import summarize_artifacts
+from lib.sensors.eeg.artifact import find_bad_channels_by_hsi, summarize_artifacts
 from lib.sensors.eeg.constants import FREQ_BANDS
 from lib.sensors.eeg.visualization import (
     plot_aperiodic_fit,
@@ -97,18 +97,22 @@ def analyze_psd_peaks(psd_dict, paf_dict, img_dir, results):
 @analysis_step('Alpha Power解析')
 def analyze_alpha_power(df, results):
     print('計算中: Alpha Power (Brain Recharge Score)...')
+    excluded = {ch.replace('RAW_', '') for ch in results.get('excluded_channels', [])}
+    sites = [s for s in ('TP9', 'AF7', 'AF8', 'TP10') if s not in excluded]
     # Alpha列があるか確認（Mind Monitor形式）
-    alpha_cols = ['Alpha_TP9', 'Alpha_AF7', 'Alpha_AF8', 'Alpha_TP10']
+    alpha_cols = [f'Alpha_{s}' for s in sites]
     has_alpha_data = all(
         col in df.columns and df[col].notna().any()
         for col in alpha_cols
     )
     if has_alpha_data:
-        alpha_power_result = calculate_alpha_power(df)
+        alpha_power_result = calculate_alpha_power(df, channels=alpha_cols)
     else:
         # RAW EEGからAlpha Powerを計算（Muse App OSC形式）
         print('  Alpha列が空のため、RAW EEGから計算...')
-        alpha_power_result = calculate_alpha_power_from_raw(df)
+        alpha_power_result = calculate_alpha_power_from_raw(
+            df, channels=[f'RAW_{s}' for s in sites]
+        )
     results['alpha_power_score'] = alpha_power_result.score
     results['alpha_power_db'] = alpha_power_result.alpha_db
     results['alpha_power_stats'] = alpha_power_result.statistics
@@ -119,7 +123,13 @@ def analyze_alpha_power(df, results):
 @analysis_step('FAA解析')
 def analyze_faa(df, raw_unfiltered, results):
     print('計算中: Frontal Alpha Asymmetry...')
-    faa_result = calculate_frontal_asymmetry(df, raw=raw_unfiltered)
+    # 基準電極のTP9/TP10が除外されていればMuse既定の基準（Fpz）で計算する
+    mastoids_ok = raw_unfiltered is not None and {'RAW_TP9', 'RAW_TP10'} <= set(
+        raw_unfiltered.ch_names
+    )
+    faa_result = calculate_frontal_asymmetry(
+        df, raw=raw_unfiltered, use_mastoid_reference=mastoids_ok
+    )
     results['faa_stats'] = faa_result.statistics
     results['faa_interpretation'] = faa_result.metadata.get('interpretation')
     return faa_result
@@ -180,11 +190,22 @@ def prepare_mne_and_spectral(df, img_dir, results, artifact_window_samples):
         results['artifact_summary'] = artifact_summary
         print(f'  振幅による除外率: {artifact_summary["rejected_ratio"] * 100:.1f}%')
 
+        # 接触不良チャネルは振幅判定を通った窓も汚れているため、以降の解析から丸ごと外す
+        excluded_channels = [
+            ch for ch in find_bad_channels_by_hsi(df) if ch in raw.ch_names
+        ]
+        results['excluded_channels'] = excluded_channels
+        if excluded_channels:
+            print(f'  警告: HSI不良のため解析から除外: {excluded_channels}')
+            raw.drop_channels(excluded_channels)
+
         # Fmθ/FAA計算用に、バンドパスフィルタを適用しないrawデータを作成
         # (これらの関数は内部で独自のバンドパスフィルタを適用するため)
         mne_dict_unfiltered = prepare_mne_raw(df, apply_bandpass=False, apply_notch=False)
         if mne_dict_unfiltered:
             raw_unfiltered = mne_dict_unfiltered['raw']
+            if excluded_channels:
+                raw_unfiltered.drop_channels(excluded_channels)
 
         # Rawプレビュー
         print('プロット中: 生データプレビュー...')
