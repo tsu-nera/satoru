@@ -5,6 +5,7 @@ EEGデータの前処理（MNE RawArray準備）
 import warnings
 
 import mne
+import numpy as np
 import pandas as pd
 
 from .constants import DEFAULT_SFREQ
@@ -114,7 +115,9 @@ def prepare_mne_raw(df, sfreq=None, apply_bandpass=True, apply_notch=True,
             'raw': mne.io.RawArray,
             'channels': list,
             'sfreq': float,
-            'n_samples': int
+            'n_samples': int,
+            'hsi': np.ndarray,      # (n_channels, n_samples) rawとサンプルが揃ったHSI
+            'row_index': pd.Index,  # rawの各サンプルに対応するdfの行
         }
         RAWチャネルが見つからない場合はNone
 
@@ -212,5 +215,22 @@ def prepare_mne_raw(df, sfreq=None, apply_bandpass=True, apply_notch=True,
         'raw': raw,
         'channels': ch_names,
         'sfreq': sfreq,
-        'n_samples': len(numeric)
+        'n_samples': len(numeric),
+        'hsi': _aligned_hsi(df_filtered, ch_names),
+        'row_index': df_filtered.index,
     }
+
+
+def _aligned_hsi(df_filtered, ch_names):
+    """
+    rawと同じ行の絞り込みを経たHSIを（n_channels, n_samples）で返す。
+
+    窓単位のHSI判定をrawの窓境界に揃えるため、rawの作成と同じdf_filteredから取り出す。
+    HSI列が無いチャネルはNaN（＝Good扱い）で埋める。
+    """
+    hsi = np.full((len(ch_names), len(df_filtered)), np.nan)
+    for idx, ch in enumerate(ch_names):
+        col = ch.replace('RAW_', 'HSI_')
+        if col in df_filtered.columns:
+            hsi[idx] = pd.to_numeric(df_filtered[col], errors='coerce').to_numpy()
+    return hsi

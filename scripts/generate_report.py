@@ -42,6 +42,7 @@ from lib.report import (
     analyze_segments,
     analyze_smr_step,
     build_statistical_dataframe,
+    compute_frontal_metrics,
     load_tap_log_step,
     plot_band_power_series,
     plot_band_ratios_step,
@@ -186,7 +187,7 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
 
     # MNE RAW準備 + PSD/スペクトログラム/PAF/ITF + EEGスペクトル解析
     # （PSDピーク・Alpha Power・FAA・Spectral Entropyを含む）
-    raw, raw_unfiltered, psd_dict, paf_dict, tfr_primary = prepare_mne_and_spectral(
+    raw, raw_unfiltered, psd_dict, paf_dict, tfr_primary, hsi = prepare_mne_and_spectral(
         df, img_dir, results, artifact_window_samples
     )
 
@@ -201,13 +202,20 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
     if raw is not None:
         statistical_df = build_statistical_dataframe(
             df, raw, results, warmup_minutes, fnirs_results, hr_data, hrv_result,
-            respiration_result, artifact_window_samples,
+            respiration_result, artifact_window_samples, hsi,
         )
 
     # 時間セグメント分析
     segment_result = analyze_segments(
         df_quality, fmtheta_result, smr_result, statistical_df, img_dir, results, warmup_minutes
     )
+
+    # セッションログ用: 前頭（AF7/AF8, Fpz基準）だけで計算した主要EEG指標
+    if raw is not None and fmtheta_result is not None:
+        compute_frontal_metrics(
+            df, df_quality, fmtheta_result, smr_result, raw, hsi, results, warmup_minutes,
+            artifact_window_samples,
+        )
 
     # マインドワンダリング分析（タップ打刻ログがある場合のみ）
     analyze_mind_wandering(tap_df, segment_result, results)

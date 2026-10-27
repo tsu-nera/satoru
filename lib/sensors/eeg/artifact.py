@@ -1,5 +1,5 @@
 """
-振幅ベースのEEGアーチファクト検出
+EEGアーチファクト検出（振幅判定と窓単位のHSI判定）
 
 HSI（Horseshoe Signal Index）は電極の接触インピーダンス指標であり、
 アーチファクト検出器ではない。眼球運動・まばたき・前額の筋電・発汗ドリフト・
@@ -12,7 +12,7 @@ PSDは窓単位で汚染されるため、それより細かい粒度で除去�
 
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, Optional
 
 import numpy as np
 import pandas as pd
@@ -44,13 +44,13 @@ SEGMENT_MIN_VALID_RATIO = 0.5
 # 選ばせない。除去は8秒窓単位なので、閾値未満の残留汚染は必ずある。
 PEAK_MAX_EXCLUDED_RATIO = 0.2
 
-# HSIがGood以外だったサンプルの割合がこれを超えたチャネルは、セッション全体の解析から外す。
+# 窓の中でHSIがGood以外だった時間の割合がこれを超えたら、そのチャネル×窓を無効にする。
 #
-# 窓単位の振幅除去では防げない。2026-10-27はTP9/TP10の接触不良でHSIがほぼ全時間Mediumになり、
+# 振幅判定だけでは接触不良を防げない。2026-10-27はTP9/TP10の接触不良でHSIがほぼ全時間Mediumになり、
 # TP9は振幅判定を79%の窓が通過したが、その窓にも約7Hzの倍音列（+17〜+30dB）が乗っていた。
-# 全チャネル平均のα・θ/αが桁外れになり、TP9/TP10を基準電極にするFAAも壊れた。
-# 正常なセッションのGood以外の割合は0〜1%台、部分的に不良だった2026-10-05でもTP9で約32%。
-HSI_BAD_CHANNEL_RATIO = 0.5
+# 2026-10-28はTP10が記録の途中で外れ、Good以外の割合が1分刻みで0%→57%→100%と変わった。
+# セッション全体の割合で判定すると途中で外れたチャネルを拾えないため、窓単位で判定する。
+HSI_WINDOW_MAX_BAD_RATIO = 0.5
 
 
 def _window_p2p(data_uv: np.ndarray, window_samples: int) -> np.ndarray:
@@ -127,14 +127,80 @@ def detect_artifact_windows(
     return p2p <= thresholds[:, np.newaxis]
 
 
+def detect_hsi_windows(
+    hsi: np.ndarray,
+    window_samples: int = ARTIFACT_WINDOW_SAMPLES,
+    max_bad_ratio: float = HSI_WINDOW_MAX_BAD_RATIO,
+) -> np.ndarray:
+    """
+    チャネル×窓の単位でHSIによる接触不良を判定する。
+
+    Parameters
+    ----------
+    hsi : np.ndarray
+        HSI値（n_channels, n_samples）。RAWと同じサンプル並び。1.0=Good, 2.0=Medium, 4.0=Bad。
+        NaNはGoodとして扱う（HSIの欠損は接触不良の証拠にならないため）
+    window_samples : int
+        1窓のサンプル数（detect_artifact_windowsと揃える）
+    max_bad_ratio : float
+        窓内でGood以外が占めてよい割合の上限
+
+    Returns
+    -------
+    valid : np.ndarray
+        bool配列（n_channels, n_windows）。Trueが有効な窓
+    """
+    n_channels, n_samples = hsi.shape
+    n_windows = n_samples // window_samples
+    if n_windows == 0:
+        return np.zeros((n_channels, 0), dtype=bool)
+
+    bad = np.nan_to_num(hsi[:, : n_windows * window_samples], nan=1.0) > 1.0
+    bad_ratio = bad.reshape(n_channels, n_windows, window_samples).mean(axis=2)
+    return bad_ratio <= max_bad_ratio
+
+
+def detect_valid_windows(
+    data_uv: np.ndarray,
+    hsi: Optional[np.ndarray] = None,
+    window_samples: int = ARTIFACT_WINDOW_SAMPLES,
+    threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
+) -> np.ndarray:
+    """
+    振幅判定とHSI判定をANDで合成した有効マスク（n_channels, n_windows）を返す。
+
+    hsiがNoneなら振幅判定のみ。セッション全体で接触不良のチャネルは全窓が無効になる。
+    """
+    valid = detect_artifact_windows(data_uv, window_samples, threshold_uv)
+    if hsi is not None:
+        valid &= detect_hsi_windows(hsi, window_samples)
+    return valid
+
+
+def expand_window_mask(window_mask: np.ndarray, n_samples: int, window_samples: int) -> np.ndarray:
+    """
+    窓単位のbool配列（n_windows,）をサンプル単位（n_samples,）に展開する。
+
+    窓に収まらない末尾のサンプルは最後の窓の判定を引き継ぐ（窓が無ければFalse）。
+    """
+    per_sample = np.repeat(window_mask, window_samples)[:n_samples]
+    if per_sample.size < n_samples:
+        tail = bool(window_mask[-1]) if window_mask.size else False
+        per_sample = np.concatenate(
+            [per_sample, np.full(n_samples - per_sample.size, tail)]
+        )
+    return per_sample
+
+
 def calculate_amplitude_statistics(
     data_uv: np.ndarray,
     channel_names: list,
     window_samples: int = ARTIFACT_WINDOW_SAMPLES,
     threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
+    hsi: Optional[np.ndarray] = None,
 ) -> pd.DataFrame:
     """
-    チャネル別のRAW振幅統計を計算する（接続品質セクション表示用）。
+    チャネル別のRAW振幅統計と有効率を計算する（接続品質セクション表示用）。
 
     Parameters
     ----------
@@ -146,14 +212,19 @@ def calculate_amplitude_statistics(
         窓のサンプル数
     threshold_uv : float
         p2p閾値（μV）
+    hsi : np.ndarray, optional
+        HSI値（n_channels, n_samples）。指定するとHSIによる除外率と合成後の有効率も出す
 
     Returns
     -------
     pd.DataFrame
-        Channel / Std / P2P (median) / Threshold / Rejected の各列
+        Channel / Std / P2P (median) / Threshold / Rejected / HSI Rejected / Valid の各列
+        （Rejectedは振幅判定のみ、Validは振幅とHSIを合成した後の有効率）
     """
     p2p = _window_p2p(data_uv, window_samples)
     valid = detect_artifact_windows(data_uv, window_samples, threshold_uv)
+    hsi_valid = detect_hsi_windows(hsi, window_samples) if hsi is not None else None
+    combined = valid & hsi_valid if hsi_valid is not None else valid
     thresholds = channel_thresholds(p2p, threshold_uv) if p2p.size else None
 
     rows = []
@@ -162,18 +233,28 @@ def calculate_amplitude_statistics(
             p2p_median = float(np.median(p2p[idx]))
             threshold = float(thresholds[idx])
             rejected_pct = float((~valid[idx]).mean() * 100)
+            hsi_rejected_pct = (
+                float((~hsi_valid[idx]).mean() * 100) if hsi_valid is not None else np.nan
+            )
+            valid_pct = float(combined[idx].mean() * 100)
         else:
             p2p_median = np.nan
             threshold = np.nan
             rejected_pct = np.nan
+            hsi_rejected_pct = np.nan
+            valid_pct = np.nan
 
-        rows.append({
+        row = {
             'Channel': name.replace('RAW_', ''),
             'Std': float(np.nanstd(data_uv[idx])),
             'P2P (median)': p2p_median,
             'Threshold': threshold,
             'Rejected': rejected_pct,
-        })
+        }
+        if hsi is not None:
+            row['HSI Rejected'] = hsi_rejected_pct
+        row['Valid'] = valid_pct
+        rows.append(row)
 
     return pd.DataFrame(rows)
 
@@ -183,15 +264,18 @@ def summarize_artifacts(
     channel_names: list,
     window_samples: int = ARTIFACT_WINDOW_SAMPLES,
     threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
+    hsi: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     """
     アーチファクト検出結果をまとめて返す。
+
+    hsiを渡すと、valid_mask・rejected_ratioは振幅判定とHSI判定を合成した結果になる。
 
     Returns
     -------
     dict
         {
-            'valid_mask': np.ndarray,        # (n_channels, n_windows) bool
+            'valid_mask': np.ndarray,        # (n_channels, n_windows) bool（合成マスク）
             'amplitude_statistics': DataFrame,
             'rejected_ratio': float,          # 全体の除外率 (0.0-1.0)
             'window_samples': int,
@@ -199,46 +283,19 @@ def summarize_artifacts(
             'channels': list,
         }
     """
-    valid = detect_artifact_windows(data_uv, window_samples, threshold_uv)
+    valid = detect_valid_windows(data_uv, hsi, window_samples, threshold_uv)
     rejected_ratio = float((~valid).mean()) if valid.size else 0.0
 
     return {
         'valid_mask': valid,
         'amplitude_statistics': calculate_amplitude_statistics(
-            data_uv, channel_names, window_samples, threshold_uv
+            data_uv, channel_names, window_samples, threshold_uv, hsi=hsi
         ),
         'rejected_ratio': rejected_ratio,
         'window_samples': window_samples,
         'threshold_uv': threshold_uv,
         'channels': [name.replace('RAW_', '') for name in channel_names],
     }
-
-
-def find_bad_channels_by_hsi(
-    df: pd.DataFrame,
-    max_bad_ratio: float = HSI_BAD_CHANNEL_RATIO,
-) -> List[str]:
-    """
-    HSIがGood（1.0）でなかった時間の割合が max_bad_ratio を超えるチャネルを返す。
-
-    Returns
-    -------
-    list
-        除外すべきRAWチャネル名（例: ['RAW_TP9', 'RAW_TP10']）。
-        全チャネルが該当する場合は空リストを返す（解析対象が無くなるため除外しない）
-    """
-    hsi_cols = [c for c in df.columns if c.startswith('HSI_')]
-    bad = []
-    for col in hsi_cols:
-        values = pd.to_numeric(df[col], errors='coerce').dropna()
-        if values.empty:
-            continue
-        if float((values > 1.0).mean()) > max_bad_ratio:
-            bad.append(col.replace('HSI_', 'RAW_'))
-
-    if len(bad) == len(hsi_cols):
-        return []
-    return bad
 
 
 def segment_valid_ratio(

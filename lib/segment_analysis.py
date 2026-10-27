@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from .sensors.eeg.artifact import PEAK_MAX_EXCLUDED_RATIO
+from .sensors.eeg.artifact import PEAK_MAX_EXCLUDED_RATIO, SEGMENT_MIN_VALID_RATIO
 
 if TYPE_CHECKING:
     pass
@@ -260,6 +260,10 @@ def calculate_segment_analysis(
         if quality_df is not None and start in quality_df.index:
             excluded_ratio = quality_df.loc[start, 'excluded_ratio']
             segment_usable = bool(quality_df.loc[start, 'usable'])
+            # Fmθ・SMRはAF7/AF8だけから計算するので、前頭の有効率でセルごとに判定する
+            if quality_df.loc[start].get('frontal_valid_ratio', 1.0) < SEGMENT_MIN_VALID_RATIO:
+                fm_mean = np.nan
+                smr_mean = np.nan
 
         # 相対パワー（%）の計算
         # dB → パワーに変換（10^(dB/10)）

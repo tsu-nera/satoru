@@ -13,12 +13,13 @@ from lib.statistical_dataframe import create_statistical_dataframe
 from lib.visualization import plot_segment_comparison
 
 from .step import analysis_step
+from .steps_eeg import FRONTAL_CHANNELS
 
 
 @analysis_step('Statistical DataFrame生成')
 def build_statistical_dataframe(
     df, raw, results, warmup_minutes, fnirs_results, hr_data, hrv_result,
-    respiration_result, artifact_window_samples,
+    respiration_result, artifact_window_samples, hsi=None,
 ):
     print('計算中: Statistical DataFrame（統一的なバンドパワー・比率計算）...')
     session_start = df['TimeStamp'].iloc[0]
@@ -34,6 +35,7 @@ def build_statistical_dataframe(
         hrv_result=hrv_result,  # HRVデータを追加
         respiration_result=respiration_result,  # 呼吸データを追加
         window_samples=artifact_window_samples,
+        hsi=hsi,
     )
     results['statistical_df'] = statistical_df
     print(f'  バンドパワー: {len(statistical_df["band_powers"])} セグメント')
@@ -99,8 +101,20 @@ def analyze_segments(df_quality, fmtheta_result, smr_result, statistical_df, img
     results['best_metrics'] = best_metrics
 
     # mean値を計算（セグメントの平均）
-    segments = segment_result.segments
-    mean_metrics = {
+    mean_metrics = _segment_mean_metrics(segment_result.segments)
+
+    # HRV (RMSSD) の mean/best を計算
+    if 'hrv_result' in results:
+        compute_hrv_mean_best(results, mean_metrics, best_metrics)
+
+    results['mean_metrics'] = mean_metrics
+
+    return segment_result
+
+
+def _segment_mean_metrics(segments):
+    """セグメント分析結果からセッション平均の指標を計算する。"""
+    return {
         'fm_theta_mean': segments['fmtheta_mean'].mean() if 'fmtheta_mean' in segments else None,
         'iaf_mean': segments['iaf_mean'].mean() if 'iaf_mean' in segments else None,
         'alpha_mean': segments['alpha_mean'].mean() if 'alpha_mean' in segments else None,
@@ -112,13 +126,56 @@ def analyze_segments(df_quality, fmtheta_result, smr_result, statistical_df, img
         'alpha_rel_pct': segments['alpha_relative'].mean() if 'alpha_relative' in segments else None,
     }
 
-    # HRV (RMSSD) の mean/best を計算
-    if 'hrv_result' in results:
-        compute_hrv_mean_best(results, mean_metrics, best_metrics)
 
-    results['mean_metrics'] = mean_metrics
+@analysis_step('前頭のみのセッション指標計算')
+def compute_frontal_metrics(
+    df, df_quality, fmtheta_result, smr_result, raw, hsi, results, warmup_minutes,
+    artifact_window_samples,
+):
+    """
+    セッションログの主要EEG列用に、AF7/AF8（Fpz基準）だけで指標を計算し直す。
 
-    return segment_result
+    全チャネルの値はTPの接触状態でチャネル構成が変わると基準がずれ、
+    セッション間で比較できない。レポート本文は全チャネルの値のまま、
+    セッションログだけをこの値にする。
+    """
+    print('計算中: 前頭（AF7/AF8）のみのセッション指標...')
+    picks = [ch for ch in FRONTAL_CHANNELS if ch in raw.ch_names]
+    if not picks:
+        raise ValueError('前頭チャネル（AF7/AF8）がありません')
+
+    pick_idx = [raw.ch_names.index(ch) for ch in picks]
+    raw_frontal = raw.copy().pick(picks)
+    statistical_df = create_statistical_dataframe(
+        raw_frontal,
+        segment_minutes=3,
+        warmup_minutes=warmup_minutes,
+        session_start=df['TimeStamp'].iloc[0],
+        window_samples=artifact_window_samples,
+        hsi=hsi[pick_idx] if hsi is not None else None,
+    )
+    segment_result = calculate_segment_analysis(
+        df_quality,
+        fmtheta_result.time_series,
+        statistical_df,
+        segment_minutes=3,
+        warmup_minutes=warmup_minutes,
+        exclude_first_segment=True,
+        smr_series=smr_result.time_series if smr_result else None,
+    )
+    valid_mask = statistical_df['valid_mask']
+    frontal_metrics = {
+        'mean_metrics': _segment_mean_metrics(segment_result.segments),
+        'best_metrics': calculate_best_metrics(segment_result),
+        'montage': '+'.join(ch.replace('RAW_', '') for ch in picks) + '/Fpz',
+        'valid_coverage_pct': float(valid_mask.mean() * 100) if valid_mask.size else float('nan'),
+    }
+    results['frontal_metrics'] = frontal_metrics
+    print(
+        f"  使用チャネル: {frontal_metrics['montage']}、"
+        f"有効率: {frontal_metrics['valid_coverage_pct']:.1f}%"
+    )
+    return frontal_metrics
 
 
 @analysis_step('バンド比率プロット', show_traceback=True)

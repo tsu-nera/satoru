@@ -5,6 +5,7 @@ Mind Monitor CSVの読み込みとデータ抽出の統合モジュール
 このモジュールはMind Monitor固有のCSVフォーマットに依存しています。
 """
 
+import csv
 
 import numpy as np
 import pandas as pd
@@ -14,6 +15,50 @@ from ..sensors.eeg.constants import DEFAULT_SFREQ
 
 # 共通ローダーユーティリティ
 from .base import apply_warmup
+
+#: Mind Monitor CSVの列順（2026-10-27 の CSV のヘッダーと同じ61列。末尾のElementsはイベント行のみ値を持つ）
+#: lib/recorders/muse_osc.py の MIND_MONITOR_COLUMNS は Mellow/Concentration を欠き列順が違うので使わない
+MIND_MONITOR_CSV_COLUMNS = (
+    ['TimeStamp']
+    + [f'{band}_{site}'
+       for band in ('Delta', 'Theta', 'Alpha', 'Beta', 'Gamma')
+       for site in ('TP9', 'AF7', 'AF8', 'TP10')]
+    + ['RAW_TP9', 'RAW_AF7', 'RAW_AF8', 'RAW_TP10']
+    + [f'AUX_{i}' for i in range(1, 5)]
+    + ['Mellow', 'Concentration']
+    + ['Accelerometer_X', 'Accelerometer_Y', 'Accelerometer_Z']
+    + ['Gyro_X', 'Gyro_Y', 'Gyro_Z']
+    + [f'Optics{i}' for i in range(1, 17)]
+    + ['Heart_Rate', 'HeadBandOn', 'HSI_TP9', 'HSI_AF7', 'HSI_AF8', 'HSI_TP10', 'Battery', 'Elements']
+)
+
+#: ヘッダー欠落の判定でデータ行の列数を数える行数
+_HEADER_CHECK_ROWS = 20
+
+
+def _read_mind_monitor_csv(csv_path):
+    """
+    CSVを読み込む。ヘッダーが欠落していれば既知の列順を当てて読み直す。
+
+    2026-10-28 の CSV はヘッダーが37列しかなく（AUX_1-4・Gyro・Optics・Heart_Rate が欠落）、
+    データ行は従来どおり60列だった。そのまま読むと列がずれ、HeadBandOnの抽出で全行が落ちる。
+    データ行の列数がヘッダーより多く、かつ Optics1 列が無いときだけ修復する。
+    """
+    with open(csv_path, newline='', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        header = next(reader, [])
+        data_widths = [len(row) for _, row in zip(range(_HEADER_CHECK_ROWS), reader)]
+
+    if data_widths and max(data_widths) > len(header) and 'Optics1' not in header:
+        print(
+            f'警告: CSVのヘッダーが欠落しています（ヘッダー{len(header)}列、'
+            f'データ{max(data_widths)}列）。既知の{len(MIND_MONITOR_CSV_COLUMNS)}列ヘッダーで読み直します: {csv_path}'
+        )
+        return pd.read_csv(
+            csv_path, header=None, skiprows=1, names=MIND_MONITOR_CSV_COLUMNS, low_memory=False
+        )
+
+    return pd.read_csv(csv_path, low_memory=False)
 
 
 def load_mind_monitor_csv(csv_path, filter_headband=True, warmup_seconds=60.0):
@@ -43,7 +88,7 @@ def load_mind_monitor_csv(csv_path, filter_headband=True, warmup_seconds=60.0):
     df : pd.DataFrame
         読み込んだデータフレーム（Time_sec列を追加）
     """
-    df = pd.read_csv(csv_path, low_memory=False)
+    df = _read_mind_monitor_csv(csv_path)
 
     # タイムスタンプをDatetime型に変換
     df['TimeStamp'] = pd.to_datetime(df['TimeStamp'])
