@@ -137,8 +137,15 @@ def calculate_alpha_power(
     if alpha_db_series.empty:
         raise ValueError('Alpha Power時系列が空です。')
 
-    # 平均Alpha dB
-    alpha_db_mean = alpha_db_series.mean()
+    # 平均Alpha dB: チャネルごとに時間平均してからチャネル間で平均する。
+    # 無効区間がNaNのとき、時点ごとのチャネル平均を時間平均すると、
+    # チャネル構成が変わった区間で値がずれる（TPのαはAFより約10dB高い）。
+    channel_db = alpha_bels_df * 10
+    if 'TimeStamp' in df.columns:
+        channel_db.index = pd.to_datetime(df['TimeStamp'])
+        if resample_interval:
+            channel_db = channel_db.resample(resample_interval).mean()
+    alpha_db_mean = channel_db.mean().mean()
 
     # スコア計算
     if method == AlphaPowerMethod.LINEAR:

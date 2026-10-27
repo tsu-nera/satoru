@@ -13,27 +13,25 @@
 > **注**: 1.0=Good, 2.0=Medium, 4.0=Bad
 
 {% endif %}
-{% if hsi.excluded_channels %}
-> ⚠️ **解析から除外したチャネル**: {{ hsi.excluded_channels|join(', ') }}
->
-> HSIがGood以外の時間が半分を超えたため、接触不良とみなしてPSD・バンドパワー・IAF・
-> 非周期成分・Alpha Power・セッションログの算出から外しています。
-> TP9/TP10が除外された場合、FAAはmastoid referenceを使わずMuse既定の基準（Fpz）で計算しています。
-
-{% endif %}
 {% if hsi.amplitude_statistics is not none and not hsi.amplitude_statistics.empty %}
-### RAW振幅品質（EEG）
+### チャネル別の有効率（EEG）
 
-- **振幅による除外率**: {{ hsi.rejected_ratio|format_percent }}
+- **除外率（振幅＋HSI）**: {{ hsi.rejected_ratio|format_percent }}
 
 {{ hsi.amplitude_statistics|df_to_markdown(floatfmt='.1f', index=False) }}
 
-> **単位**: Std / P2P (median) / Threshold = μV、Rejected = %
+> **単位**: Std / P2P (median) / Threshold = μV、Rejected / HSI Rejected / Valid = %
 >
-> **判定**: {{ hsi.window_samples }}サンプル窓（PSDのWelch窓と同一）内のpeak-to-peak振幅が
-> Thresholdを超えたチャネル×窓をバンドパワー計算から除外しています。
-> Thresholdは絶対値{{ hsi.threshold_uv|number_format(0) }}μVと、チャネル別p2p中央値の4倍のうち
-> 厳しい方（下限50μV）です。
+> **判定**: {{ hsi.window_samples }}サンプル窓（PSDのWelch窓と同一）ごとに、次のどちらかに当たる
+> チャネル×窓を解析から除外しています。Validは両方を通過した窓の割合です。
+> - **Rejected（振幅）**: 窓内のpeak-to-peak振幅がThresholdを超えた。Thresholdは絶対値
+>   {{ hsi.threshold_uv|number_format(0) }}μVと、チャネル別p2p中央値の4倍のうち厳しい方（下限50μV）
+> - **HSI Rejected（接触不良）**: 窓内でHSIがGood以外の時間が半分を超えた
+>
+> PSD・バンドパワー・IAF・非周期成分・Alpha Powerは、チャネルごとに有効な窓だけで平均してから
+> チャネル間を集計しています。FAAはTP9とTP10が両方有効な窓だけmastoid referenceを使い、
+> それ以外の窓はMuse既定の基準（Fpz）で計算しています。
+> セッションログの主要EEG列は、TPの状態に左右されないよう常にAF7/AF8（Fpz基準）だけで計算しています。
 >
 > **HSIとの違い**: HSIは電極の接触インピーダンス指標であり、アーチファクト検出器ではありません。
 > 眼球運動・まばたき・前額の筋電・発汗ドリフトはHSIがGoodのままでも混入するため、

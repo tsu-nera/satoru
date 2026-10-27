@@ -18,7 +18,7 @@ from .sensors.eeg.artifact import (
     ARTIFACT_P2P_THRESHOLD_UV,
     ARTIFACT_WINDOW_SAMPLES,
     SEGMENT_MIN_VALID_RATIO,
-    detect_artifact_windows,
+    detect_valid_windows,
     segment_valid_ratio,
 )
 from .sensors.eeg.constants import FREQ_BANDS
@@ -111,6 +111,7 @@ def create_statistical_dataframe(
     respiration_result: Optional[object] = None,
     artifact_threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
     window_samples: int = ARTIFACT_WINDOW_SAMPLES,
+    hsi: Optional[np.ndarray] = None,
 ) -> Dict[str, pd.DataFrame]:
     """
     統一的なStatistical DataFrameを生成する。
@@ -146,6 +147,9 @@ def create_statistical_dataframe(
     window_samples : int, default ARTIFACT_WINDOW_SAMPLES
         Welch窓長（サンプル）。アーチファクト判定の粒度も兼ねる。
         窓長を変えると除外率が大きく動くため、比較実験用に上書きできるようにしてある
+    hsi : np.ndarray, optional
+        rawとサンプルが揃ったHSI（n_channels, n_samples）。prepare_mne_raw()の'hsi'。
+        指定すると振幅判定に窓単位のHSI判定をANDで合成する
 
     Returns
     -------
@@ -162,7 +166,9 @@ def create_statistical_dataframe(
             'hrv': DataFrame,              # セグメント別HRV時系列（RMSSD）
             'respiration': DataFrame,      # セグメント別呼吸時系列（BR）
             'statistics': DataFrame,       # 統計サマリー（縦長形式）
-            'quality': DataFrame           # セグメント別のアーチファクト除去率
+            'quality': DataFrame,          # セグメント別のアーチファクト除去率
+            'valid_mask': ndarray,         # ウォームアップ後の合成マスク（n_channels, n_windows）
+            'channels': list,              # valid_maskの行に対応するチャネル名
         }
 
     Notes
@@ -204,9 +210,16 @@ def create_statistical_dataframe(
     # μV単位のデータ（MNEはV単位で保持）
     data_uv = raw_cropped.get_data() * 1e6
 
-    # 振幅ベースのアーチファクト検出（チャネル×Welch窓）
-    valid_mask = detect_artifact_windows(
+    # クロップ後のrawに合わせてHSIも切り出す（窓境界をrawと揃えるため）
+    hsi_cropped = None
+    if hsi is not None:
+        offset = raw_cropped.first_samp - raw.first_samp
+        hsi_cropped = hsi[:, offset : offset + raw_cropped.n_times]
+
+    # 振幅ベースのアーチファクト検出とHSIによる接触不良判定の合成（チャネル×Welch窓）
+    valid_mask = detect_valid_windows(
         data_uv,
+        hsi=hsi_cropped,
         window_samples=window_samples,
         threshold_uv=artifact_threshold_uv,
     )
@@ -296,11 +309,24 @@ def create_statistical_dataframe(
     band_powers_df = pd.DataFrame(band_powers_dict, index=timestamps)
 
     # セグメント別の品質（アーチファクト除去の結果）
+    # frontal_valid_ratio は AF7/AF8 だけの有効率。前頭チャネルだけを使う指標（Fmθ・SMR）の
+    # セルを、TPの品質と切り離して判定するために使う
+    frontal_idx = [
+        idx for idx, ch in enumerate(raw_cropped.ch_names) if ch in ('RAW_AF7', 'RAW_AF8')
+    ]
+    frontal_mask = valid_mask[frontal_idx] if frontal_idx else valid_mask
+    frontal_valid_ratios = np.array([
+        segment_valid_ratio(
+            frontal_mask, seg_idx * windows_per_segment, (seg_idx + 1) * windows_per_segment
+        )
+        for seg_idx in range(n_segments)
+    ])
     quality_df = pd.DataFrame(
         {
             'valid_ratio': segment_valid_ratios[:n_segments],
             'excluded_ratio': 1.0 - segment_valid_ratios[:n_segments],
             'usable': segment_usable[:n_segments],
+            'frontal_valid_ratio': frontal_valid_ratios,
         },
         index=timestamps,
     )
@@ -801,6 +827,8 @@ def create_statistical_dataframe(
         'respiration': respiration_df,
         'statistics': statistics_df,
         'quality': quality_df,
+        'valid_mask': valid_mask,
+        'channels': list(raw_cropped.ch_names),
     }
 
 

@@ -67,6 +67,98 @@ def calculate_psd(raw, fmin=0.5, fmax=50.0, n_fft=2048):
     }
 
 
+def calculate_psd_masked(raw, valid_mask, window_samples, fmax=50.0):
+    """
+    有効な窓だけを使ってパワースペクトル密度（PSD）を計算する
+
+    calculate_psd と同じく n_fft = 2 × window_samples、50%オーバーラップのWelch法で、
+    Welchの各セグメントはマスクの連続する2窓にちょうど重なる。
+    チャネルごとに、両方の窓が有効なセグメントだけを平均する（無効窓をゼロ埋めしない）。
+    全窓が有効なら calculate_psd と同じ値になる。
+
+    Parameters
+    ----------
+    raw : mne.io.RawArray
+        MNE RawArrayオブジェクト
+    valid_mask : np.ndarray
+        (n_channels, n_windows) のbool配列。rawの先頭から window_samples ごとの窓
+    window_samples : int
+        マスクの窓長（サンプル）
+    fmax : float
+        最大周波数（Hz）
+
+    Returns
+    -------
+    psd_dict : dict or None
+        calculate_psd と同じキー（'spectrum' は None）に加え、
+        'n_segments'（チャネル別の使用セグメント数）を持つ。
+        有効なセグメントが1つも無いチャネルは出力から外す。全チャネルが該当すればNone
+    """
+    sfreq = raw.info['sfreq']
+    nyquist = sfreq / 2.0
+    fmax = min(fmax, max(nyquist - 1e-6, nyquist * 0.9))
+
+    n_fft = 2 * window_samples
+    n_windows = valid_mask.shape[1]
+    n_segments = n_windows - 1
+    if n_segments < 1:
+        return None
+
+    data = raw.get_data()[:, : n_windows * window_samples]
+    segments = np.stack(
+        [data[:, k * window_samples : k * window_samples + n_fft] for k in range(n_segments)]
+    )
+    segment_psds, freqs = mne.time_frequency.psd_array_welch(
+        segments,
+        sfreq=sfreq,
+        fmax=fmax,
+        n_fft=n_fft,
+        n_per_seg=n_fft,
+        n_overlap=0,
+        verbose=False,
+    )
+
+    segment_valid = valid_mask[:, :-1] & valid_mask[:, 1:]  # (n_channels, n_segments)
+    keep = [idx for idx in range(segment_valid.shape[0]) if segment_valid[idx].any()]
+    if not keep:
+        return None
+
+    psds = np.stack(
+        [segment_psds[segment_valid[idx], idx].mean(axis=0) for idx in keep]
+    )
+    psds = np.maximum(psds, np.finfo(float).eps)
+
+    return {
+        'freqs': freqs,
+        'psds': psds * 1e12,  # V²/Hz を μV²/Hz へ変換
+        'channels': [raw.ch_names[idx] for idx in keep],
+        'spectrum': None,
+        'n_segments': {raw.ch_names[idx]: int(segment_valid[idx].sum()) for idx in keep},
+    }
+
+
+def mask_spectrogram(tfr_dict, window_valid, window_samples, sfreq):
+    """
+    スペクトログラムの無効窓の時間帯をNaNにする（プロットでは空白になる）。
+
+    Parameters
+    ----------
+    tfr_dict : dict
+        calculate_spectrogram の戻り値（times は raw の先頭からの秒）
+    window_valid : np.ndarray
+        そのチャネルの (n_windows,) bool配列
+    window_samples : int
+        マスクの窓長（サンプル、マスク作成時のサンプリングレート基準）
+    sfreq : float
+        マスク作成時のサンプリングレート（Hz）
+    """
+    window_idx = np.floor(tfr_dict['times'] * sfreq / window_samples).astype(int)
+    window_idx = np.clip(window_idx, 0, len(window_valid) - 1)
+    invalid = ~window_valid[window_idx]
+    tfr_dict['power'][:, invalid] = np.nan
+    return tfr_dict
+
+
 def calculate_spectrogram(raw, freqs=None, channel='RAW_TP9', fmax=50.0):
     """
     スペクトログラムを計算（Time-Frequency Representation）

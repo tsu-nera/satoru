@@ -9,7 +9,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -21,7 +20,8 @@ from lib.sensors.eeg.artifact import (  # noqa: E402
     calculate_amplitude_statistics,
     channel_thresholds,
     detect_artifact_windows,
-    find_bad_channels_by_hsi,
+    detect_hsi_windows,
+    detect_valid_windows,
     segment_valid_ratio,
     summarize_artifacts,
 )
@@ -207,33 +207,60 @@ class TestSegmentValidRatio:
         assert segment_valid_ratio(valid, 3, 3) == 0.0
 
 
-class TestFindBadChannelsByHsi:
-    """接触不良チャネルはHSIで丸ごと外す（窓単位の振幅除去を通る汚染があるため）。"""
+class TestDetectHsiWindows:
+    """接触不良はHSIで窓単位に外す（窓単位の振幅除去を通る汚染があるため）。"""
 
-    @staticmethod
-    def make_hsi(bad_ratio_by_site, n=1000):
-        data = {}
-        for site in ('TP9', 'AF7', 'AF8', 'TP10'):
-            n_bad = int(n * bad_ratio_by_site.get(site, 0.0))
-            data[f'HSI_{site}'] = [2.0] * n_bad + [1.0] * (n - n_bad)
-        return pd.DataFrame(data)
+    def test_channel_lost_mid_session_invalidates_only_later_windows(self):
+        hsi = np.ones((len(CHANNELS), N_WINDOWS * ARTIFACT_WINDOW_SAMPLES))
+        lost_at = 10 * ARTIFACT_WINDOW_SAMPLES
+        hsi[3, lost_at:] = 2.0  # TP10が窓10の先頭からMedium
 
-    def test_clean_session_excludes_nothing(self):
-        assert find_bad_channels_by_hsi(self.make_hsi({'TP9': 0.01})) == []
+        valid = detect_hsi_windows(hsi)
 
-    def test_mostly_medium_channels_are_excluded(self):
-        df = self.make_hsi({'TP9': 0.996, 'TP10': 0.999})
-        assert find_bad_channels_by_hsi(df) == ['RAW_TP9', 'RAW_TP10']
+        assert valid[3, :10].all()
+        assert not valid[3, 10:].any()
+        assert valid[:3].all()
 
-    def test_partial_contact_loss_is_kept(self):
-        # 2026-10-05相当（TP9で約32%）は窓単位の除去に任せる
-        assert find_bad_channels_by_hsi(self.make_hsi({'TP9': 0.32})) == []
+    def test_window_is_invalid_only_when_bad_exceeds_half(self):
+        hsi = np.ones((1, 3 * ARTIFACT_WINDOW_SAMPLES))
+        half = ARTIFACT_WINDOW_SAMPLES // 2
+        hsi[0, :half] = 2.0  # 窓0はちょうど半分
+        hsi[0, ARTIFACT_WINDOW_SAMPLES : ARTIFACT_WINDOW_SAMPLES + half + 1] = 2.0  # 窓1は半分超
 
-    def test_never_excludes_every_channel(self):
-        df = self.make_hsi({site: 1.0 for site in ('TP9', 'AF7', 'AF8', 'TP10')})
-        assert find_bad_channels_by_hsi(df) == []
+        assert detect_hsi_windows(hsi)[0].tolist() == [True, False, True]
 
-    def test_nan_rows_are_ignored(self):
-        df = self.make_hsi({'TP10': 0.9})
-        df.loc[:, 'HSI_TP9'] = np.nan
-        assert find_bad_channels_by_hsi(df) == ['RAW_TP10']
+    def test_nan_hsi_counts_as_good(self):
+        hsi = np.full((1, 2 * ARTIFACT_WINDOW_SAMPLES), np.nan)
+        assert detect_hsi_windows(hsi).all()
+
+    def test_whole_session_bad_channel_is_fully_invalid(self):
+        """PR #56のセッション全体での除外は、全窓が無効になる形でこの判定に含まれる。"""
+        hsi = np.ones((len(CHANNELS), N_WINDOWS * ARTIFACT_WINDOW_SAMPLES))
+        hsi[[0, 3]] = 2.0
+        valid = detect_hsi_windows(hsi)
+        assert not valid[[0, 3]].any()
+        assert valid[[1, 2]].all()
+
+
+class TestDetectValidWindows:
+    def test_all_good_hsi_matches_amplitude_mask(self):
+        """回帰確認: 全チャネルGoodなら合成マスクは従来の振幅マスクと一致する。"""
+        data = make_clean_data()
+        for w in (0, 5, 17):
+            data = inject_burst(data, channel_idx=w % len(CHANNELS), window_idx=w)
+        hsi = np.ones_like(data)
+
+        np.testing.assert_array_equal(
+            detect_valid_windows(data, hsi), detect_artifact_windows(data)
+        )
+
+    def test_combines_amplitude_and_hsi_with_and(self):
+        data = inject_burst(make_clean_data(), channel_idx=1, window_idx=0)
+        hsi = np.ones_like(data)
+        hsi[2, : 2 * ARTIFACT_WINDOW_SAMPLES] = 4.0
+
+        valid = detect_valid_windows(data, hsi)
+
+        assert not valid[1, 0]
+        assert not valid[2, 0] and not valid[2, 1]
+        assert valid.sum() == valid.size - 3

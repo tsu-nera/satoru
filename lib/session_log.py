@@ -42,6 +42,8 @@ CANONICAL_COLUMNS: List[str] = [
     'theta_rel_pct',
     'alpha_rel_pct',
     'artifact_reject_pct',
+    'montage',
+    'valid_coverage_pct',
     'breathing_rate_bpm',
     'breathing_rate_std',
     'rsa_amplitude_ms',
@@ -100,11 +102,18 @@ def _extract_session_data(results: Dict) -> Dict:
         start_timeが見つからない場合
     """
     info = results.get('data_info', {})
+    # 主要EEG列は常に前頭（AF7/AF8, Fpz基準）だけで計算した値にする。
+    # 全チャネルの値はTPの接触状態でチャネル構成が変わり、セッション間で比較できないため。
+    # TPを含む値はレポート本文でのみ使う。2026-10-28 より前の行は基準が違う（montage列が空）。
+    frontal = results.get('frontal_metrics') or {}
+    eeg_mean = frontal.get('mean_metrics') or {}
+    eeg_best = frontal.get('best_metrics') or {}
+    # HRVはEEGのチャネル構成と無関係なので全体の値を使う
     mean_metrics = results.get('mean_metrics', {})
     best_metrics = results.get('best_metrics', {})
     # 非周期成分（1/f）はmean_metrics/best_metricsに載らないため、
     # resultsから直接読む（追加し忘れるとサイレントに欠落するため注意）。
-    aperiodic_info = results.get('aperiodic', {})
+    aperiodic_info = results.get('aperiodic_frontal') or {}
 
     start_time = info.get('start_time')
     if start_time is None:
@@ -124,16 +133,16 @@ def _extract_session_data(results: Dict) -> Dict:
         'timestamp': start_time.strftime('%Y-%m-%d %H:%M:%S'),
         'duration_min': duration_min,
         # Fmθは全帯域に対する相対値。絶対値は電極ゲインに支配され比較できない。
-        'fm_theta_rel_mean': mean_metrics.get('fm_theta_mean', float('nan')),
-        'fm_theta_rel_best': best_metrics.get('fm_theta_best', float('nan')),
-        'iaf_mean': mean_metrics.get('iaf_mean', float('nan')),
-        'iaf_best': best_metrics.get('iaf_best', float('nan')),
-        'alpha_mean': mean_metrics.get('alpha_mean', float('nan')),
-        'alpha_best': best_metrics.get('alpha_best', float('nan')),
-        'beta_mean': mean_metrics.get('beta_mean', float('nan')),
-        'beta_best': best_metrics.get('beta_best', float('nan')),
-        'theta_alpha_mean': mean_metrics.get('theta_alpha_mean', float('nan')),
-        'theta_alpha_best': best_metrics.get('theta_alpha_best', float('nan')),
+        'fm_theta_rel_mean': eeg_mean.get('fm_theta_mean', float('nan')),
+        'fm_theta_rel_best': eeg_best.get('fm_theta_best', float('nan')),
+        'iaf_mean': eeg_mean.get('iaf_mean', float('nan')),
+        'iaf_best': eeg_best.get('iaf_best', float('nan')),
+        'alpha_mean': eeg_mean.get('alpha_mean', float('nan')),
+        'alpha_best': eeg_best.get('alpha_best', float('nan')),
+        'beta_mean': eeg_mean.get('beta_mean', float('nan')),
+        'beta_best': eeg_best.get('beta_best', float('nan')),
+        'theta_alpha_mean': eeg_mean.get('theta_alpha_mean', float('nan')),
+        'theta_alpha_best': eeg_best.get('theta_alpha_best', float('nan')),
         'hrv_mean': mean_metrics.get('hrv_mean', float('nan')),
         'hrv_best': best_metrics.get('hrv_best', float('nan')),
         'mw_count': _mw_stat(results, 'tap_count'),
@@ -144,12 +153,15 @@ def _extract_session_data(results: Dict) -> Dict:
         'alpha_cf_hz': alpha_peak['center_hz'] if alpha_peak is not None else float('nan'),
         # δ相対パワーと振幅除外率は低周波ドリフト混入の判定に使う
         # （両者が並走して高いときはδ/θ由来の指標を割り引いて読む）。
-        'delta_rel_pct': mean_metrics.get('delta_rel_pct', float('nan')),
-        'theta_rel_pct': mean_metrics.get('theta_rel_pct', float('nan')),
-        'alpha_rel_pct': mean_metrics.get('alpha_rel_pct', float('nan')),
+        'delta_rel_pct': eeg_mean.get('delta_rel_pct', float('nan')),
+        'theta_rel_pct': eeg_mean.get('theta_rel_pct', float('nan')),
+        'alpha_rel_pct': eeg_mean.get('alpha_rel_pct', float('nan')),
         'artifact_reject_pct': (
             rejected_ratio * 100 if rejected_ratio is not None else float('nan')
         ),
+        # 主要EEG列の算出に使ったチャネルと基準（例: 'AF7+AF8/Fpz'）と、その有効率
+        'montage': frontal.get('montage', ''),
+        'valid_coverage_pct': frontal.get('valid_coverage_pct', float('nan')),
         'breathing_rate_bpm': (
             respiration.breathing_rate if respiration is not None else float('nan')
         ),
@@ -209,7 +221,8 @@ def write_to_csv(
     results : dict
         分析結果を格納した辞書。以下のキーを参照する：
         - 'data_info': {'start_time': pd.Timestamp, 'duration_sec': float}
-        - 'mean_metrics' / 'best_metrics' / 'aperiodic'
+        - 'frontal_metrics' / 'aperiodic_frontal'（主要EEG列）
+        - 'mean_metrics' / 'best_metrics'（HRV）
         - 'artifact_summary' / 'respiration_result'（あれば）
     csv_path : Path, optional
         出力先CSVパス。省略時は `logs/session_log.csv`。

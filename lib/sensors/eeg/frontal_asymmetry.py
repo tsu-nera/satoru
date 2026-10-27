@@ -25,8 +25,10 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 import mne
+import numpy as np
 import pandas as pd
 
+from .artifact import ARTIFACT_WINDOW_SAMPLES, expand_window_mask
 from .core.hilbert_power import calculate_hilbert_band_power
 from .core.statistics import calculate_half_comparison
 from .preprocessing import prepare_mne_raw
@@ -49,6 +51,7 @@ def _apply_mastoid_reference(
     right_channel: str,
     left_mastoid: str,
     right_mastoid: str,
+    sample_mask: Optional[np.ndarray] = None,
 ) -> mne.io.BaseRaw:
     """
     Linked mastoid referenceを適用する。
@@ -61,6 +64,9 @@ def _apply_mastoid_reference(
         前頭部チャネル名
     left_mastoid, right_mastoid : str
         マストイドチャネル名
+    sample_mask : np.ndarray, optional
+        (n_samples,) のbool配列。Trueのサンプルだけ基準を引く（Falseのサンプルは
+        Muse既定のFpz基準のまま）。Noneなら全サンプルに適用する
 
     Returns
     -------
@@ -77,6 +83,8 @@ def _apply_mastoid_reference(
 
     # Linked mastoid reference: (TP9 + TP10) / 2
     mastoid_ref = (data[left_mast_idx] + data[right_mast_idx]) / 2
+    if sample_mask is not None:
+        mastoid_ref = np.where(sample_mask, mastoid_ref, 0.0)
     data[left_idx] = data[left_idx] - mastoid_ref
     data[right_idx] = data[right_idx] - mastoid_ref
 
@@ -101,6 +109,8 @@ def calculate_frontal_asymmetry(
     use_mastoid_reference: bool = True,
     left_mastoid: str = 'RAW_TP9',
     right_mastoid: str = 'RAW_TP10',
+    mastoid_valid: Optional[np.ndarray] = None,
+    window_samples: int = ARTIFACT_WINDOW_SAMPLES,
 ) -> FrontalAsymmetryResult:
     """
     Frontal Alpha Asymmetry (FAA) を計算する。
@@ -130,6 +140,11 @@ def calculate_frontal_asymmetry(
         左側マストイドチャネル (デフォルト: RAW_TP9)。
     right_mastoid : str
         右側マストイドチャネル (デフォルト: RAW_TP10)。
+    mastoid_valid : np.ndarray, optional
+        (n_windows,) のbool配列。TP9とTP10が両方有効な窓だけmastoid基準にし、
+        それ以外の窓はFpz基準のまま計算する。Noneなら全窓でmastoid基準。
+    window_samples : int
+        mastoid_validの窓長（サンプル）。
 
     Returns
     -------
@@ -165,16 +180,26 @@ def calculate_frontal_asymmetry(
                 f'but missing: {missing}'
             )
         raw.pick_channels(all_channels)
+        sample_mask = None
+        if mastoid_valid is not None:
+            sample_mask = expand_window_mask(mastoid_valid, raw.n_times, window_samples)
         raw = _apply_mastoid_reference(
-            raw, left_channel, right_channel, left_mastoid, right_mastoid
+            raw, left_channel, right_channel, left_mastoid, right_mastoid, sample_mask
         )
-        reference_method = 'linked_mastoid'
+        mastoid_ratio = float(sample_mask.mean()) if sample_mask is not None else 1.0
+        if mastoid_ratio == 1.0:
+            reference_method = 'linked_mastoid'
+        elif mastoid_ratio == 0.0:
+            reference_method = 'default_fpz'
+        else:
+            reference_method = 'mixed'
     else:
         missing = [ch for ch in frontal_channels if ch not in available]
         if missing:
             raise ValueError(f'Specified channels not found: {missing}')
         raw.pick_channels(frontal_channels)
         reference_method = 'default_fpz'
+        mastoid_ratio = 0.0
 
     # セッション開始時刻
     start_time = pd.to_datetime(df['TimeStamp'].min())
@@ -244,6 +269,7 @@ def calculate_frontal_asymmetry(
         'unit': 'dB',
         'method': 'mne_hilbert_db',
         'reference_method': reference_method,
+        'mastoid_reference_ratio': mastoid_ratio,
         'processing': {
             'resample_interval': resample_interval,
             'smoothing_seconds': smoothing_seconds,
