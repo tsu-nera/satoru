@@ -7,7 +7,6 @@ from .segment_analysis import (
     MEDITATION_SCORE_WEIGHTS,
     SegmentAnalysisResult,
     calculate_best_metrics,
-    calculate_meditation_score,
     calculate_segment_analysis,
 )
 from .sensors.eeg import (
@@ -127,7 +126,6 @@ __all__ = [
     'SegmentAnalysisResult',
     'calculate_segment_analysis',
     'MEDITATION_SCORE_WEIGHTS',
-    'calculate_meditation_score',
     'calculate_best_metrics',
     # session summary
     'SessionSummaryResult',

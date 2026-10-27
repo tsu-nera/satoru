@@ -272,7 +272,7 @@ class TestAperiodicFormatters:
         ピーク未検出は 'nan' ではなく 'N/A' で出す
 
         生の 'nan' はクラッシュの痕跡に見え、「測定していない」という
-        意図が伝わらない。既存の format_score と同じ 'N/A' に揃える。
+        意図が伝わらない。'N/A' に揃える。
         """
         df = format_aperiodic_stats(self._info(theta_peak=None))
 

@@ -7,7 +7,6 @@ Fmθ、FAAの計算がμV²/lnからdB (10*log10) に正しく変換されたこ
 import numpy as np
 import pandas as pd
 
-from lib.segment_analysis import calculate_meditation_score
 from lib.sensors.eeg.frontal_asymmetry import calculate_frontal_asymmetry
 from lib.sensors.eeg.frontal_theta import calculate_frontal_theta
 
@@ -118,42 +117,6 @@ def test_fmtheta_ignores_line_noise_on_unfiltered_raw():
     assert abs(fm_mean(100.0) - fm_mean(0.0)) < 1.0
 
 
-def test_meditation_score_normalization():
-    """総合スコアの正規化範囲がdBに対応していることを確認"""
-    # Fmθ（全帯域に対する相対値）: -15.0 ~ -7.0 dB の範囲でテスト（実測分布に基づくレンジ）
-    score_min = calculate_meditation_score(fmtheta=-15.0)
-    score_max = calculate_meditation_score(fmtheta=-7.0)
-    score_mid = calculate_meditation_score(fmtheta=-11.0)
-
-    assert score_min['scores']['fmtheta'] == 0.0  # min値で0
-    assert score_max['scores']['fmtheta'] == 1.0  # max値で1
-    assert 0.4 < score_mid['scores']['fmtheta'] < 0.6  # 中間値で約0.5
-
-    # 実測レンジのFmθがクリップされず中間域に入ること（回帰防止）
-    for observed in (-14.57, -11.29, -9.87):
-        s = calculate_meditation_score(fmtheta=observed)['scores']['fmtheta']
-        assert 0.0 < s < 1.0, f'Fmθ={observed} がクリップされている'
-
-    # FAA: -20.0 ~ 20.0 dB の範囲でテスト
-    faa_min = calculate_meditation_score(faa=-20.0)
-    faa_max = calculate_meditation_score(faa=20.0)
-    faa_mid = calculate_meditation_score(faa=0.0)
-
-    assert faa_min['scores']['faa'] == 0.0
-    assert faa_max['scores']['faa'] == 1.0
-    assert 0.4 < faa_mid['scores']['faa'] < 0.6
-
-    print("✓ Meditation score normalization test passed")
-    print(
-        f"  Fmθ normalization: {score_min['scores']['fmtheta']:.2f} / "
-        f"{score_mid['scores']['fmtheta']:.2f} / {score_max['scores']['fmtheta']:.2f}"
-    )
-    print(
-        f"  FAA normalization: {faa_min['scores']['faa']:.2f} / "
-        f"{faa_mid['scores']['faa']:.2f} / {faa_max['scores']['faa']:.2f}"
-    )
-
-
 def test_bels_conversion_consistency():
     """μV²とBelsの変換が数学的に一貫していることを確認"""
     # μV²の値とそれに対応するBels値
@@ -191,8 +154,6 @@ if __name__ == '__main__':
     test_fmtheta_bels_output()
     print()
     test_faa_bels_output()
-    print()
-    test_meditation_score_normalization()
     print()
     test_bels_conversion_consistency()
     print()
