@@ -438,8 +438,8 @@ def _draw_spectrogram_on_axis(
         if shared_vlim:
             vmin, vmax = shared_vlim
         else:
-            vmin = np.percentile(power_db, 5)
-            vmax = np.percentile(power_db, 95)
+            vmin = np.nanpercentile(power_db, 5)
+            vmax = np.nanpercentile(power_db, 95)
 
         im = ax.pcolormesh(
             times,
@@ -518,6 +518,28 @@ def plot_spectrogram(
     return fig
 
 
+def shared_spectrogram_vlim(tfr_results):
+    """
+    全チャネル共通のカラースケール（dBの5〜95パーセンタイル）を返す。
+
+    無効窓をNaNにしたスペクトログラム（mask_spectrogram）があるので、NaNを無視して計算する。
+    """
+    all_powers_db = []
+    for tfr_dict in tfr_results.values():
+        safe_power = np.maximum(tfr_dict['power'], np.finfo(float).tiny)
+        all_powers_db.append(10 * np.log10(safe_power).flatten())
+
+    if not all_powers_db:
+        return None
+    concatenated = np.concatenate(all_powers_db)
+    if np.isnan(concatenated).all():
+        return None
+    return (
+        float(np.nanpercentile(concatenated, 5)),
+        float(np.nanpercentile(concatenated, 95)),
+    )
+
+
 def plot_spectrogram_grid(
     tfr_results,
     bands=None,
@@ -553,19 +575,7 @@ def plot_spectrogram_grid(
 
     fig, axes = plt.subplots(2, 2, figsize=(16, 10))
 
-    all_powers_db = []
-    for tfr_dict in tfr_results.values():
-        safe_power = np.maximum(tfr_dict['power'], np.finfo(float).tiny)
-        all_powers_db.append(10 * np.log10(safe_power))
-
-    if all_powers_db:
-        concatenated = np.concatenate([p.flatten() for p in all_powers_db])
-        shared_vlim = (
-            float(np.percentile(concatenated, 5)),
-            float(np.percentile(concatenated, 95))
-        )
-    else:
-        shared_vlim = None
+    shared_vlim = shared_spectrogram_vlim(tfr_results)
 
     for i in range(2):
         for j in range(2):

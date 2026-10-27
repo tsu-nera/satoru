@@ -156,6 +156,10 @@ def mask_spectrogram(tfr_dict, window_valid, window_samples, sfreq):
     window_idx = np.clip(window_idx, 0, len(window_valid) - 1)
     invalid = ~window_valid[window_idx]
     tfr_dict['power'][:, invalid] = np.nan
+    # MNEの描画経路はtfrオブジェクトのデータを使うので、そちらにも反映する
+    tfr_obj = tfr_dict.get('tfr')
+    if tfr_obj is not None:
+        tfr_obj.data[0][:, invalid] = np.nan
     return tfr_dict
 
 

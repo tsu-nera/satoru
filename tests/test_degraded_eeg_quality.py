@@ -132,6 +132,36 @@ class TestMaskedPsd:
         assert masked['psds'].shape[0] == 3
 
 
+class TestMaskedSpectrogram:
+    def test_invalid_windows_are_blank_and_color_scale_stays_finite(self, tmp_path):
+        import matplotlib
+
+        matplotlib.use('Agg')
+        from lib.sensors.eeg.frequency import calculate_spectrogram_all_channels, mask_spectrogram
+        from lib.sensors.eeg.visualization.eeg_plots import (
+            plot_spectrogram_grid,
+            shared_spectrogram_vlim,
+        )
+
+        rng = np.random.default_rng(7)
+        raw = make_raw(rng.normal(0, 10, (4, 8 * WIN)))
+        tfr_results = calculate_spectrogram_all_channels(raw.copy().resample(64, verbose=False))
+        valid = np.ones(8, dtype=bool)
+        valid[4:] = False
+        mask_spectrogram(tfr_results['RAW_TP10'], valid, WIN, SFREQ)
+
+        tp10 = tfr_results['RAW_TP10']
+        second_half = tp10['times'] >= 4 * WIN / SFREQ
+        assert np.isnan(tp10['power'][:, second_half]).all()
+        assert not np.isnan(tp10['power'][:, ~second_half]).any()
+        assert np.isnan(tp10['tfr'].data[0][:, second_half]).all()
+
+        vlim = shared_spectrogram_vlim(tfr_results)
+        assert vlim is not None and np.isfinite(vlim).all()
+        plot_spectrogram_grid(tfr_results, img_path=tmp_path / 'spectrogram.png')
+        assert (tmp_path / 'spectrogram.png').exists()
+
+
 class TestFaaReferenceSwitch:
     def test_reference_is_subtracted_only_in_valid_windows(self):
         rng = np.random.default_rng(4)
