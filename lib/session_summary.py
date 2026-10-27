@@ -176,16 +176,6 @@ def generate_session_summary(
         theta_peak = aperiodic_info.get('theta_peak')
         summary['theta_peak_detected'] = theta_peak is not None
 
-    # 総合スコア
-    if 'session_score' in results:
-        summary['session_score'] = results['session_score']
-        summary['session_level'] = results['session_level']
-
-    # ピークパフォーマンス
-    if 'segment_peak_range' in results:
-        summary['peak_time_range'] = results['segment_peak_range']
-        summary['peak_score'] = results.get('segment_peak_score')
-
     # メタデータ
     metadata = {
         'generated_from': str(data_path),

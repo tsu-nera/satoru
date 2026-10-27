@@ -42,7 +42,6 @@ from lib.report import (
     analyze_segments,
     analyze_smr_step,
     build_statistical_dataframe,
-    calculate_session_score,
     load_tap_log_step,
     plot_band_power_series,
     plot_band_ratios_step,
@@ -222,9 +221,6 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
         plot_band_ratios_step(img_dir, results)
     else:
         print('警告: Statistical DFが生成されていないため、バンド比率をスキップします。')
-
-    # セッション総合スコア計算
-    calculate_session_score(fmtheta_result, statistical_df, results)
 
     # レポート生成
     generate_markdown_report(data_path, output_dir, results)

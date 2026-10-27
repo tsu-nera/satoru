@@ -288,30 +288,3 @@ def df_to_markdown(df, floatfmt='.2f', index=True, standardize_columns=False):
 
     return df.to_markdown(floatfmt=floatfmt, index=index)
 
-
-def format_score(score, max_score=100, decimals=1):
-    """
-    スコアをフォーマット
-
-    Parameters
-    ----------
-    score : float
-        スコア値
-    max_score : float
-        最大スコア（デフォルト100）
-    decimals : int
-        小数点以下の桁数
-
-    Returns
-    -------
-    str
-        フォーマットされたスコア
-
-    Examples
-    --------
-    >>> format_score(75.234, 100, 1)
-    '75.2/100'
-    """
-    if isinstance(score, Undefined) or score is None or (isinstance(score, float) and np.isnan(score)):
-        return 'N/A'
-    return f"{score:.{decimals}f}/{max_score}"

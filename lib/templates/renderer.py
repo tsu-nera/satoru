@@ -55,7 +55,6 @@ class MeditationReportRenderer:
             format_duration,
             format_hz,
             format_percent,
-            format_score,
             format_timestamp,
             number_format,
         )
@@ -68,7 +67,6 @@ class MeditationReportRenderer:
         self.env.filters['format_duration'] = format_duration
         self.env.filters['format_change'] = format_change
         self.env.filters['df_to_markdown'] = df_to_markdown
-        self.env.filters['format_score'] = format_score
 
     def render_report(self, context):
         """
@@ -160,18 +158,10 @@ class MeditationReportRenderer:
 
         # 分析サマリー
         summary = {}
-        if 'session_score' in results:
-            summary['session_score'] = results['session_score']
-        if 'session_score_breakdown' in results:
-            summary['score_breakdown'] = results['session_score_breakdown']
         if 'mean_metrics' in results:
             summary['mean_metrics'] = results['mean_metrics']
         if 'best_metrics' in results:
             summary['best_metrics'] = results['best_metrics']
-        if 'segment_peak_range' in results:
-            summary['peak_time_range'] = results['segment_peak_range']
-        if 'segment_peak_score' in results:
-            summary['peak_score'] = results['segment_peak_score']
 
         if summary:
             context['summary'] = summary

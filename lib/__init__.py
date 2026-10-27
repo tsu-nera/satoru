@@ -4,10 +4,8 @@ Mind Monitor Analysis Library
 
 from .loaders import get_data_summary, get_eeg_data, get_heart_rate_data, get_optics_data, load_mind_monitor_csv
 from .segment_analysis import (
-    MEDITATION_SCORE_WEIGHTS,
     SegmentAnalysisResult,
     calculate_best_metrics,
-    calculate_meditation_score,
     calculate_segment_analysis,
 )
 from .sensors.eeg import (
@@ -126,8 +124,6 @@ __all__ = [
     # high-level eeg utilities
     'SegmentAnalysisResult',
     'calculate_segment_analysis',
-    'MEDITATION_SCORE_WEIGHTS',
-    'calculate_meditation_score',
     'calculate_best_metrics',
     # session summary
     'SessionSummaryResult',

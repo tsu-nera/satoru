@@ -11,7 +11,6 @@ from .filters import (
     format_duration,
     format_hz,
     format_percent,
-    format_score,
     format_timestamp,
     number_format,
 )
@@ -27,5 +26,4 @@ __all__ = [
     'format_duration',
     'format_change',
     'df_to_markdown',
-    'format_score',
 ]

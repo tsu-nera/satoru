@@ -19,18 +19,6 @@ if TYPE_CHECKING:
     pass
 
 
-# ========================================
-# 総合スコア算出の重み定数
-# ========================================
-MEDITATION_SCORE_WEIGHTS = {
-    'fmtheta': 0.3125,          # Frontal Midline Theta（瞑想深度）
-    'spectral_entropy': 0.25,   # Spectral Entropy（集中度）
-    'theta_alpha_ratio': 0.1875, # θ/α比（瞑想深度）
-    'beta_alpha_ratio': 0.125,  # β/α比（覚醒度、低いほどリラックス）
-    'iaf_stability': 0.125,     # IAF安定性（周波数特性）
-}
-
-
 @dataclass
 class SegmentAnalysisResult:
     """時間セグメント分析の結果を保持する。"""
@@ -88,7 +76,7 @@ def calculate_segment_analysis(
     warmup_minutes : float, default 0.0
         セッション開始後の除外期間（分単位）。アーティファクト除去のため。
     exclude_first_segment : bool, default False
-        最初のセグメントをスコア計算・ピーク判定から除外（relaxing phase）。
+        最初のセグメントをbest値計算から除外（relaxing phase）。
     smr_series : pd.Series, optional
         SMR（12-15Hz）の時系列データ（indexはタイムスタンプ）。
 
@@ -101,7 +89,7 @@ def calculate_segment_analysis(
     -----
     バンドパワー・比率・IAFはstatistical_dfから自動取得されます（MNE Epochsベース）。
     df_cleanのバンドパワー列は使用されません。
-    exclude_first_segmentはピーク判定・best値計算のみに影響し、
+    exclude_first_segmentはbest値計算のみに影響し、
     レポートのテーブルには全セグメントが表示されます。
     """
     # Statistical DFのバリデーション
@@ -217,15 +205,8 @@ def calculate_segment_analysis(
 
         # IAF平均（Statistical DFから自動取得済み）
         iaf_mean = np.nan
-        iaf_cv = np.nan
         iaf_slice = iaf_series.loc[(iaf_series.index >= start) & (iaf_series.index < end)]
         iaf_mean = iaf_slice.mean()
-        # IAF変動係数
-        if len(iaf_slice) > 1:
-            iaf_std = iaf_slice.std()
-            iaf_val = iaf_slice.mean()
-            if pd.notna(iaf_val) and iaf_val != 0:
-                iaf_cv = iaf_std / iaf_val
 
         # ITF平均（Statistical DFから自動取得済み）
         itf_mean = np.nan
@@ -305,18 +286,6 @@ def calculate_segment_analysis(
             beta_relative = np.nan
             gamma_relative = np.nan
 
-        # 総合スコア計算（利用可能な指標のみ）
-        segment_score_result = calculate_meditation_score(
-            fmtheta=fm_mean,
-            spectral_entropy=se_mean,  # Statistical DFから取得
-            theta_alpha_ratio=theta_alpha_ratio,  # 実数比率を使用
-            faa=None,  # セグメント単位では未対応
-            beta_alpha_ratio=beta_alpha_ratio,  # 実数値を使用
-            iaf_cv=iaf_cv,
-            hsi_quality=None,  # セグメント単位では未対応
-        )
-        meditation_score = segment_score_result['total_score']
-
         records.append({
             'segment_index': idx,
             'segment_start': start,
@@ -352,7 +321,6 @@ def calculate_segment_analysis(
             'aperiodic_exponent': aperiodic_exponent,
             'aperiodic_alpha_osc_db': aperiodic_alpha_osc_db,
             'yaw_rms': yaw_rms,
-            'meditation_score': meditation_score,
             'excluded_ratio': excluded_ratio,
             'usable': segment_usable,
         })
@@ -371,7 +339,7 @@ def calculate_segment_analysis(
     if segment_frame.empty:
         raise ValueError('時間セグメント分析の結果が空です。')
 
-    # 正規化スコア
+    # 指標ごとのmin-max正規化（プロット用）
     numeric_cols = ['fmtheta_mean', 'iaf_mean', 'alpha_mean', 'beta_mean', 'theta_alpha_ratio']
     metrics_df = segment_frame.set_index('segment_index')[numeric_cols]
     normalized = pd.DataFrame(
@@ -379,16 +347,16 @@ def calculate_segment_analysis(
     )
     normalized = normalized.reindex(metrics_df.index)
 
-    # スコア計算・ピーク判定対象のセグメントインデックスを決定
+    # best値計算対象のセグメントインデックスを決定
     all_indices = segment_frame['segment_index'].tolist()
     excluded_indices = set()
     if exclude_first_segment and len(all_indices) > 0:
         excluded_indices.add(all_indices[0])
 
-    # アーチファクト除去率が高いセグメントをピーク判定・best値から除外する。
+    # アーチファクト除去率が高いセグメントをbest値から除外する。
     # これを入れないと、まばたき等の大振幅アーチファクトがθ/αとFmθを押し上げ、
-    # 汚染区間が「最高パフォーマンス区間」として提示される。
-    # 指標がNaNの区間（usable=False）と、値は出すがピーク判定には使わない区間を分ける。
+    # 汚染区間の値がbest値として提示される。
+    # 指標がNaNの区間（usable=False）と、値は出すがbest値には使わない区間を分ける。
     artifact_indices = set(
         segment_frame.loc[~segment_frame['usable'], 'segment_index'].tolist()
     )
@@ -401,16 +369,6 @@ def calculate_segment_analysis(
 
     scoring_indices = [idx for idx in all_indices if idx not in excluded_indices]
 
-    # ピーク判定（総合スコアベース、除外セグメントを除く）
-    meditation_scores = segment_frame.set_index('segment_index')['meditation_score']
-    scoring_scores = meditation_scores.loc[meditation_scores.index.isin(scoring_indices)]
-    if scoring_scores.dropna().empty:
-        peak_idx = None
-        peak_score = pd.Series(dtype=float)
-    else:
-        peak_score = meditation_scores  # 全体を保持（表示用）
-        peak_idx = int(scoring_scores.idxmax())
-
     # 表形式（日本語ラベル）
     # テーブル1: バンドパワー詳細（絶対パワー + 相対パワー）
     # テーブル2: 比率と特徴指標（Theta/Alpha/Beta dBを除く）
@@ -421,7 +379,7 @@ def calculate_segment_analysis(
     for _idx, row in segment_frame.iterrows():
         seg_idx = int(row['segment_index'])
 
-        # 備考列: 最初/ピーク/データ由来の除外理由を表示
+        # 備考列: 最初/データ由来の除外理由を表示
         note = ''
         if seg_idx in artifact_indices:
             note = 'artifact'
@@ -429,8 +387,6 @@ def calculate_segment_analysis(
             note = 'noisy'
         elif exclude_first_segment and seg_idx == first_idx:
             note = 'relaxing'
-        elif peak_idx is not None and seg_idx == peak_idx:
-            note = 'peak'
 
         # テーブル1: バンドパワー詳細（11列）
         band_power_row = {
@@ -493,13 +449,6 @@ def calculate_segment_analysis(
         'segment_minutes': segment_minutes,
         'session_start': session_start,
         'session_end': session_end,
-        'peak_segment_index': peak_idx,
-        'peak_time_range': (
-            segment_frame.set_index('segment_index').loc[peak_idx, 'elapsed_label']
-            if peak_idx is not None
-            else None
-        ),
-        'peak_score': float(peak_score.loc[peak_idx]) if peak_idx is not None else None,
         'excluded_indices': list(excluded_indices),
         'artifact_indices': sorted(artifact_indices),
         'noisy_indices': sorted(noisy_indices),
@@ -517,177 +466,6 @@ def calculate_segment_analysis(
         band_power_table=band_power_table,
         metrics_table=metrics_table,
     )
-
-
-def _normalize_indicator(
-    value: float,
-    min_val: float,
-    max_val: float,
-    reverse: bool = False,
-) -> float:
-    """
-    指標を0-1に正規化する。
-
-    Parameters
-    ----------
-    value : float
-        正規化する値
-    min_val : float
-        最小値（この値が0になる）
-    max_val : float
-        最大値（この値が1になる）
-    reverse : bool
-        Trueの場合、値が低いほど良い指標として逆転（例：SE、HSI品質）
-
-    Returns
-    -------
-    float
-        正規化された値（0-1）
-    """
-    if pd.isna(value):
-        return 0.5  # 欠損値はデフォルト0.5
-
-    # クリッピング
-    clipped = np.clip(value, min_val, max_val)
-
-    # 正規化
-    if np.isclose(max_val, min_val):
-        normalized = 0.5
-    else:
-        normalized = (clipped - min_val) / (max_val - min_val)
-
-    # 逆転（低いほど良い指標）
-    if reverse:
-        normalized = 1.0 - normalized
-
-    return normalized
-
-
-def calculate_meditation_score(
-    fmtheta: Optional[float] = None,
-    spectral_entropy: Optional[float] = None,
-    theta_alpha_ratio: Optional[float] = None,
-    faa: Optional[float] = None,
-    beta_alpha_ratio: Optional[float] = None,
-    iaf_cv: Optional[float] = None,
-    hsi_quality: Optional[float] = None,
-    weights: Optional[Dict[str, float]] = None,
-) -> Dict[str, Any]:
-    """
-    瞑想セッションの総合スコアを計算する。
-
-    Parameters
-    ----------
-    fmtheta : float, optional
-        Frontal Midline Thetaパワー（dB）
-    spectral_entropy : float, optional
-        Spectral Entropy（0-1正規化済み）
-    theta_alpha_ratio : float, optional
-        θ/α比（dB差）
-    faa : float, optional
-        Frontal Alpha Asymmetry（dB差）
-    beta_alpha_ratio : float, optional
-        β/α比（無次元、低いほどリラックス）
-    iaf_cv : float, optional
-        IAF変動係数（0-1、低いほど安定）
-    hsi_quality : float, optional
-        HSI品質スコア（1.0=Good, 4.0=Bad）
-    weights : dict, optional
-        重み辞書（指定しない場合はMEDITATION_SCORE_WEIGHTSを使用）
-
-    Returns
-    -------
-    dict
-        {
-            'total_score': 総合スコア（0-100点）,
-            'level': 評価レベル（優秀/良好/普通/要改善）,
-            'scores': {指標名: 個別スコア（0-1）},
-            'weights': 使用した重み辞書
-        }
-    """
-    if weights is None:
-        weights = MEDITATION_SCORE_WEIGHTS
-
-    scores = {}
-
-    # Fmθスコア（高いほど良い）
-    # Fmθは全帯域（1-45Hz）に対する相対値（dB）。レンジは2026-06〜09の23セッションの
-    # 実測分布から決定: セッション平均 -14.6〜-9.9 dB、瞬時値 -20.7〜-7.0 dB。
-    if fmtheta is not None:
-        scores['fmtheta'] = _normalize_indicator(fmtheta, min_val=-15.0, max_val=-7.0)
-    else:
-        scores['fmtheta'] = 0.5
-
-    # SEスコア（低いほど良い、逆転）
-    # 注: SEは通常0.7-1.0の範囲に収まるため、この範囲で正規化
-    if spectral_entropy is not None:
-        scores['spectral_entropy'] = _normalize_indicator(
-            spectral_entropy, min_val=0.7, max_val=1.0, reverse=True
-        )
-    else:
-        scores['spectral_entropy'] = 0.5
-
-    # θ/α比スコア（高いほど良い）
-    # 実数比率: 典型的な範囲は0.1〜1.0（1.0以上は稀）
-    if theta_alpha_ratio is not None:
-        scores['theta_alpha_ratio'] = _normalize_indicator(
-            theta_alpha_ratio, min_val=0.1, max_val=1.0
-        )
-    else:
-        scores['theta_alpha_ratio'] = 0.5
-
-    # FAAスコア（正値ほど良い、中心化）
-    # 旧: -0.5 ~ 0.5 (ln) → 新: -20.0 ~ 20.0 (dB差分)
-    if faa is not None:
-        scores['faa'] = _normalize_indicator(faa, min_val=-20.0, max_val=20.0)
-    else:
-        scores['faa'] = 0.5
-
-    # β/α比スコア（低いほど良い、逆転）
-    # β/α < 1 はリラックス状態（Alpha優位）、β/α > 1 は覚醒状態（Beta優位）
-    if beta_alpha_ratio is not None:
-        scores['beta_alpha_ratio'] = _normalize_indicator(
-            beta_alpha_ratio, min_val=0.1, max_val=1.0, reverse=True
-        )
-    else:
-        scores['beta_alpha_ratio'] = 0.5
-
-    # IAF安定性スコア（変動係数が低いほど良い、逆転）
-    if iaf_cv is not None:
-        scores['iaf_stability'] = _normalize_indicator(
-            iaf_cv, min_val=0.0, max_val=0.05, reverse=True
-        )
-    else:
-        scores['iaf_stability'] = 0.5
-
-    # 品質スコア（1.0=Good、4.0=Bad、逆変換）
-    if hsi_quality is not None:
-        scores['quality'] = _normalize_indicator(
-            hsi_quality, min_val=1.0, max_val=4.0, reverse=True
-        )
-    else:
-        scores['quality'] = 0.5
-
-    # 重み付け平均で総合スコア算出（weightsに存在するキーのみ使用）
-    total_score = sum(scores[key] * weights[key] for key in weights.keys() if key in scores)
-    total_score_100 = total_score * 100.0
-
-    # 評価レベル判定
-    if total_score_100 >= 80:
-        level = "優秀"
-    elif total_score_100 >= 65:
-        level = "良好"
-    elif total_score_100 >= 50:
-        level = "普通"
-    else:
-        level = "要改善"
-
-    return {
-        'total_score': total_score_100,
-        'level': level,
-        'scores': scores,
-        'weights': weights,
-    }
 
 
 def calculate_best_metrics(segment_result: SegmentAnalysisResult) -> Dict[str, float]:

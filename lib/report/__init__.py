@@ -25,7 +25,6 @@ from .steps_physio import (
 from .steps_summary import (
     analyze_segments,
     build_statistical_dataframe,
-    calculate_session_score,
     plot_band_ratios_step,
     save_session_log,
 )
@@ -45,6 +44,5 @@ __all__ = [
     'build_statistical_dataframe',
     'analyze_segments',
     'plot_band_ratios_step',
-    'calculate_session_score',
     'save_session_log',
 ]

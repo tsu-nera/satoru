@@ -66,8 +66,6 @@ def plot_segment_comparison(
 
     fig.suptitle('Segment Performance', fontsize=14, fontweight='bold')
 
-    peak_idx = result.metadata.get('peak_segment_index')
-
     for i, (col, label, color) in enumerate(valid_metrics):
         ax = axes[i]
         values = result.normalized[col].values
@@ -75,17 +73,6 @@ def plot_segment_comparison(
         # エリアプロット
         ax.fill_between(time_sec, 0, values, alpha=0.4, color=color)
         ax.plot(time_sec, values, color=color, linewidth=2, marker='o', markersize=6)
-
-        # ピーク区間をハイライト
-        if peak_idx is not None:
-            peak_pos = list(segments.index).index(peak_idx)
-            peak_time = time_sec[peak_pos]
-            half_seg = segment_minutes * 60 / 2
-            ax.axvspan(
-                peak_time - half_seg,
-                peak_time + half_seg,
-                alpha=0.2, color='gold'
-            )
 
         ax.set_ylabel(label, fontsize=10)
         ax.set_ylim(0, 1.05)

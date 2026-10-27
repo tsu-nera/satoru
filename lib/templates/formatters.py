@@ -128,7 +128,7 @@ def format_aperiodic_stats(aperiodic_info: dict) -> pd.DataFrame:
     ['Metric', 'Value', 'Unit']
     """
     def _decimal(value) -> str:
-        """小数3桁。未測定はN/A（既存の format_score と同じ表記）"""
+        """小数3桁。未測定はN/A"""
         return 'N/A' if value is None or pd.isna(value) else f'{value:.3f}'
 
     def _count(value) -> str:
