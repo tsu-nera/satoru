@@ -177,7 +177,10 @@ def create_statistical_dataframe(
       窓内peak-to-peak振幅が閾値を超えたチャネル×窓を除外してから平均する。
       チャネル単位で判定するため、耳側（TP9/TP10）だけが汚いセッションでも
       前頭（AF7/AF8）のデータは保持される
-    - 残存率がSEGMENT_MIN_VALID_RATIOを下回るセグメントは全指標をNaNにする
+    - セグメント内の有効率がSEGMENT_MIN_VALID_RATIOを下回るチャネルは、そのセグメントの
+      集計から外す。残ったチャネルが無いセグメントだけ全指標をNaNにする
+    - quality の excluded_ratio は残ったチャネルの中での除外率、channels_used は
+      集計に使ったチャネル名（カンマ区切り）。チャネル構成が変わった区間は絶対dBに段差が出うる
     - バンドパワーはdB（10*log10(μV²)）で表現
     - 比率（対数）はdB差分（10*log10(A/B) = 10*log10(A) - 10*log10(B)）
     - 比率（実数）は10^(dB差分/10)で計算
@@ -256,26 +259,33 @@ def create_statistical_dataframe(
         raise ValueError('セグメントを構成できるだけのデータがありません。')
 
     # セグメントごとに、有効窓のみを平均してPSDを作る
-    # 不良チャネル（そのセグメントで全窓が不良）はチャネル平均から除外する
-    psds = np.full((n_segments, data_uv.shape[0], len(freqs)), np.nan)
-    segment_valid_ratios = []
+    # 区間×チャネルで判定し、そのチャネルの有効率がSEGMENT_MIN_VALID_RATIO未満なら
+    # その区間の集計から外す（耳側だけが全時間不良でも前頭で区間を埋めるため）
+    n_channels = data_uv.shape[0]
+    psds = np.full((n_segments, n_channels, len(freqs)), np.nan)
+    segment_valid_ratios = np.zeros(n_segments)
+    segment_channels_used = []
 
     for seg_idx in range(n_segments):
         w_start = seg_idx * windows_per_segment
         w_end = w_start + windows_per_segment
         seg_mask = valid_mask[:, w_start:w_end]
-        segment_valid_ratios.append(segment_valid_ratio(valid_mask, w_start, w_end))
+        channels_used = np.flatnonzero(seg_mask.mean(axis=1) >= SEGMENT_MIN_VALID_RATIO)
+        segment_channels_used.append(channels_used)
 
-        for ch_idx in range(data_uv.shape[0]):
+        if len(channels_used) == 0:
+            # 全チャネルが有効率不足。除外率は全チャネルで数える
+            segment_valid_ratios[seg_idx] = segment_valid_ratio(valid_mask, w_start, w_end)
+            continue
+
+        # 除外率は残ったチャネルの中だけで数える
+        segment_valid_ratios[seg_idx] = seg_mask[channels_used].mean()
+        for ch_idx in channels_used:
             ch_valid = seg_mask[ch_idx]
-            if not ch_valid.any():
-                continue
             psds[seg_idx, ch_idx] = window_psds[w_start:w_end][ch_valid, ch_idx].mean(axis=0)
 
-    segment_valid_ratios = np.asarray(segment_valid_ratios)
-
-    # 残存率が閾値を下回るセグメントは指標を算出しない（NaNのまま返す）
-    segment_usable = segment_valid_ratios >= SEGMENT_MIN_VALID_RATIO
+    # 残ったチャネルが1本も無いセグメントは指標を算出しない（NaNのまま返す）
+    segment_usable = np.array([len(used) > 0 for used in segment_channels_used])
 
     # バンド定義（全バンド）
     bands = {
@@ -323,10 +333,14 @@ def create_statistical_dataframe(
     ])
     quality_df = pd.DataFrame(
         {
-            'valid_ratio': segment_valid_ratios[:n_segments],
-            'excluded_ratio': 1.0 - segment_valid_ratios[:n_segments],
-            'usable': segment_usable[:n_segments],
+            'valid_ratio': segment_valid_ratios,
+            'excluded_ratio': 1.0 - segment_valid_ratios,
+            'usable': segment_usable,
             'frontal_valid_ratio': frontal_valid_ratios,
+            'channels_used': [
+                ','.join(raw_cropped.ch_names[idx].removeprefix('RAW_') for idx in used)
+                for used in segment_channels_used
+            ],
         },
         index=timestamps,
     )

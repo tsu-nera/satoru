@@ -5,6 +5,7 @@ EEG品質が劣化したセッションでも、使える部分（チャネル×
 - 有効窓だけのPSDが、全窓有効なら従来のPSDと一致すること
 - FAAが窓ごとに mastoid / Fpz 基準を切り替えること
 - 区間の前頭有効率が50%未満なら前頭指標のセルがNAになること
+- 区間×チャネルで有効率50%未満のチャネルを外し、残ったチャネルだけで区間を埋めること
 - ヘッダーが欠落したMind Monitor CSVを修復して読めること
 """
 
@@ -227,6 +228,82 @@ class TestSegmentCellNa:
         assert np.isnan(segments['smr_mean'].iloc[0])
         assert segments['fmtheta_mean'].iloc[1:].notna().all()
         assert segments['alpha_mean'].notna().all()
+
+
+def _expected_band_db(data_uv, n_segments, windows_per_segment, band=(8, 13)):
+    """全窓有効を前提に、チャネルごとに窓平均 → チャネル間で平均したバンドパワー（dB）"""
+    from mne.time_frequency import psd_array_welch
+
+    n_windows = n_segments * windows_per_segment
+    windowed = (
+        data_uv[:, : n_windows * WIN].reshape(data_uv.shape[0], n_windows, WIN).transpose(1, 0, 2)
+    )
+    psds, freqs = psd_array_welch(
+        windowed, sfreq=SFREQ, fmin=1.0, fmax=50.0, n_fft=WIN, n_per_seg=WIN, n_overlap=0,
+        verbose=False,
+    )
+    freq_mask = (freqs >= band[0]) & (freqs < band[1])
+    expected = []
+    for seg_idx in range(n_segments):
+        seg = psds[seg_idx * windows_per_segment : (seg_idx + 1) * windows_per_segment]
+        expected.append(10 * np.log10(seg.mean(axis=0)[:, freq_mask].mean() + 1e-12))
+    return np.array(expected)
+
+
+class TestSegmentChannelSelection:
+    N_MINUTES = 3
+    WINDOWS_PER_SEGMENT = int(round(60 * SFREQ / WIN))
+
+    def _data(self, seed):
+        rng = np.random.default_rng(seed)
+        data = rng.normal(0, 10, (4, int(self.N_MINUTES * 60 * SFREQ)))
+        data[[0, 3]] *= 1.5  # TPのパワーを前頭と変え、TPが混ざると値がずれるようにする
+        return data
+
+    def test_tp_fully_invalid_segments_use_frontal_only(self):
+        data = self._data(7)
+        hsi = np.ones_like(data)
+        hsi[[0, 3]] = 2.0  # TP9/TP10が全時間Medium、AF7/AF8は全時間Good
+
+        stat_df = create_statistical_dataframe(
+            make_raw(data), segment_minutes=1, session_start=START, hsi=hsi
+        )
+        quality = stat_df['quality']
+        assert quality['usable'].all()
+        assert np.allclose(quality['excluded_ratio'], 0.0)
+        assert (quality['channels_used'] == 'AF7,AF8').all()
+
+        expected = _expected_band_db(data[1:3], self.N_MINUTES, self.WINDOWS_PER_SEGMENT)
+        np.testing.assert_allclose(stat_df['band_powers']['Alpha'].to_numpy(), expected)
+
+    def test_segment_with_all_channels_invalid_is_nan(self):
+        data = self._data(8)
+        hsi = np.ones_like(data)
+        segment_samples = int(60 * SFREQ)
+        hsi[:, segment_samples : 2 * segment_samples] = 2.0  # 2区間目だけ全チャネルが接触不良
+
+        stat_df = create_statistical_dataframe(
+            make_raw(data), segment_minutes=1, session_start=START, hsi=hsi
+        )
+        quality = stat_df['quality']
+        assert quality['usable'].tolist() == [True, False, True]
+        assert quality['channels_used'].iloc[1] == ''
+        band_powers = stat_df['band_powers']
+        assert band_powers.iloc[1].isna().all()
+        assert band_powers.iloc[[0, 2]].notna().all().all()
+
+    def test_all_valid_input_is_unchanged(self):
+        data = self._data(9)
+
+        stat_df = create_statistical_dataframe(make_raw(data), segment_minutes=1, session_start=START)
+        quality = stat_df['quality']
+        assert quality['usable'].all()
+        assert np.allclose(quality['valid_ratio'], 1.0)
+        assert np.allclose(quality['excluded_ratio'], 0.0)
+        assert (quality['channels_used'] == 'TP9,AF7,AF8,TP10').all()
+
+        expected = _expected_band_db(data, self.N_MINUTES, self.WINDOWS_PER_SEGMENT)
+        np.testing.assert_allclose(stat_df['band_powers']['Alpha'].to_numpy(), expected)
 
 
 class TestHeaderRepair:
