@@ -19,18 +19,6 @@ if TYPE_CHECKING:
     pass
 
 
-# ========================================
-# 総合スコア算出の重み定数
-# ========================================
-MEDITATION_SCORE_WEIGHTS = {
-    'fmtheta': 0.3125,          # Frontal Midline Theta（瞑想深度）
-    'spectral_entropy': 0.25,   # Spectral Entropy（集中度）
-    'theta_alpha_ratio': 0.1875, # θ/α比（瞑想深度）
-    'beta_alpha_ratio': 0.125,  # β/α比（覚醒度、低いほどリラックス）
-    'iaf_stability': 0.125,     # IAF安定性（周波数特性）
-}
-
-
 @dataclass
 class SegmentAnalysisResult:
     """時間セグメント分析の結果を保持する。"""
@@ -88,7 +76,7 @@ def calculate_segment_analysis(
     warmup_minutes : float, default 0.0
         セッション開始後の除外期間（分単位）。アーティファクト除去のため。
     exclude_first_segment : bool, default False
-        最初のセグメントをスコア計算・ピーク判定から除外（relaxing phase）。
+        最初のセグメントをbest値計算から除外（relaxing phase）。
     smr_series : pd.Series, optional
         SMR（12-15Hz）の時系列データ（indexはタイムスタンプ）。
 
@@ -101,7 +89,7 @@ def calculate_segment_analysis(
     -----
     バンドパワー・比率・IAFはstatistical_dfから自動取得されます（MNE Epochsベース）。
     df_cleanのバンドパワー列は使用されません。
-    exclude_first_segmentはピーク判定・best値計算のみに影響し、
+    exclude_first_segmentはbest値計算のみに影響し、
     レポートのテーブルには全セグメントが表示されます。
     """
     # Statistical DFのバリデーション
@@ -351,7 +339,7 @@ def calculate_segment_analysis(
     if segment_frame.empty:
         raise ValueError('時間セグメント分析の結果が空です。')
 
-    # 正規化スコア
+    # 指標ごとのmin-max正規化（プロット用）
     numeric_cols = ['fmtheta_mean', 'iaf_mean', 'alpha_mean', 'beta_mean', 'theta_alpha_ratio']
     metrics_df = segment_frame.set_index('segment_index')[numeric_cols]
     normalized = pd.DataFrame(
@@ -359,16 +347,16 @@ def calculate_segment_analysis(
     )
     normalized = normalized.reindex(metrics_df.index)
 
-    # スコア計算・ピーク判定対象のセグメントインデックスを決定
+    # best値計算対象のセグメントインデックスを決定
     all_indices = segment_frame['segment_index'].tolist()
     excluded_indices = set()
     if exclude_first_segment and len(all_indices) > 0:
         excluded_indices.add(all_indices[0])
 
-    # アーチファクト除去率が高いセグメントをピーク判定・best値から除外する。
+    # アーチファクト除去率が高いセグメントをbest値から除外する。
     # これを入れないと、まばたき等の大振幅アーチファクトがθ/αとFmθを押し上げ、
-    # 汚染区間が「最高パフォーマンス区間」として提示される。
-    # 指標がNaNの区間（usable=False）と、値は出すがピーク判定には使わない区間を分ける。
+    # 汚染区間の値がbest値として提示される。
+    # 指標がNaNの区間（usable=False）と、値は出すがbest値には使わない区間を分ける。
     artifact_indices = set(
         segment_frame.loc[~segment_frame['usable'], 'segment_index'].tolist()
     )
