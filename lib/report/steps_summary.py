@@ -19,7 +19,7 @@ from .steps_eeg import FRONTAL_CHANNELS
 @analysis_step('Statistical DataFrame生成')
 def build_statistical_dataframe(
     df, raw, results, warmup_minutes, fnirs_results, hr_data, hrv_result,
-    respiration_result, artifact_window_samples, hsi=None,
+    respiration_result, artifact_window_samples, unfiltered_uv=None,
 ):
     print('計算中: Statistical DataFrame（統一的なバンドパワー・比率計算）...')
     session_start = df['TimeStamp'].iloc[0]
@@ -35,7 +35,7 @@ def build_statistical_dataframe(
         hrv_result=hrv_result,  # HRVデータを追加
         respiration_result=respiration_result,  # 呼吸データを追加
         window_samples=artifact_window_samples,
-        hsi=hsi,
+        unfiltered_uv=unfiltered_uv,
     )
     results['statistical_df'] = statistical_df
     print(f'  バンドパワー: {len(statistical_df["band_powers"])} セグメント')
@@ -129,7 +129,7 @@ def _segment_mean_metrics(segments):
 
 @analysis_step('前頭のみのセッション指標計算')
 def compute_frontal_metrics(
-    df, df_quality, fmtheta_result, smr_result, raw, hsi, results, warmup_minutes,
+    df, df_quality, fmtheta_result, smr_result, raw, unfiltered_uv, results, warmup_minutes,
     artifact_window_samples,
 ):
     """
@@ -152,7 +152,7 @@ def compute_frontal_metrics(
         warmup_minutes=warmup_minutes,
         session_start=df['TimeStamp'].iloc[0],
         window_samples=artifact_window_samples,
-        hsi=hsi[pick_idx] if hsi is not None else None,
+        unfiltered_uv=unfiltered_uv[pick_idx] if unfiltered_uv is not None else None,
     )
     segment_result = calculate_segment_analysis(
         df_quality,

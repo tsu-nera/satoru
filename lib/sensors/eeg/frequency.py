@@ -8,6 +8,8 @@ import mne
 import numpy as np
 from mne.time_frequency import AverageTFRArray
 
+from .spectral_lines import suppress_spectral_lines
+
 # Warningsとログを抑制
 warnings.filterwarnings('ignore')
 mne.set_log_level('ERROR')
@@ -74,7 +76,8 @@ def calculate_psd_masked(raw, valid_mask, window_samples, fmax=50.0):
     calculate_psd と同じく n_fft = 2 × window_samples、50%オーバーラップのWelch法で、
     Welchの各セグメントはマスクの連続する2窓にちょうど重なる。
     チャネルごとに、両方の窓が有効なセグメントだけを平均する（無効窓をゼロ埋めしない）。
-    全窓が有効なら calculate_psd と同じ値になる。
+    平均後のPSDから線スペクトル（電源・機器由来の狭帯域ノイズ）を検出し、
+    線のビンを補間で置き換える。線が無いチャネルは値が変わらない。
 
     Parameters
     ----------
@@ -91,7 +94,8 @@ def calculate_psd_masked(raw, valid_mask, window_samples, fmax=50.0):
     -------
     psd_dict : dict or None
         calculate_psd と同じキー（'spectrum' は None）に加え、
-        'n_segments'（チャネル別の使用セグメント数）を持つ。
+        'n_segments'（チャネル別の使用セグメント数）と
+        'line_freqs'（チャネル別の除去した線の周波数Hz、無ければ空リスト）を持つ。
         有効なセグメントが1つも無いチャネルは出力から外す。全チャネルが該当すればNone
     """
     sfreq = raw.info['sfreq']
@@ -128,12 +132,23 @@ def calculate_psd_masked(raw, valid_mask, window_samples, fmax=50.0):
     )
     psds = np.maximum(psds, np.finfo(float).eps)
 
+    line_freqs = {}
+    for row, idx in enumerate(keep):
+        psds[row], lines = suppress_spectral_lines(psds[row], freqs)
+        line_freqs[raw.ch_names[idx]] = lines
+        if lines:
+            print(
+                f'  {raw.ch_names[idx]}: 線スペクトルを除去 '
+                f'({", ".join(f"{f:.2f}" for f in lines)} Hz)'
+            )
+
     return {
         'freqs': freqs,
         'psds': psds * 1e12,  # V²/Hz を μV²/Hz へ変換
         'channels': [raw.ch_names[idx] for idx in keep],
         'spectrum': None,
         'n_segments': {raw.ch_names[idx]: int(segment_valid[idx].sum()) for idx in keep},
+        'line_freqs': line_freqs,
     }
 
 

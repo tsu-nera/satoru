@@ -24,7 +24,13 @@ mne.set_log_level('ERROR')
 from lib.loaders.mind_monitor import MIND_MONITOR_CSV_COLUMNS, load_mind_monitor_csv  # noqa: E402
 from lib.report.steps_eeg import mask_invalid_rows  # noqa: E402
 from lib.segment_analysis import calculate_segment_analysis  # noqa: E402
-from lib.sensors.eeg.artifact import ARTIFACT_WINDOW_SAMPLES, detect_hsi_windows  # noqa: E402
+from lib.sensors.eeg.artifact import (  # noqa: E402
+    ARTIFACT_WINDOW_SAMPLES,
+    CLIP_HIGH_UV,
+    CLIP_LOW_UV,
+    detect_clipped_windows,
+    detect_hsi_windows,
+)
 from lib.sensors.eeg.frequency import calculate_psd, calculate_psd_masked  # noqa: E402
 from lib.sensors.eeg.frontal_asymmetry import (  # noqa: E402
     _apply_mastoid_reference,
@@ -74,6 +80,24 @@ class TestHsiAlignment:
         tp10 = mne_dict['channels'].index('RAW_TP10')
         assert valid[tp10, :6].all()
         assert not valid[tp10, 6:].any()
+
+    def test_unfiltered_values_keep_rails_and_align_with_raw(self):
+        """フィルタなしrawは張り付き値(0/1450μV)をそのまま保ち、フィルタ済みrawと行が揃う。"""
+        df = make_mind_monitor_df(12 * WIN)
+        dropped = 300
+        df.loc[100 : 100 + dropped - 1, 'HSI_AF7'] = 4.0
+        rail_row = 6 * WIN + dropped + 5  # dfの行番号。rawでは窓6の中
+        df.loc[rail_row, 'RAW_TP10'] = CLIP_HIGH_UV
+
+        filtered = prepare_mne_raw(df)
+        unfiltered = prepare_mne_raw(df, apply_bandpass=False, apply_notch=False)
+
+        assert unfiltered['raw'].n_times == filtered['raw'].n_times
+        assert unfiltered['row_index'].equals(filtered['row_index'])
+        tp10 = unfiltered['channels'].index('RAW_TP10')
+        valid = detect_clipped_windows(unfiltered['raw'].get_data() * 1e6)
+        assert not valid[tp10, 6]
+        assert valid.sum() == valid.size - 1
 
     def test_mask_invalid_rows_blanks_only_invalid_windows(self):
         df = make_mind_monitor_df(4 * WIN)
@@ -205,12 +229,12 @@ class TestSegmentCellNa:
         n_samples = int(n_minutes * 60 * SFREQ)
         rng = np.random.default_rng(6)
         raw = make_raw(rng.normal(0, 10, (4, n_samples)))
-        hsi = np.ones((4, n_samples))
+        unfiltered = np.full((4, n_samples), 800.0)
         first_minute = int(60 * SFREQ)
-        hsi[1:3, :first_minute] = 2.0  # 最初の1分だけAF7/AF8が接触不良（全体の有効率は50%）
+        unfiltered[1:3, :first_minute] = CLIP_LOW_UV  # 最初の1分だけAF7/AF8が飽和（全体の有効率は50%）
 
         stat_df = create_statistical_dataframe(
-            raw, segment_minutes=1, session_start=START, hsi=hsi
+            raw, segment_minutes=1, session_start=START, unfiltered_uv=unfiltered
         )
         quality = stat_df['quality']
         assert quality['frontal_valid_ratio'].iloc[0] == pytest.approx(0.0)
@@ -262,11 +286,11 @@ class TestSegmentChannelSelection:
 
     def test_tp_fully_invalid_segments_use_frontal_only(self):
         data = self._data(7)
-        hsi = np.ones_like(data)
-        hsi[[0, 3]] = 2.0  # TP9/TP10が全時間Medium、AF7/AF8は全時間Good
+        unfiltered = np.full_like(data, 800.0)
+        unfiltered[[0, 3]] = CLIP_HIGH_UV  # TP9/TP10が全時間飽和、AF7/AF8は正常
 
         stat_df = create_statistical_dataframe(
-            make_raw(data), segment_minutes=1, session_start=START, hsi=hsi
+            make_raw(data), segment_minutes=1, session_start=START, unfiltered_uv=unfiltered
         )
         quality = stat_df['quality']
         assert quality['usable'].all()
@@ -278,12 +302,12 @@ class TestSegmentChannelSelection:
 
     def test_segment_with_all_channels_invalid_is_nan(self):
         data = self._data(8)
-        hsi = np.ones_like(data)
+        unfiltered = np.full_like(data, 800.0)
         segment_samples = int(60 * SFREQ)
-        hsi[:, segment_samples : 2 * segment_samples] = 2.0  # 2区間目だけ全チャネルが接触不良
+        unfiltered[:, segment_samples : 2 * segment_samples] = CLIP_LOW_UV  # 2区間目だけ全チャネルが飽和
 
         stat_df = create_statistical_dataframe(
-            make_raw(data), segment_minutes=1, session_start=START, hsi=hsi
+            make_raw(data), segment_minutes=1, session_start=START, unfiltered_uv=unfiltered
         )
         quality = stat_df['quality']
         assert quality['usable'].tolist() == [True, False, True]

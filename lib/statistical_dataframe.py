@@ -25,6 +25,7 @@ from .sensors.eeg.constants import FREQ_BANDS
 
 # Spectral Entropy計算関数をインポート
 from .sensors.eeg.spectral_entropy import _calculate_shannon_entropy
+from .sensors.eeg.spectral_lines import suppress_spectral_lines
 
 if TYPE_CHECKING:
     import mne
@@ -111,7 +112,7 @@ def create_statistical_dataframe(
     respiration_result: Optional[object] = None,
     artifact_threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
     window_samples: int = ARTIFACT_WINDOW_SAMPLES,
-    hsi: Optional[np.ndarray] = None,
+    unfiltered_uv: Optional[np.ndarray] = None,
 ) -> Dict[str, pd.DataFrame]:
     """
     統一的なStatistical DataFrameを生成する。
@@ -147,9 +148,9 @@ def create_statistical_dataframe(
     window_samples : int, default ARTIFACT_WINDOW_SAMPLES
         Welch窓長（サンプル）。アーチファクト判定の粒度も兼ねる。
         窓長を変えると除外率が大きく動くため、比較実験用に上書きできるようにしてある
-    hsi : np.ndarray, optional
-        rawとサンプルが揃ったHSI（n_channels, n_samples）。prepare_mne_raw()の'hsi'。
-        指定すると振幅判定に窓単位のHSI判定をANDで合成する
+    unfiltered_uv : np.ndarray, optional
+        rawとサンプルが揃ったフィルタ前の生値（n_channels, n_samples）、単位μV。
+        指定すると振幅判定にクリップ判定（0/1450μVへの張り付き）をANDで合成する
 
     Returns
     -------
@@ -174,7 +175,9 @@ def create_statistical_dataframe(
     Notes
     -----
     - PSDはWelch窓（既定1024サンプル = 4秒 @256Hz）単位で計算し、
-      窓内peak-to-peak振幅が閾値を超えたチャネル×窓を除外してから平均する。
+      窓内peak-to-peak振幅が閾値を超えた、またはクリップしたチャネル×窓を除外してから平均する。
+      線スペクトル（狭帯域ノイズ）はチャネルごとに有効窓の平均PSDで検出し、
+      窓を捨てずに全窓のPSDで補間して除去する。
       チャネル単位で判定するため、耳側（TP9/TP10）だけが汚いセッションでも
       前頭（AF7/AF8）のデータは保持される
     - セグメント内の有効率がSEGMENT_MIN_VALID_RATIOを下回るチャネルは、そのセグメントの
@@ -213,16 +216,16 @@ def create_statistical_dataframe(
     # μV単位のデータ（MNEはV単位で保持）
     data_uv = raw_cropped.get_data() * 1e6
 
-    # クロップ後のrawに合わせてHSIも切り出す（窓境界をrawと揃えるため）
-    hsi_cropped = None
-    if hsi is not None:
+    # クロップ後のrawに合わせてフィルタ前の生値も切り出す（窓境界をrawと揃えるため）
+    unfiltered_cropped = None
+    if unfiltered_uv is not None:
         offset = raw_cropped.first_samp - raw.first_samp
-        hsi_cropped = hsi[:, offset : offset + raw_cropped.n_times]
+        unfiltered_cropped = unfiltered_uv[:, offset : offset + raw_cropped.n_times]
 
-    # 振幅ベースのアーチファクト検出とHSIによる接触不良判定の合成（チャネル×Welch窓）
+    # 振幅ベースのアーチファクト検出とクリップ判定の合成（チャネル×Welch窓）
     valid_mask = detect_valid_windows(
         data_uv,
-        hsi=hsi_cropped,
+        unfiltered_uv=unfiltered_cropped,
         window_samples=window_samples,
         threshold_uv=artifact_threshold_uv,
     )
@@ -250,6 +253,22 @@ def create_statistical_dataframe(
         n_overlap=0,
         verbose=False,
     )
+
+    # 線スペクトルの除去: チャネルごとに有効窓の平均PSDで線を検出し、全窓のPSDで補間する
+    # （窓単位のPSDは揺らぐため、検出は平均で行う。窓は捨てずビンだけ置き換える）
+    for ch_idx in range(data_uv.shape[0]):
+        ch_valid = valid_mask[ch_idx]
+        if not ch_valid.any():
+            continue
+        reference = window_psds[ch_valid, ch_idx].mean(axis=0)
+        window_psds[:, ch_idx], lines = suppress_spectral_lines(
+            window_psds[:, ch_idx], freqs, detect_from=reference
+        )
+        if lines:
+            print(
+                f'  {raw_cropped.ch_names[ch_idx]}: 線スペクトルを除去 '
+                f'({", ".join(f"{f:.2f}" for f in lines)} Hz)'
+            )
 
     # セグメント境界を窓インデックスで表現
     windows_per_segment = max(1, int(round(duration_sec * sfreq / ARTIFACT_WINDOW_SAMPLES)))

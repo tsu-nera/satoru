@@ -16,26 +16,34 @@
 {% if hsi.amplitude_statistics is not none and not hsi.amplitude_statistics.empty %}
 ### チャネル別の有効率（EEG）
 
-- **除外率（振幅＋HSI）**: {{ hsi.rejected_ratio|format_percent }}
+- **除外率（振幅＋クリップ）**: {{ hsi.rejected_ratio|format_percent }}
 
 {{ hsi.amplitude_statistics|df_to_markdown(floatfmt='.1f', index=False) }}
 
-> **単位**: Std / P2P (median) / Threshold = μV、Rejected / HSI Rejected / Valid = %
+> **単位**: Std / P2P (median) / Threshold = μV、Rejected / Clipped / HSI Rejected / Valid = %
 >
 > **判定**: {{ hsi.window_samples }}サンプル窓（PSDのWelch窓と同一）ごとに、次のどちらかに当たる
 > チャネル×窓を解析から除外しています。Validは両方を通過した窓の割合です。
 > - **Rejected（振幅）**: 窓内のpeak-to-peak振幅がThresholdを超えた。Thresholdは絶対値
 >   {{ hsi.threshold_uv|number_format(0) }}μVと、チャネル別p2p中央値の4倍のうち厳しい方（下限50μV）
-> - **HSI Rejected（接触不良）**: 窓内でHSIがGood以外の時間が半分を超えた
+> - **Clipped（飽和）**: フィルタ前の生値が増幅器の飽和値（0または1450μV）に張り付いたサンプルを窓内に含む
+>
+> **HSI Rejected（参考値）**: 窓内でHSIがGood以外の時間が半分を超えた割合です。
+> 除外には使っていません（Validに影響しません）。
+>
+> **線スペクトル**: 電源・機器由来の狭帯域ノイズ（PSD上の細い櫛状のピーク）は、窓を除外せず、
+> チャネルごとにPSD上の該当ビンを両側からの補間で置き換えて除去しています。
+> α波のような幅のあるピークは除去しません。
 >
 > PSD・バンドパワー・IAF・非周期成分・Alpha Powerは、チャネルごとに有効な窓だけで平均してから
 > チャネル間を集計しています。FAAはTP9とTP10が両方有効な窓だけmastoid referenceを使い、
 > それ以外の窓はMuse既定の基準（Fpz）で計算しています。
 > セッションログの主要EEG列は、TPの状態に左右されないよう常にAF7/AF8（Fpz基準）だけで計算しています。
 >
-> **HSIとの違い**: HSIは電極の接触インピーダンス指標であり、アーチファクト検出器ではありません。
-> 眼球運動・まばたき・前額の筋電・発汗ドリフトはHSIがGoodのままでも混入するため、
-> Rejectedが高いチャネルはHSIがGoodでも数値の信頼度を割り引いて読んでください。
+> **HSIとの違い**: HSIは電極の接触インピーダンス指標であり、信号の質を保証しません。
+> HSIがGoodでも線スペクトルや眼球運動・筋電・発汗ドリフトは混入し、逆にHSIが非Goodでも
+> クリップしていない窓は使えます。そのため除外は信号の中身（振幅・クリップ）で決め、
+> Rejectedが高いチャネルは数値の信頼度を割り引いて読んでください。
 
 {% endif %}
 {% if hsi.rr_quality_stats %}
