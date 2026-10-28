@@ -54,6 +54,14 @@ from .step import analysis_step
 # セッションログの横断比較用に固定するチャネル（Muse既定のFpz基準のまま使う）
 FRONTAL_CHANNELS = ('RAW_AF7', 'RAW_AF8')
 
+# 耳側（TP9/TP10）のIAFを記録するのに必要な有効窓の合計（秒、2チャネルの合計）。
+# TPは冬季に接触が悪い日があり、短い有効窓から出したIAFは信頼できないため空欄にする
+TP_CHANNELS = ('RAW_TP9', 'RAW_TP10')
+TP_MIN_VALID_SEC = 180
+
+# 耳側IAFを探すα帯域（Hz）
+TP_IAF_BAND = (7.0, 13.0)
+
 
 def plot_band_power_series(df, img_dir, results, tap_df=None):
     """バンドパワー時系列（Museアプリ風）をプロットする。
@@ -179,6 +187,49 @@ def analyze_faa(df, raw_unfiltered, results, valid_mask, window_samples):
     return faa_result
 
 
+def compute_tp_metrics(raw, valid_mask, window_samples):
+    """
+    耳側（TP9/TP10）の有効率とIAFを返す（セッションログの追加列用）。
+
+    tp9_valid_pct / tp10_valid_pct は全窓に対するそのチャネルの有効窓の割合（%）。
+    チャネルが無ければNaN。tp_iaf_hz はTP9とTP10の有効窓の合計が TP_MIN_VALID_SEC
+    以上のときだけ、線スペクトル除去後の平均PSDのα帯域ピークを返し、足りなければNaN。
+
+    Parameters
+    ----------
+    raw : mne.io.RawArray
+        フィルタ済みraw（valid_maskの行と同じチャネル並び）
+    valid_mask : np.ndarray
+        (n_channels, n_windows) のbool配列
+    window_samples : int
+        マスクの窓長（サンプル）
+    """
+    nan = float('nan')
+    metrics = {'tp9_valid_pct': nan, 'tp10_valid_pct': nan, 'tp_iaf_hz': nan}
+    present = [ch for ch in TP_CHANNELS if ch in raw.ch_names]
+    if not present or valid_mask.shape[1] == 0:
+        return metrics
+
+    tp_idx = [raw.ch_names.index(ch) for ch in present]
+    for ch, idx in zip(present, tp_idx):
+        metrics[f'{ch.replace("RAW_", "").lower()}_valid_pct'] = float(valid_mask[idx].mean() * 100)
+
+    sfreq = raw.info['sfreq']
+    valid_sec = float(valid_mask[tp_idx].sum()) * window_samples / sfreq
+    if valid_sec < TP_MIN_VALID_SEC:
+        return metrics
+
+    psd_dict = calculate_psd_masked(raw.copy().pick(present), valid_mask[tp_idx], window_samples)
+    if psd_dict is None:
+        return metrics
+
+    freqs = psd_dict['freqs']
+    band = (freqs >= TP_IAF_BAND[0]) & (freqs <= TP_IAF_BAND[1])
+    mean_psd = psd_dict['psds'].mean(axis=0)
+    metrics['tp_iaf_hz'] = float(freqs[band][mean_psd[band].argmax()])
+    return metrics
+
+
 @analysis_step('Spectral Entropy解析')
 def analyze_spectral_entropy(psd_dict, tfr_primary, df, results):
     print('計算中: Spectral Entropy...')
@@ -207,13 +258,13 @@ def prepare_mne_and_spectral(df, img_dir, results, artifact_window_samples):
     例外をそのまま伝播させる（run_full_analysis 全体がクラッシュする現行挙動を維持）。
 
     接触不良や振幅アーチファクトのあるチャネル×窓は、チャネルごと捨てずに
-    合成マスク（振幅判定 AND 窓単位のHSI判定）で窓単位に除外する。
+    合成マスク（振幅判定 AND クリップ判定）で窓単位に除外する。HSIは除外に使わない。
 
     Returns
     -------
     tuple
-        (raw, raw_unfiltered, psd_dict, paf_dict, tfr_primary, hsi)
-        hsi は raw とサンプルが揃ったHSI配列（n_channels, n_samples）
+        (raw, raw_unfiltered, psd_dict, paf_dict, tfr_primary, unfiltered_uv)
+        unfiltered_uv は raw とサンプルが揃ったフィルタ前の生値（n_channels, n_samples, μV）
     """
     print('準備中: MNE RAWデータ...')
     mne_dict = prepare_mne_raw(df)
@@ -222,36 +273,38 @@ def prepare_mne_and_spectral(df, img_dir, results, artifact_window_samples):
     psd_dict = None
     paf_dict = None
     tfr_primary = None
-    hsi = None
+    unfiltered_uv = None
 
     if mne_dict:
         raw = mne_dict['raw']
         print(f'検出されたチャネル: {mne_dict["channels"]}')
         print(f'推定サンプリングレート: {mne_dict["sfreq"]:.2f} Hz')
 
-        hsi = mne_dict['hsi']
+        # フィルタ前のraw（クリップ判定とFmθ/FAA計算用）
+        # (Fmθ/FAAの関数は内部で独自のバンドパスフィルタを適用するため、フィルタなしを渡す)
+        # 行の絞り込みと補間はrawと同じで、フィルタを掛けないので値は元のμVのまま
+        # （0/1450μVへの張り付きが残る）。合成マスクの窓境界もそのまま使える
+        mne_dict_unfiltered = prepare_mne_raw(df, apply_bandpass=False, apply_notch=False)
+        if mne_dict_unfiltered:
+            raw_unfiltered = mne_dict_unfiltered['raw']
+            unfiltered_uv = raw_unfiltered.get_data() * 1e6
 
-        # 振幅（HSIでは検出できないアーチファクト）と窓単位のHSI（接触不良）を合成した有効マスク
-        print('計算中: RAW振幅・HSI品質...')
+        # 振幅（HSIでは検出できないアーチファクト）とクリップ（増幅器の飽和）を合成した有効マスク。
+        # HSIは参考列としてだけ表示する
+        print('計算中: RAW振幅・クリップ品質...')
         artifact_summary = summarize_artifacts(
             raw.get_data() * 1e6,
             mne_dict['channels'],
             window_samples=artifact_window_samples,
-            hsi=hsi,
+            unfiltered_uv=unfiltered_uv,
+            hsi=mne_dict['hsi'],
         )
         results['artifact_summary'] = artifact_summary
         valid_mask = artifact_summary['valid_mask']
-        print(f'  除外率（振幅＋HSI）: {artifact_summary["rejected_ratio"] * 100:.1f}%')
+        print(f'  除外率（振幅＋クリップ）: {artifact_summary["rejected_ratio"] * 100:.1f}%')
         for ch, ch_valid in zip(mne_dict['channels'], valid_mask):
             if ch_valid.size and not ch_valid.all():
                 print(f'  {ch}: 有効率 {ch_valid.mean() * 100:.1f}%')
-
-        # Fmθ/FAA計算用に、バンドパスフィルタを適用しないrawデータを作成
-        # (これらの関数は内部で独自のバンドパスフィルタを適用するため)
-        # 行の絞り込みはrawと同じなので、合成マスクの窓境界はそのまま使える
-        mne_dict_unfiltered = prepare_mne_raw(df, apply_bandpass=False, apply_notch=False)
-        if mne_dict_unfiltered:
-            raw_unfiltered = mne_dict_unfiltered['raw']
 
         # Rawプレビュー
         print('プロット中: 生データプレビュー...')
@@ -315,6 +368,9 @@ def prepare_mne_and_spectral(df, img_dir, results, artifact_window_samples):
                 ),
             )
             tfr_primary = tfr_results[tfr_primary_channel]
+
+        # 耳側（TP9/TP10）の有効率とIAF（セッションログの追加列）
+        results['tp_metrics'] = compute_tp_metrics(raw, valid_mask, artifact_window_samples)
 
         # PAF分析
         print('計算中: Peak Alpha Frequency...')
@@ -394,7 +450,7 @@ def prepare_mne_and_spectral(df, img_dir, results, artifact_window_samples):
         # Spectral Entropy解析
         analyze_spectral_entropy(psd_dict, tfr_primary, df, results)
 
-    return raw, raw_unfiltered, psd_dict, paf_dict, tfr_primary, hsi
+    return raw, raw_unfiltered, psd_dict, paf_dict, tfr_primary, unfiltered_uv
 
 
 def summarize_aperiodic(freqs, mean_psd):

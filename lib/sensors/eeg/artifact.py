@@ -1,10 +1,18 @@
 """
-EEGアーチファクト検出（振幅判定と窓単位のHSI判定）
+EEGアーチファクト検出（振幅判定とクリップ判定）
 
-HSI（Horseshoe Signal Index）は電極の接触インピーダンス指標であり、
-アーチファクト検出器ではない。眼球運動・まばたき・前額の筋電・発汗ドリフト・
-電極の微小な滑りはいずれもHSIをGoodのまま通過するため、
-振幅による独立した品質ゲートが必要になる。
+除外は信号の中身だけで決める。チャネル×窓（PSDのWelch窓）ごとに、
+- 振幅: 窓内peak-to-peak振幅が閾値を超えた（眼球運動・筋電・ドリフトなど）
+- クリップ: フィルタ前の生値が増幅器の飽和値（0 / 1450 μV）に張り付いたサンプルを含む
+のどちらかに当たる窓を無効にする。
+
+HSI（Horseshoe Signal Index）は電極の接触インピーダンス指標であり、除外には使わない。
+HSIがGoodでも汚れている信号（2026-10-29の前頭は線スペクトルが全時間乗っていた）と、
+HSIが非Goodでも内容で救える信号があり、HSIは窓の価値を決める指標にならないため。
+表示用の「HSI Rejected」列だけ参考値として残す。
+
+線スペクトル（電源・機器由来の狭帯域ノイズ）は窓を捨てず、PSD側で除去する
+（lib/sensors/eeg/spectral_lines.py）。
 
 検出の粒度はPSDのWelch窓（既定1024サンプル = 4秒 @256Hz）に揃える。
 PSDは窓単位で汚染されるため、それより細かい粒度で除去しても意味がない。
@@ -44,12 +52,21 @@ SEGMENT_MIN_VALID_RATIO = 0.5
 # 選ばせない。除去は8秒窓単位なので、閾値未満の残留汚染は必ずある。
 PEAK_MAX_EXCLUDED_RATIO = 0.2
 
-# 窓の中でHSIがGood以外だった時間の割合がこれを超えたら、そのチャネル×窓を無効にする。
+# Mind Monitor のRAWは増幅器が飽和するとこの値に張り付く（2026-10-29確認:
+# 後半の数分間、TP9/TP10は27〜34%のサンプルが0または1450に張り付き、AF7は一度も張り付かなかった）。
+# 検出にはフィルタ前の生値を使うこと。バンドパス後は張り付き値が見えなくなる。
+CLIP_LOW_UV = 0.0
+CLIP_HIGH_UV = 1450.0
+
+# 張り付き値との一致判定の許容幅（μV）。float変換の丸め誤差を吸収する
+CLIP_TOLERANCE_UV = 0.5
+
+# 窓の中でHSIがGood以外だった時間の割合がこれを超えたら、HSI Rejectedとして数える。
 #
-# 振幅判定だけでは接触不良を防げない。2026-10-27はTP9/TP10の接触不良でHSIがほぼ全時間Mediumになり、
-# TP9は振幅判定を79%の窓が通過したが、その窓にも約7Hzの倍音列（+17〜+30dB）が乗っていた。
-# 2026-10-28はTP10が記録の途中で外れ、Good以外の割合が1分刻みで0%→57%→100%と変わった。
-# セッション全体の割合で判定すると途中で外れたチャネルを拾えないため、窓単位で判定する。
+# 表示専用（参考値）。除外には使わない。理由:
+# - 2026-10-29の前頭はHSIが98〜100% Goodのまま、4.5Hz間隔の線スペクトルが全時間乗っていた
+# - 同日のTPでHSI非Goodだった窓の大半は実際にはクリップしており、
+#   捨てる理由はHSIではなく窓の内容（クリップ）であるべき
 HSI_WINDOW_MAX_BAD_RATIO = 0.5
 
 
@@ -133,7 +150,7 @@ def detect_hsi_windows(
     max_bad_ratio: float = HSI_WINDOW_MAX_BAD_RATIO,
 ) -> np.ndarray:
     """
-    チャネル×窓の単位でHSIによる接触不良を判定する。
+    チャネル×窓の単位でHSIによる接触不良を判定する（表示用の参考値。除外には使わない）。
 
     Parameters
     ----------
@@ -160,20 +177,58 @@ def detect_hsi_windows(
     return bad_ratio <= max_bad_ratio
 
 
+def detect_clipped_windows(
+    raw_uv_unfiltered: np.ndarray,
+    window_samples: int = ARTIFACT_WINDOW_SAMPLES,
+    tolerance_uv: float = CLIP_TOLERANCE_UV,
+) -> np.ndarray:
+    """
+    チャネル×窓の単位で、増幅器の飽和（0 / 1450 μVへの張り付き）を判定する。
+
+    Parameters
+    ----------
+    raw_uv_unfiltered : np.ndarray
+        フィルタ前のEEGデータ（n_channels, n_samples）、単位μV。
+        バンドパス後の値では張り付きが見えないため、必ずフィルタ前を渡す
+    window_samples : int
+        1窓のサンプル数
+    tolerance_uv : float
+        張り付き値との差がこれ以内ならクリップとみなす
+
+    Returns
+    -------
+    valid : np.ndarray
+        bool配列（n_channels, n_windows）。Trueが有効（クリップ無し）な窓。
+        NaNはクリップとみなさない
+    """
+    n_channels, n_samples = raw_uv_unfiltered.shape
+    n_windows = n_samples // window_samples
+    if n_windows == 0:
+        return np.zeros((n_channels, 0), dtype=bool)
+
+    data = raw_uv_unfiltered[:, : n_windows * window_samples]
+    with np.errstate(invalid='ignore'):
+        clipped = (np.abs(data - CLIP_LOW_UV) <= tolerance_uv) | (
+            np.abs(data - CLIP_HIGH_UV) <= tolerance_uv
+        )
+    return ~clipped.reshape(n_channels, n_windows, window_samples).any(axis=2)
+
+
 def detect_valid_windows(
     data_uv: np.ndarray,
-    hsi: Optional[np.ndarray] = None,
+    unfiltered_uv: Optional[np.ndarray] = None,
     window_samples: int = ARTIFACT_WINDOW_SAMPLES,
     threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
 ) -> np.ndarray:
     """
-    振幅判定とHSI判定をANDで合成した有効マスク（n_channels, n_windows）を返す。
+    振幅判定とクリップ判定をANDで合成した有効マスク（n_channels, n_windows）を返す。
 
-    hsiがNoneなら振幅判定のみ。セッション全体で接触不良のチャネルは全窓が無効になる。
+    unfiltered_uv（フィルタ前の生値）がNoneならクリップ判定は行わない。
+    HSIは判定に使わない。
     """
     valid = detect_artifact_windows(data_uv, window_samples, threshold_uv)
-    if hsi is not None:
-        valid &= detect_hsi_windows(hsi, window_samples)
+    if unfiltered_uv is not None:
+        valid &= detect_clipped_windows(unfiltered_uv, window_samples)
     return valid
 
 
@@ -197,6 +252,7 @@ def calculate_amplitude_statistics(
     channel_names: list,
     window_samples: int = ARTIFACT_WINDOW_SAMPLES,
     threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
+    unfiltered_uv: Optional[np.ndarray] = None,
     hsi: Optional[np.ndarray] = None,
 ) -> pd.DataFrame:
     """
@@ -212,48 +268,48 @@ def calculate_amplitude_statistics(
         窓のサンプル数
     threshold_uv : float
         p2p閾値（μV）
+    unfiltered_uv : np.ndarray, optional
+        フィルタ前の生値（n_channels, n_samples）。指定するとクリップ率も出し、Validに反映する
     hsi : np.ndarray, optional
-        HSI値（n_channels, n_samples）。指定するとHSIによる除外率と合成後の有効率も出す
+        HSI値（n_channels, n_samples）。指定すると参考値の「HSI Rejected」列を出す
+        （Validには影響しない）
 
     Returns
     -------
     pd.DataFrame
-        Channel / Std / P2P (median) / Threshold / Rejected / HSI Rejected / Valid の各列
-        （Rejectedは振幅判定のみ、Validは振幅とHSIを合成した後の有効率）
+        Channel / Std / P2P (median) / Threshold / Rejected / Clipped / HSI Rejected / Valid の各列
+        （Rejectedは振幅判定のみ、Clippedはunfiltered_uv指定時、HSI Rejectedはhsi指定時。
+        Validは振幅とクリップを合成した有効率）
     """
     p2p = _window_p2p(data_uv, window_samples)
-    valid = detect_artifact_windows(data_uv, window_samples, threshold_uv)
+    amp_valid = detect_artifact_windows(data_uv, window_samples, threshold_uv)
+    clip_valid = (
+        detect_clipped_windows(unfiltered_uv, window_samples)
+        if unfiltered_uv is not None
+        else None
+    )
     hsi_valid = detect_hsi_windows(hsi, window_samples) if hsi is not None else None
-    combined = valid & hsi_valid if hsi_valid is not None else valid
+    combined = amp_valid & clip_valid if clip_valid is not None else amp_valid
     thresholds = channel_thresholds(p2p, threshold_uv) if p2p.size else None
+
+    def _pct_rejected(mask: np.ndarray, idx: int) -> float:
+        return float((~mask[idx]).mean() * 100) if p2p.size else np.nan
 
     rows = []
     for idx, name in enumerate(channel_names):
-        if p2p.size:
-            p2p_median = float(np.median(p2p[idx]))
-            threshold = float(thresholds[idx])
-            rejected_pct = float((~valid[idx]).mean() * 100)
-            hsi_rejected_pct = (
-                float((~hsi_valid[idx]).mean() * 100) if hsi_valid is not None else np.nan
-            )
-            valid_pct = float(combined[idx].mean() * 100)
-        else:
-            p2p_median = np.nan
-            threshold = np.nan
-            rejected_pct = np.nan
-            hsi_rejected_pct = np.nan
-            valid_pct = np.nan
-
+        has_windows = bool(p2p.size)
         row = {
             'Channel': name.replace('RAW_', ''),
             'Std': float(np.nanstd(data_uv[idx])),
-            'P2P (median)': p2p_median,
-            'Threshold': threshold,
-            'Rejected': rejected_pct,
+            'P2P (median)': float(np.median(p2p[idx])) if has_windows else np.nan,
+            'Threshold': float(thresholds[idx]) if has_windows else np.nan,
+            'Rejected': _pct_rejected(amp_valid, idx),
         }
-        if hsi is not None:
-            row['HSI Rejected'] = hsi_rejected_pct
-        row['Valid'] = valid_pct
+        if clip_valid is not None:
+            row['Clipped'] = _pct_rejected(clip_valid, idx)
+        if hsi_valid is not None:
+            row['HSI Rejected'] = _pct_rejected(hsi_valid, idx)
+        row['Valid'] = float(combined[idx].mean() * 100) if has_windows else np.nan
         rows.append(row)
 
     return pd.DataFrame(rows)
@@ -264,18 +320,20 @@ def summarize_artifacts(
     channel_names: list,
     window_samples: int = ARTIFACT_WINDOW_SAMPLES,
     threshold_uv: float = ARTIFACT_P2P_THRESHOLD_UV,
+    unfiltered_uv: Optional[np.ndarray] = None,
     hsi: Optional[np.ndarray] = None,
 ) -> Dict[str, Any]:
     """
     アーチファクト検出結果をまとめて返す。
 
-    hsiを渡すと、valid_mask・rejected_ratioは振幅判定とHSI判定を合成した結果になる。
+    unfiltered_uvを渡すと、valid_mask・rejected_ratioは振幅判定とクリップ判定を合成した結果になる。
+    hsiは表示用の参考列にだけ使い、マスクには影響しない。
 
     Returns
     -------
     dict
         {
-            'valid_mask': np.ndarray,        # (n_channels, n_windows) bool（合成マスク）
+            'valid_mask': np.ndarray,        # (n_channels, n_windows) bool（振幅AND クリップ）
             'amplitude_statistics': DataFrame,
             'rejected_ratio': float,          # 全体の除外率 (0.0-1.0)
             'window_samples': int,
@@ -283,13 +341,14 @@ def summarize_artifacts(
             'channels': list,
         }
     """
-    valid = detect_valid_windows(data_uv, hsi, window_samples, threshold_uv)
+    valid = detect_valid_windows(data_uv, unfiltered_uv, window_samples, threshold_uv)
     rejected_ratio = float((~valid).mean()) if valid.size else 0.0
 
     return {
         'valid_mask': valid,
         'amplitude_statistics': calculate_amplitude_statistics(
-            data_uv, channel_names, window_samples, threshold_uv, hsi=hsi
+            data_uv, channel_names, window_samples, threshold_uv,
+            unfiltered_uv=unfiltered_uv, hsi=hsi,
         ),
         'rejected_ratio': rejected_ratio,
         'window_samples': window_samples,

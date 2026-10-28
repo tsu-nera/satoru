@@ -1,8 +1,8 @@
 """
-振幅ベースのアーチファクト除去のテスト
+振幅・クリップベースのアーチファクト除去のテスト
 
 HSIがGoodのままアーチファクトが混入するケースを合成データで再現し、
-チャネル×窓単位の除外が意図通り効くことを検証する。
+チャネル×窓単位の除外が意図通り効くことを検証する。HSIは除外に使わない。
 """
 
 import sys
@@ -16,10 +16,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.sensors.eeg.artifact import (  # noqa: E402
     ARTIFACT_RELATIVE_FLOOR_UV,
     ARTIFACT_WINDOW_SAMPLES,
+    CLIP_HIGH_UV,
+    CLIP_LOW_UV,
     _window_p2p,
     calculate_amplitude_statistics,
     channel_thresholds,
     detect_artifact_windows,
+    detect_clipped_windows,
     detect_hsi_windows,
     detect_valid_windows,
     segment_valid_ratio,
@@ -208,7 +211,7 @@ class TestSegmentValidRatio:
 
 
 class TestDetectHsiWindows:
-    """接触不良はHSIで窓単位に外す（窓単位の振幅除去を通る汚染があるため）。"""
+    """表示用「HSI Rejected」列の計算（除外には使わない）。"""
 
     def test_channel_lost_mid_session_invalidates_only_later_windows(self):
         hsi = np.ones((len(CHANNELS), N_WINDOWS * ARTIFACT_WINDOW_SAMPLES))
@@ -234,7 +237,7 @@ class TestDetectHsiWindows:
         assert detect_hsi_windows(hsi).all()
 
     def test_whole_session_bad_channel_is_fully_invalid(self):
-        """PR #56のセッション全体での除外は、全窓が無効になる形でこの判定に含まれる。"""
+        """セッション全体で非GoodのチャネルはHSI Rejectedが全窓になる。"""
         hsi = np.ones((len(CHANNELS), N_WINDOWS * ARTIFACT_WINDOW_SAMPLES))
         hsi[[0, 3]] = 2.0
         valid = detect_hsi_windows(hsi)
@@ -242,25 +245,103 @@ class TestDetectHsiWindows:
         assert valid[[1, 2]].all()
 
 
+class TestDetectClippedWindows:
+    """増幅器の飽和（0 / 1450 μVへの張り付き）はフィルタ前の生値で見る。"""
+
+    @staticmethod
+    def _unfiltered():
+        # DCオフセット（Museの生値は約800μV中心）を持つクリーンな生値
+        return 800.0 + make_clean_data()
+
+    def test_window_with_rail_samples_is_invalid(self):
+        raw = self._unfiltered()
+        raw[1, 3 * ARTIFACT_WINDOW_SAMPLES + 10] = CLIP_LOW_UV
+        raw[2, 5 * ARTIFACT_WINDOW_SAMPLES + 20 : 5 * ARTIFACT_WINDOW_SAMPLES + 40] = CLIP_HIGH_UV
+
+        valid = detect_clipped_windows(raw)
+
+        assert not valid[1, 3] and not valid[2, 5]
+        assert valid.sum() == valid.size - 2
+
+    def test_rail_check_tolerates_float_rounding(self):
+        raw = self._unfiltered()
+        raw[0, 0] = CLIP_HIGH_UV + 1e-9
+        assert not detect_clipped_windows(raw)[0, 0]
+
+    def test_nan_is_not_clipping(self):
+        raw = self._unfiltered()
+        raw[0, :10] = np.nan
+        assert detect_clipped_windows(raw).all()
+
+    def test_values_near_but_not_on_rail_are_valid(self):
+        raw = self._unfiltered()
+        raw[0, 0] = CLIP_HIGH_UV - 5.0
+        raw[0, 1] = CLIP_LOW_UV + 5.0
+        assert detect_clipped_windows(raw).all()
+
+
 class TestDetectValidWindows:
-    def test_all_good_hsi_matches_amplitude_mask(self):
-        """回帰確認: 全チャネルGoodなら合成マスクは従来の振幅マスクと一致する。"""
+    def test_without_unfiltered_matches_amplitude_mask(self):
         data = make_clean_data()
         for w in (0, 5, 17):
             data = inject_burst(data, channel_idx=w % len(CHANNELS), window_idx=w)
-        hsi = np.ones_like(data)
 
-        np.testing.assert_array_equal(
-            detect_valid_windows(data, hsi), detect_artifact_windows(data)
-        )
+        np.testing.assert_array_equal(detect_valid_windows(data), detect_artifact_windows(data))
 
-    def test_combines_amplitude_and_hsi_with_and(self):
+    def test_combines_amplitude_and_clip_with_and(self):
         data = inject_burst(make_clean_data(), channel_idx=1, window_idx=0)
-        hsi = np.ones_like(data)
-        hsi[2, : 2 * ARTIFACT_WINDOW_SAMPLES] = 4.0
+        raw = 800.0 + make_clean_data()
+        raw[2, : 2 * ARTIFACT_WINDOW_SAMPLES] = CLIP_HIGH_UV
 
-        valid = detect_valid_windows(data, hsi)
+        valid = detect_valid_windows(data, raw)
 
         assert not valid[1, 0]
         assert not valid[2, 0] and not valid[2, 1]
         assert valid.sum() == valid.size - 3
+
+
+class TestHsiIsReferenceOnly:
+    """HSIは除外に使わない。Mediumでも信号が正常な窓は有効のまま。"""
+
+    def test_medium_hsi_with_clean_signal_stays_valid(self):
+        data = make_clean_data()
+        raw = 800.0 + data
+        hsi = np.ones_like(data)
+        hsi[[0, 3]] = 2.0  # TP9/TP10が全時間Medium
+
+        summary = summarize_artifacts(data, CHANNELS, unfiltered_uv=raw, hsi=hsi)
+        stats = summary['amplitude_statistics'].set_index('Channel')
+
+        assert summary['valid_mask'].all()
+        assert summary['rejected_ratio'] == 0.0
+        assert (stats['Valid'] == 100.0).all()
+        assert stats.loc['TP9', 'HSI Rejected'] == 100.0  # 参考値としては表示される
+        assert stats.loc['AF7', 'HSI Rejected'] == 0.0
+
+    def test_clipped_window_is_invalid_regardless_of_hsi(self):
+        data = make_clean_data()
+        raw = 800.0 + data
+        raw[3, ARTIFACT_WINDOW_SAMPLES : 2 * ARTIFACT_WINDOW_SAMPLES] = CLIP_LOW_UV
+        hsi = np.ones_like(data)  # HSIはGoodのまま
+
+        summary = summarize_artifacts(data, CHANNELS, unfiltered_uv=raw, hsi=hsi)
+        stats = summary['amplitude_statistics'].set_index('Channel')
+
+        assert not summary['valid_mask'][3, 1]
+        assert summary['valid_mask'].sum() == summary['valid_mask'].size - 1
+        assert stats.loc['TP10', 'Clipped'] == pytest.approx(1 / N_WINDOWS * 100)
+        assert stats.loc['TP10', 'Valid'] == pytest.approx((N_WINDOWS - 1) / N_WINDOWS * 100)
+
+    def test_columns_depend_on_inputs(self):
+        data = make_clean_data()
+        cols = list(calculate_amplitude_statistics(data, CHANNELS).columns)
+        assert cols == ['Channel', 'Std', 'P2P (median)', 'Threshold', 'Rejected', 'Valid']
+        cols = list(
+            calculate_amplitude_statistics(
+                data, CHANNELS, unfiltered_uv=800.0 + data, hsi=np.ones_like(data)
+            ).columns
+        )
+        assert cols == [
+            'Channel', 'Std', 'P2P (median)', 'Threshold', 'Rejected',
+            'Clipped', 'HSI Rejected', 'Valid',
+        ]

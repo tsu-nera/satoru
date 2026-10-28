@@ -48,6 +48,9 @@ CANONICAL_COLUMNS: List[str] = [
     'breathing_rate_std',
     'rsa_amplitude_ms',
     'rsa_band_power_ms2',
+    'tp9_valid_pct',
+    'tp10_valid_pct',
+    'tp_iaf_hz',
     'note',
 ]
 
@@ -128,6 +131,8 @@ def _extract_session_data(results: Dict) -> Dict:
     rejected_ratio = artifact_summary.get('rejected_ratio')
 
     respiration = results.get('respiration_result')
+    # 耳側（TP9/TP10）の有効率とIAF。TPの有効窓が足りない日のIAFは空欄
+    tp_metrics = results.get('tp_metrics') or {}
 
     return {
         'timestamp': start_time.strftime('%Y-%m-%d %H:%M:%S'),
@@ -174,6 +179,9 @@ def _extract_session_data(results: Dict) -> Dict:
         # 呼吸追従帯のパワー。超低速呼吸では固定HF帯が空になるため、
         # 副交感神経活動の評価はこちらとRSA振幅・RMSSD（hrv_mean）で行う。
         'rsa_band_power_ms2': (results.get('rsa_band') or {}).get('power', float('nan')),
+        'tp9_valid_pct': tp_metrics.get('tp9_valid_pct', float('nan')),
+        'tp10_valid_pct': tp_metrics.get('tp10_valid_pct', float('nan')),
+        'tp_iaf_hz': tp_metrics.get('tp_iaf_hz', float('nan')),
     }
 
 
