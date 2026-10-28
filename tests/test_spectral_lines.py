@@ -211,3 +211,80 @@ class TestTpMetrics:
         row = _extract_session_data({**base, 'tp_metrics': metrics})
         assert row['tp10_valid_pct'] == pytest.approx(20 / self.N_WINDOWS * 100)
         assert np.isnan(row['tp_iaf_hz'])
+
+
+def make_custom(n_samples, comb_freqs=(), comb_amp=10.0, narrow_alpha_hz=None, spike_hz=None, seed=0):
+    """1/fノイズ + 任意の線 + 幅の狭い本物のα(約0.4Hz幅)。孤立ピークと櫛を区別するテスト用。"""
+    rng = np.random.default_rng(seed)
+    spectrum = np.fft.rfft(rng.normal(0, 1, n_samples))
+    f = np.fft.rfftfreq(n_samples, 1 / SFREQ)
+    spectrum[1:] /= np.sqrt(f[1:])
+    x = np.fft.irfft(spectrum, n_samples)
+    x *= 15.0 / x.std()
+    t = np.arange(n_samples) / SFREQ
+    for k, f0 in enumerate(comb_freqs):
+        x = x + comb_amp * np.sin(2 * np.pi * f0 * t + k)
+    if narrow_alpha_hz is not None:
+        sos = signal.butter(
+            4, [narrow_alpha_hz - 0.2, narrow_alpha_hz + 0.2], btype='bandpass', fs=SFREQ, output='sos'
+        )
+        narrow = signal.sosfilt(sos, rng.normal(0, 1, n_samples))
+        x = x + narrow * (3.0 / narrow.std())
+    if spike_hz is not None:
+        x = x + 6.0 * np.sin(2 * np.pi * spike_hz * t)
+    return x
+
+
+@pytest.mark.parametrize('n_fft', [WIN, 2 * WIN], ids=['0.25Hz', '0.125Hz'])
+class TestOnlyHarmonicSeriesIsRemoved:
+    """孤立した狭いピークは本物の脳波かもしれないので触らない(10-27 AF8の8.5Hz等の誤検出対策)。"""
+
+    N = 300 * int(SFREQ)
+
+    @staticmethod
+    def _near(freqs, mask, f0, tol=0.2):
+        return bool(mask[np.abs(freqs - f0) <= tol].any())
+
+    def test_isolated_narrow_alpha_is_kept(self, n_fft):
+        freqs, psd = welch_psd(make_custom(self.N, narrow_alpha_hz=8.5), n_fft)
+        mask = detect_spectral_lines(psd, freqs)
+        assert not mask.any()
+        cleaned, lines = suppress_spectral_lines(psd, freqs)
+        assert lines == []
+        np.testing.assert_array_equal(cleaned, psd)
+
+    def test_comb_is_removed_and_adjacent_narrow_alpha_is_kept(self, n_fft):
+        comb = [4.5 * k for k in range(1, 9)]
+        freqs, psd = welch_psd(make_custom(self.N, comb_freqs=comb, narrow_alpha_hz=8.5), n_fft)
+
+        mask = detect_spectral_lines(psd, freqs)
+
+        for f0 in comb:
+            assert self._near(freqs, mask, f0), f'{f0}Hzの櫛が残っている'
+        assert not self._near(freqs, mask, 8.5, tol=0.1), '8.5Hzの本物のαが除去された'
+
+    def test_jittered_comb_is_removed(self, n_fft):
+        rng = np.random.default_rng(3)
+        comb = [7.1 * k + rng.uniform(-0.4, 0.4) for k in range(1, 7)]  # 7.1〜42.6Hz
+        freqs, psd = welch_psd(make_custom(self.N, comb_freqs=comb, comb_amp=12.0), n_fft)
+
+        mask = detect_spectral_lines(psd, freqs)
+
+        for f0 in comb:
+            assert self._near(freqs, mask, f0), f'{f0:.2f}Hzの櫛が残っている'
+
+    def test_isolated_spike_is_kept(self, n_fft):
+        freqs, psd = welch_psd(make_custom(self.N, spike_hz=39.0), n_fft)
+        mask = detect_spectral_lines(psd, freqs)
+        assert not mask.any()
+
+    def test_weak_fundamental_is_recovered_once_comb_is_accepted(self, n_fft):
+        comb = [4.5 * k for k in range(1, 9)]
+        x = make_custom(self.N, comb_freqs=comb)
+        t = np.arange(self.N) / SFREQ
+        x = x - 10.0 * np.sin(2 * np.pi * 4.5 * t) + 3.5 * np.sin(2 * np.pi * 4.5 * t)  # 基本波だけ弱める
+        freqs, psd = welch_psd(x, n_fft)
+
+        mask = detect_spectral_lines(psd, freqs)
+
+        assert self._near(freqs, mask, 4.5)
