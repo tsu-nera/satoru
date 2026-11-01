@@ -51,20 +51,11 @@ bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時�
 **落とし穴:**
 - fetch は `.env` の `GDRIVE_CREDENTIALS`・`GDRIVE_FOLDER_ID_MUSE`・`GDRIVE_FOLDER_ID_SELFLOOPS` が必須。`.env` が無い／認証エラーが出たら、その旨を報告し `--no-fetch` で手元データを使うよう促す（勝手に `.env` を作らない）。
 - SelfLoops が見つからない場合は EEG のみで生成される。これは正常動作。レビューでは HRV セクションが欠落する前提で扱う。
-- タップログが見つからない場合は該当セクションが欠落した状態で生成される。これは正常動作。
 - セッションログ `logs/session_log.csv` に自動 upsert される（`SAVE_TO` 既定は `csv`）。timestamp キーなので再実行しても重複しない。
 
 エラーが出たら握りつぶさず内容を報告する。
 
-レポート生成が成功したら、そのセッションの Muse CSV を圧縮する（`run_analysis.sh` が出力する「使用するCSVファイル」のパスを使う）。
-
-```bash
-[[ "$CSV_PATH" == *.csv ]] && uv run python scripts/compress_muse_data.py --file "$CSV_PATH" --delete-original
-```
-
-`.csv.gz` を使った実行では何もしない。
-
-タップログもアップロードする（当日のタップログファイルを指定。無い日は黙ってスキップ）。
+タップログ（マインドワンダリングの主観記録）は普段使わない追加オプション。`run_analysis.sh` が「検出されたタップログファイル」を出した日だけ、そのファイルをアップロードし、レビューでも扱う。出なかった日はタップに一切触れない（探さない・「記録なし」と書かない）。
 
 ```bash
 uv run python scripts/upload_to_gdrive.py --file data/taps/<当日のタップログ>.csv
@@ -138,8 +129,18 @@ uv run python scripts/upload_to_gdrive.py --file data/taps/<当日のタップ�
 
 **文脈（意図・体調・瞑想の種類）が不明でも聞かない。「未確認」と書いて先に進む。** 毎セッション問診されるコストのほうが、文脈が埋まる利益より大きい。ユーザーが自分から話した分だけ書く。
 
+## Step 5: 生データの削除
+
+ジャーナルまで終わったら、そのセッションの Muse CSV を `data/muse/` から消す。**確認を取らずに実行する。** 正本は Drive の zip で、取り直しは数秒（往復一致は検証済み）。圧縮して手元に残すと Drive と重複したまま積み上がる。
+
+```bash
+rm "$CSV_PATH"   # run_analysis.sh が出力した「使用するCSVファイル」
+```
+
+`data/muse/` は空が平常。`--no-fetch` は「取得済みだが未レビュー」のファイルがあるときだけ意味を持つ。
+
 ## スコープ（v1）
 
 - 単発セッションのレビューに絞る。
-- 過去セッションとの横断比較は `logs/session_log.csv` を読んで行う。ただしaperiodic系の列は2026-08-27以降の行にしか入っていない（Sheets運用時代に一度も書かれなかったため）。
+- 過去セッションとの横断比較は `logs/session_log.csv` を読んで行う。生データから計算し直す必要があるときは `data/muse/` ではなく scratchpad に落とす（`fetch_from_gdrive.py --download <date> --output <scratchpad>`）。`data/muse/` に混ぜると消してよいものの区別がつかなくなる。ただしaperiodic系の列は2026-08-27以降の行にしか入っていない（Sheets運用時代に一度も書かれなかったため）。
 - レビュー結果は `journal` スキルで `reports/journal/YYYY-MM.md` に蓄積する（Step 4）。
