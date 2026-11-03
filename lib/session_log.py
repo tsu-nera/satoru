@@ -11,6 +11,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -51,14 +52,58 @@ CANONICAL_COLUMNS: List[str] = [
     'tp9_valid_pct',
     'tp10_valid_pct',
     'tp_iaf_hz',
+    'pipeline_version',
     'note',
 ]
 
+#: backfill で計算結果に上書きさせない列。SelfLoops・タップログ・手入力など
+#: backfill では再計算できない列。手入力列を増やしたらここに足す。
+BACKFILL_PRESERVED_COLUMNS: List[str] = [
+    'hrv_mean',
+    'hrv_best',
+    'mw_count',
+    'mw_rate_per_min',
+    'mw_time_to_first_tap_s',
+    'breathing_rate_bpm',
+    'breathing_rate_std',
+    'rsa_amplitude_ms',
+    'rsa_band_power_ms2',
+    'note',
+]
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def default_log_path() -> Path:
     """セッションログCSVの既定パス（`logs/session_log.csv`）。"""
-    return Path(__file__).parent.parent / 'logs' / 'session_log.csv'
+    return PROJECT_ROOT / 'logs' / 'session_log.csv'
+
+
+def get_pipeline_version(repo_root: Optional[Path] = None) -> str:
+    """
+    行の値をどのコードで計算したかを示す識別子を返す。
+
+    `git rev-parse --short HEAD` の値。`lib/`・`scripts/` に未コミットの変更が
+    あれば末尾に `-dirty` を付ける。git が使えない環境では空文字。
+
+    Parameters
+    ----------
+    repo_root : Path, optional
+        git を実行するディレクトリ。省略時はこのリポジトリのルート。
+    """
+    cwd = repo_root if repo_root is not None else PROJECT_ROOT
+    try:
+        head = subprocess.run(
+            ['git', 'rev-parse', '--short', 'HEAD'],
+            cwd=cwd, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+        status = subprocess.run(
+            ['git', 'status', '--porcelain', '--', 'lib', 'scripts'],
+            cwd=cwd, check=True, capture_output=True, text=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return ''
+    return f'{head}-dirty' if status else head
 
 
 def _order_columns(columns) -> List[str]:
@@ -182,6 +227,7 @@ def _extract_session_data(results: Dict) -> Dict:
         'tp9_valid_pct': tp_metrics.get('tp9_valid_pct', float('nan')),
         'tp10_valid_pct': tp_metrics.get('tp10_valid_pct', float('nan')),
         'tp_iaf_hz': tp_metrics.get('tp_iaf_hz', float('nan')),
+        'pipeline_version': results.get('pipeline_version', ''),
     }
 
 
@@ -257,10 +303,68 @@ def write_to_csv(
     else:
         df = df_new
 
+    _save(df, csv_path)
+    return csv_path
+
+
+def _save(df: pd.DataFrame, csv_path: Path) -> None:
+    """列を並べ替え、timestamp 昇順で CSV に書き出す。"""
     df = df[_order_columns(df.columns)]
     if 'timestamp' in df.columns:
         df = df.sort_values('timestamp').reset_index(drop=True)
-
     df.to_csv(csv_path, index=False, float_format='%.3f')
 
+
+def write_backfill_row(
+    results: Dict,
+    existing_timestamp: str,
+    csv_path: Optional[Path] = None,
+    preserved_columns: Optional[List[str]] = None,
+) -> Path:
+    """
+    生データから再計算した結果で、既存の1行を書き換える（backfill 用）。
+
+    `write_to_csv` と違い、行の追加はしない。計算結果の開始時刻が既存行と
+    秒単位でずれても新しい行を作らないよう、`existing_timestamp` の行を更新する。
+    `preserved_columns` の列は計算結果にかかわらず既存行の値を残す。
+
+    Parameters
+    ----------
+    results : dict
+        `run_full_analysis` の戻り値
+    existing_timestamp : str
+        更新する既存行の timestamp（'%Y-%m-%d %H:%M:%S'）
+    csv_path : Path, optional
+        セッションログCSV。省略時は `logs/session_log.csv`。
+    preserved_columns : list of str, optional
+        既存値を残す列。省略時は `BACKFILL_PRESERVED_COLUMNS`。
+
+    Raises
+    ------
+    ValueError
+        `existing_timestamp` の行が無い場合
+    """
+    if csv_path is None:
+        csv_path = default_log_path()
+    csv_path = Path(csv_path)
+    if preserved_columns is None:
+        preserved_columns = BACKFILL_PRESERVED_COLUMNS
+
+    df = pd.read_csv(csv_path)
+    mask = df['timestamp'] == existing_timestamp
+    if not mask.any():
+        raise ValueError(f'session_log に timestamp={existing_timestamp} の行がありません')
+
+    record = _extract_session_data(results)
+    record['timestamp'] = existing_timestamp
+    for key, value in record.items():
+        if key in preserved_columns:
+            continue
+        if key not in df.columns:
+            df[key] = pd.Series([float('nan')] * len(df), dtype=object)
+        elif isinstance(value, str) and df[key].dtype != object:
+            df[key] = df[key].astype(object)
+        df.loc[mask, key] = value
+
+    _save(df, csv_path)
     return csv_path
