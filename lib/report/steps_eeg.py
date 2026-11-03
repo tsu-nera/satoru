@@ -11,6 +11,7 @@ Frontal Midline Theta・SMR を扱う。
 （失敗時は run_full_analysis 全体がクラッシュする現行挙動を維持する）。
 """
 
+import mne
 import numpy as np
 import pandas as pd
 
@@ -58,6 +59,13 @@ FRONTAL_CHANNELS = ('RAW_AF7', 'RAW_AF8')
 # TPは冬季に接触が悪い日があり、短い有効窓から出したIAFは信頼できないため空欄にする
 TP_CHANNELS = ('RAW_TP9', 'RAW_TP10')
 TP_MIN_VALID_SEC = 180
+
+# TPの絶対パワー（dB）を入り/終わりで比べる区間。最初はウォームアップ除外後の0〜3分、
+# 最後は先頭から3分ずつ区切った最後の完全な区間（端数は外す直前の乱れが入るので捨てる）。
+# 区間内の有効窓が TP_BLOCK_MIN_VALID_SEC 未満のチャネルはその区間で使わない
+TP_BLOCK_SEC = 180
+TP_BLOCK_MIN_VALID_SEC = 60
+TP_POWER_BANDS = {'alpha': (8.0, 13.0), 'delta': (1.0, 4.0)}
 
 # 耳側IAFを探すα帯域（Hz）
 TP_IAF_BAND = (7.0, 13.0)
@@ -194,6 +202,8 @@ def compute_tp_metrics(raw, valid_mask, window_samples):
     tp9_valid_pct / tp10_valid_pct は全窓に対するそのチャネルの有効窓の割合（%）。
     チャネルが無ければNaN。tp_iaf_hz はTP9とTP10の有効窓の合計が TP_MIN_VALID_SEC
     以上のときだけ、線スペクトル除去後の平均PSDのα帯域ピークを返し、足りなければNaN。
+    tp_{alpha,delta}_db_{first,last} は最初と最後の3分区間のα・δ絶対パワー（dB）
+    （`_tp_block_band_db` を参照）。
 
     Parameters
     ----------
@@ -206,6 +216,7 @@ def compute_tp_metrics(raw, valid_mask, window_samples):
     """
     nan = float('nan')
     metrics = {'tp9_valid_pct': nan, 'tp10_valid_pct': nan, 'tp_iaf_hz': nan}
+    metrics.update(_blank_tp_band_db())
     present = [ch for ch in TP_CHANNELS if ch in raw.ch_names]
     if not present or valid_mask.shape[1] == 0:
         return metrics
@@ -214,12 +225,15 @@ def compute_tp_metrics(raw, valid_mask, window_samples):
     for ch, idx in zip(present, tp_idx):
         metrics[f'{ch.replace("RAW_", "").lower()}_valid_pct'] = float(valid_mask[idx].mean() * 100)
 
+    tp_raw = raw.copy().pick(present)
+    metrics.update(_tp_block_band_db(tp_raw, valid_mask[tp_idx], window_samples))
+
     sfreq = raw.info['sfreq']
     valid_sec = float(valid_mask[tp_idx].sum()) * window_samples / sfreq
     if valid_sec < TP_MIN_VALID_SEC:
         return metrics
 
-    psd_dict = calculate_psd_masked(raw.copy().pick(present), valid_mask[tp_idx], window_samples)
+    psd_dict = calculate_psd_masked(tp_raw, valid_mask[tp_idx], window_samples)
     if psd_dict is None:
         return metrics
 
@@ -228,6 +242,50 @@ def compute_tp_metrics(raw, valid_mask, window_samples):
     mean_psd = psd_dict['psds'].mean(axis=0)
     metrics['tp_iaf_hz'] = float(freqs[band][mean_psd[band].argmax()])
     return metrics
+
+
+def _blank_tp_band_db():
+    nan = float('nan')
+    return {f'tp_{band}_db_{pos}': nan for band in TP_POWER_BANDS for pos in ('first', 'last')}
+
+
+def _tp_block_band_db(tp_raw, tp_valid, window_samples):
+    """
+    TPの最初と最後の3分区間について、α・δの絶対パワー（dB）を返す。
+
+    相対%ではδの減少がαの増加に見えてしまうため、深まりを絶対値で追う用途。
+    チャネルごとに区間内の有効窓だけで線スペクトル除去後のPSDを平均し、
+    帯域内パワー（μV²/Hz の和）を 10·log10 したdBを、使えるチャネルで平均する。
+    区間内の有効窓が TP_BLOCK_MIN_VALID_SEC 未満のチャネルは使わず、
+    どのチャネルも使えない区間・3分に満たないセッションはNaN。
+    """
+    out = _blank_tp_band_db()
+    sfreq = tp_raw.info['sfreq']
+    block_windows = int(round(TP_BLOCK_SEC * sfreq / window_samples))
+    n_blocks = tp_valid.shape[1] // block_windows if block_windows > 0 else 0
+    if n_blocks == 0:
+        return out
+
+    data = tp_raw.get_data()
+    min_valid_windows = TP_BLOCK_MIN_VALID_SEC * sfreq / window_samples
+    for pos, block in (('first', 0), ('last', n_blocks - 1)):
+        w0, w1 = block * block_windows, (block + 1) * block_windows
+        block_valid = tp_valid[:, w0:w1].copy()
+        block_valid[block_valid.sum(axis=1) < min_valid_windows] = False
+        if not block_valid.any():
+            continue
+        block_raw = mne.io.RawArray(
+            data[:, w0 * window_samples : w1 * window_samples], tp_raw.info, verbose=False
+        )
+        psd_dict = calculate_psd_masked(block_raw, block_valid, window_samples)
+        if psd_dict is None:
+            continue
+        freqs = psd_dict['freqs']
+        for band, (lo, hi) in TP_POWER_BANDS.items():
+            in_band = (freqs >= lo) & (freqs <= hi)
+            db = 10 * np.log10(psd_dict['psds'][:, in_band].sum(axis=1))
+            out[f'tp_{band}_db_{pos}'] = float(db.mean())
+    return out
 
 
 @analysis_step('Spectral Entropy解析')

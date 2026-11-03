@@ -63,6 +63,22 @@ uv run python scripts/upload_to_gdrive.py --file data/taps/<当日のタップ�
 
 `GDRIVE_FOLDER_ID_TAPS` 未設定なら警告を出してスキップする。冪等だが、Drive UI から手動で置かれた同名ファイルは検出できない（drive.file スコープの制約）。認証はOAuthユーザー認証（初回のみブラウザ同意、テスト状態のOAuth同意画面だと約7日でトークン失効し再同意が必要）。
 
+## Step 2.5: 注釈（種類・主観評価）
+
+レビュー出力の前に、次の3つを**1回だけまとめて**聞く（Step 4 の「文脈は聞かない」の例外）。
+
+- 瞑想の種類（既定 `samatha`。技法を使わず目を閉じて座るだけなら `control`）
+- 集中の安定 1〜5（浮つき: 集中が保てないほど低い）
+- 眠気 1〜5（沈み込み: 眠いほど高い）
+
+答えた分だけ書く。答えが無ければ書かずに進む（再度聞かない）。`--date` で過去のセッションを見ているときは `--timestamp` に `tmp/REPORT.md` の開始時刻（session_log の timestamp）を渡す。
+
+```bash
+uv run python scripts/annotate_session.py --timestamp latest --type samatha --focus 4 --drowsiness 2
+```
+
+注釈列は分析の再実行でも backfill でも上書きされない。
+
 ## Step 3: AIレビュー
 
 `tmp/REPORT.md` を読み、下記観点で解釈する。レポートに含まれる図（`tmp/img/*.png`）は必要に応じて参照する。
@@ -127,7 +143,7 @@ uv run python scripts/upload_to_gdrive.py --file data/taps/<当日のタップ�
 
 レポートの数値は `logs/session_log.csv` にあるので再掲しない。ジャーナルに書くのは文脈・解釈・次に試すことだけ。
 
-**文脈（意図・体調・瞑想の種類）が不明でも聞かない。「未確認」と書いて先に進む。** 毎セッション問診されるコストのほうが、文脈が埋まる利益より大きい。ユーザーが自分から話した分だけ書く。
+**文脈（意図・体調）が不明でも聞かない（瞑想の種類と主観評価だけは Step 2.5 で聞く）。「未確認」と書いて先に進む。** 毎セッション問診されるコストのほうが、文脈が埋まる利益より大きい。ユーザーが自分から話した分だけ書く。
 
 ## Step 5: 生データの削除
 

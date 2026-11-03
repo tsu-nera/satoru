@@ -52,9 +52,28 @@ CANONICAL_COLUMNS: List[str] = [
     'tp9_valid_pct',
     'tp10_valid_pct',
     'tp_iaf_hz',
+    'tp_alpha_db_first',
+    'tp_alpha_db_last',
+    'tp_delta_db_first',
+    'tp_delta_db_last',
     'pipeline_version',
+    'meditation_type',
+    'focus_rating',
+    'drowsiness_rating',
     'note',
 ]
+
+#: 手入力の注釈列（scripts/annotate_session.py で書く）。分析の再実行でも backfill でも
+#: 計算結果では上書きせず、既存行の値を残す。
+ANNOTATION_COLUMNS: List[str] = [
+    'meditation_type',
+    'focus_rating',
+    'drowsiness_rating',
+    'note',
+]
+
+#: 1〜5 の整数で入れる主観評価列。CSVには整数のまま書く。
+RATING_COLUMNS: List[str] = ['focus_rating', 'drowsiness_rating']
 
 #: backfill で計算結果に上書きさせない列。SelfLoops・タップログ・手入力など
 #: backfill では再計算できない列。手入力列を増やしたらここに足す。
@@ -68,7 +87,7 @@ BACKFILL_PRESERVED_COLUMNS: List[str] = [
     'breathing_rate_std',
     'rsa_amplitude_ms',
     'rsa_band_power_ms2',
-    'note',
+    *ANNOTATION_COLUMNS,
 ]
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -227,6 +246,12 @@ def _extract_session_data(results: Dict) -> Dict:
         'tp9_valid_pct': tp_metrics.get('tp9_valid_pct', float('nan')),
         'tp10_valid_pct': tp_metrics.get('tp10_valid_pct', float('nan')),
         'tp_iaf_hz': tp_metrics.get('tp_iaf_hz', float('nan')),
+        # TPのα・δ絶対パワー（dB）の入り（最初の3分）と終わり（最後の完全な3分）。
+        # 相対%ではδの減少がαの増加に見えるため、深まりはこちらで見る
+        'tp_alpha_db_first': tp_metrics.get('tp_alpha_db_first', float('nan')),
+        'tp_alpha_db_last': tp_metrics.get('tp_alpha_db_last', float('nan')),
+        'tp_delta_db_first': tp_metrics.get('tp_delta_db_first', float('nan')),
+        'tp_delta_db_last': tp_metrics.get('tp_delta_db_last', float('nan')),
         'pipeline_version': results.get('pipeline_version', ''),
     }
 
@@ -297,8 +322,13 @@ def write_to_csv(
     if csv_path.exists():
         df = pd.read_csv(csv_path)
         if 'timestamp' in df.columns:
-            # 同一timestampの既存行を落としてから追記する（upsert）
-            df = df[df['timestamp'] != new_record['timestamp']]
+            # 同一timestampの既存行を落としてから追記する（upsert）。
+            # 手入力の注釈は計算結果に無いので既存行から引き継ぐ
+            same = df['timestamp'] == new_record['timestamp']
+            for col in ANNOTATION_COLUMNS:
+                if same.any() and col in df.columns:
+                    df_new[col] = df.loc[same, col].iloc[-1]
+            df = df[~same]
         df = pd.concat([df, df_new], ignore_index=True)
     else:
         df = df_new
@@ -310,6 +340,10 @@ def write_to_csv(
 def _save(df: pd.DataFrame, csv_path: Path) -> None:
     """列を並べ替え、timestamp 昇順で CSV に書き出す。"""
     df = df[_order_columns(df.columns)]
+    for col in RATING_COLUMNS:
+        if col in df.columns:
+            # float_format で 4.000 にならないよう整数型（欠損可）にする
+            df[col] = pd.to_numeric(df[col]).round().astype('Int64')
     if 'timestamp' in df.columns:
         df = df.sort_values('timestamp').reset_index(drop=True)
     df.to_csv(csv_path, index=False, float_format='%.3f')
