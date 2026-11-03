@@ -115,7 +115,7 @@ module = "lib.visualization.utils"
 disable_error_code = ["operator"]
 
 [[tool.mypy.overrides]]
-module = ["scripts.cleanup_old_gdrive_data", "scripts.fetch_from_gdrive", "scripts.report.generate_hrv"]
+module = ["scripts.fetch_from_gdrive", "scripts.report.generate_hrv"]
 disable_error_code = ["assignment"]
 
 [[tool.mypy.overrides]]
