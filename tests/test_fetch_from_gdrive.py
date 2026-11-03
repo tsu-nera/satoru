@@ -5,7 +5,7 @@ Drive APIは一切呼ばず、ファイル一覧の dict だけで選択ロジ�
 
 from datetime import datetime
 
-from scripts.fetch_from_gdrive import parse_filename_datetime, select_latest_file
+from scripts.fetch_from_gdrive import list_csv_files, parse_filename_datetime, select_latest_file
 
 
 def make_file(name: str, modified: str) -> dict:
@@ -79,3 +79,44 @@ class TestSelectLatestFile:
 
     def test_returns_none_for_empty_list(self):
         assert select_latest_file([]) is None
+
+
+class _FakeRequest:
+    def __init__(self, response: dict):
+        self._response = response
+
+    def execute(self) -> dict:
+        return self._response
+
+
+class _FakeFiles:
+    """pageToken ごとに決まったページを返す Drive files() の代役。"""
+
+    def __init__(self, pages: dict):
+        self._pages = pages
+        self.tokens: list = []
+
+    def list(self, **kwargs) -> _FakeRequest:
+        token = kwargs.get('pageToken')
+        self.tokens.append(token)
+        return _FakeRequest(self._pages[token])
+
+
+class _FakeService:
+    def __init__(self, pages: dict):
+        self.files_api = _FakeFiles(pages)
+
+    def files(self) -> _FakeFiles:
+        return self.files_api
+
+
+class TestListCsvFilesPagination:
+    def test_concatenates_all_pages(self):
+        page1 = {'files': [{'id': 'a', 'name': 'a.zip'}], 'nextPageToken': 'p2'}
+        page2 = {'files': [{'id': 'b', 'name': 'b.zip'}]}
+        service = _FakeService({None: page1, 'p2': page2})
+
+        files = list_csv_files(service, 'folder')
+
+        assert [f['id'] for f in files] == ['a', 'b']
+        assert service.files_api.tokens == [None, 'p2']

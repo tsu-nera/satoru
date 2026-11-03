@@ -51,6 +51,7 @@ from lib.report import (
 )
 from lib.sensors.eeg.artifact import ARTIFACT_WINDOW_SAMPLES
 from lib.sensors.eeg.band_power import compute_band_powers_from_raw, needs_band_power_computation
+from lib.session_log import get_pipeline_version
 
 
 def generate_markdown_report(data_path, output_dir, results):
@@ -120,7 +121,8 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
     img_dir.mkdir(exist_ok=True)
 
     # 分析結果を格納
-    results = {}
+    results: dict = {}
+    results['pipeline_version'] = get_pipeline_version()
 
     # データ読み込み
     print(f'Loading: {data_path}')
@@ -250,6 +252,8 @@ def run_full_analysis(data_path, output_dir, save_to='none', warmup_minutes=1.0,
     print(f'レポート: {output_dir / "REPORT.md"}')
     print(f'サマリー: {summary_csv_path}')
     print(f'画像: {img_dir}/')
+
+    return results
 
 
 def main():

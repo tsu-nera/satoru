@@ -100,15 +100,21 @@ def list_csv_files(service: Any, folder_id: str) -> List[Dict]:
         "and trashed=false"
     )
 
-    # API呼び出し
-    results = service.files().list(
-        q=query,
-        orderBy='modifiedTime desc',  # 更新日時降順
-        pageSize=100,
-        fields='files(id, name, modifiedTime, size, mimeType)'
-    ).execute()
-
-    files = results.get('files', [])
+    # API呼び出し（nextPageToken を辿って全ページを連結する）
+    files: List[Dict] = []
+    page_token = None
+    while True:
+        results = service.files().list(
+            q=query,
+            orderBy='modifiedTime desc',  # 更新日時降順
+            pageSize=100,
+            pageToken=page_token,
+            fields='nextPageToken, files(id, name, modifiedTime, size, mimeType)'
+        ).execute()
+        files.extend(results.get('files', []))
+        page_token = results.get('nextPageToken')
+        if not page_token:
+            break
 
     if not files:
         print("⚠️  ファイルが見つかりませんでした")
