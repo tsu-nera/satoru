@@ -43,3 +43,4 @@ dashboard/
 
 # Claude Code のエージェント用 worktree
 .claude/worktrees/
+CLAUDE.local.md
