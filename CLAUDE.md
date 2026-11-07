@@ -36,6 +36,7 @@ uv run jupyter lab
 ### Key Documentation
 - **Project Guidelines**: [docs/AI-CODING.md](docs/AI-CODING.md)
 - **Mind Monitor CSV Spec**: [docs/MIND_MONITOR_CSV_SPECIFICATION.md](docs/MIND_MONITOR_CSV_SPECIFICATION.md)
+- **Devices**: [docs/DEVICES.md](docs/DEVICES.md)
 
 ---
 
