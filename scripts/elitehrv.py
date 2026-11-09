@@ -5,15 +5,32 @@ Elite HRV の reading（1 txt = 1 reading）を分析して表示し、CSV に�
 4分以上の reading は biofeedback（共鳴呼吸）、未満は readiness として扱う。
 結果は logs/resonance_log.csv に timestamp をキーに upsert する。
 
+Elite HRV の export zip（全期間）は Google Drive に elitehrv_export.zip の1本だけ置き、
+import のたびに上書きする。既存 zip にある reading が新しい zip で1件でも欠けていれば
+上書きしない。
+
 使い方:
     uv run python scripts/elitehrv.py analyze "data/elitehrv/2026-11-10 07-22-58.txt" --practice rf
+    uv run python scripts/elitehrv.py import "https://app.elitehrv.com/export/<hash>"
+    uv run python scripts/elitehrv.py import export.zip
+    uv run python scripts/elitehrv.py analyze --drive        # CSV に無い reading だけ
+    uv run python scripts/elitehrv.py analyze --drive --all  # 全 reading を再計算
+
+Drive の認証は OAuth（GDRIVE_OAUTH_CLIENT / GDRIVE_OAUTH_TOKEN、drive.file スコープ）。
+フォルダは `upload_to_gdrive.py --create-folder <名前>` で作り、ID を
+GDRIVE_FOLDER_ID_ELITEHRV に設定する。
 """
 
 import argparse
 import math
+import os
+import re
 import sys
-from pathlib import Path
-from typing import Any, Dict, List, Optional
+import tempfile
+import urllib.request
+import zipfile
+from pathlib import Path, PurePosixPath
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 import numpy as np
 import pandas as pd
@@ -28,11 +45,24 @@ from lib.loaders.elite_hrv import (
 )
 from lib.sensors.ecg.hrv import calculate_hrv_basic_stats
 from lib.sensors.ecg.respiration import analyze_resonance_breathing
+from scripts.upload_to_gdrive import (
+    DEFAULT_OAUTH_CLIENT,
+    DEFAULT_TOKEN_PATH,
+    authorize_gdrive,
+    create_file,
+    download_file_bytes,
+    find_file_id,
+    update_file_content,
+)
 
 VERSION = 1  # 指標の定義を変えたら上げる
 BIOFEEDBACK_MIN_MIN = 4.0  # この長さ（分）以上を biofeedback とみなす
 TS_FORMAT = '%Y-%m-%d %H:%M:%S'
 HISTORY_N = 5
+
+DRIVE_ZIP_NAME = 'elitehrv_export.zip'
+ZIP_MIMETYPE = 'application/zip'
+READING_NAME_RE = re.compile(r'^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.txt$')
 
 COLUMNS = [
     'timestamp', 'kind', 'practice', 'duration_min', 'artifact_count', 'artifact_pct',
@@ -187,20 +217,232 @@ def _print_report(row: Dict[str, Any], segments: Optional[pd.DataFrame], compari
     print(comparison)
 
 
+class ExportZipError(ValueError):
+    """export zip が想定の形式でない"""
+
+
+def _check_entry_name(name: str) -> Optional[str]:
+    """zip エントリ名を検証し、reading ならファイル名を返す。ディレクトリなら None"""
+    if '\\' in name or name.startswith('/'):
+        raise ExportZipError(f'不正なエントリ名: {name}')
+    parts = PurePosixPath(name).parts
+    if any(p in ('..', '.') for p in name.split('/')):
+        raise ExportZipError(f'不正なエントリ名（パストラバーサル）: {name}')
+    if name.endswith('/'):
+        if len(parts) != 1:
+            raise ExportZipError(f'ディレクトリが2段以上あります: {name}')
+        return None
+    if len(parts) > 2:
+        raise ExportZipError(f'ディレクトリが2段以上あります: {name}')
+    if not READING_NAME_RE.match(parts[-1]):
+        raise ExportZipError(
+            f'reading のファイル名規則（YYYY-MM-DD HH-MM-SS.txt）に合いません: {name}'
+        )
+    return parts[-1]
+
+
+def validate_export_zip(zip_path: Path) -> Dict[str, str]:
+    """
+    export zip を検証し、{reading ファイル名: zip エントリ名} を返す
+
+    エントリ名の規則（ディレクトリ1段まで）・パストラバーサル・各行が数値であることを
+    確かめ、違反があれば ExportZipError を投げる。
+    """
+    if not zipfile.is_zipfile(zip_path):
+        raise ExportZipError(f'zip ではありません: {zip_path}')
+    readings: Dict[str, str] = {}
+    with zipfile.ZipFile(zip_path) as zf:
+        for info in zf.infolist():
+            base = _check_entry_name(info.filename)
+            if base is None:
+                continue
+            if base in readings:
+                raise ExportZipError(f'同じ reading 名が複数あります: {base}')
+            try:
+                text = zf.read(info).decode('utf-8')
+            except UnicodeDecodeError:
+                raise ExportZipError(f'UTF-8 として読めません: {info.filename}') from None
+            for lineno, line in enumerate(text.splitlines(), start=1):
+                v = line.strip()
+                if not v:
+                    continue
+                try:
+                    float(v)
+                except ValueError:
+                    raise ExportZipError(
+                        f'数値でない行があります: {info.filename}:{lineno}: {v[:40]!r}'
+                    ) from None
+            readings[base] = info.filename
+    if not readings:
+        raise ExportZipError(f'reading が1件もありません: {zip_path}')
+    return readings
+
+
+def _reading_names(zip_path: Path) -> Set[str]:
+    """zip 内の reading 名集合（ディレクトリ部分を除く）"""
+    with zipfile.ZipFile(zip_path) as zf:
+        return {
+            PurePosixPath(n).name for n in zf.namelist()
+            if not n.endswith('/') and READING_NAME_RE.match(PurePosixPath(n).name)
+        }
+
+
+def _fetch_source(source: str, workdir: Path) -> Path:
+    """URL なら workdir に落とし、ローカルパスならそのまま返す"""
+    if source.startswith(('http://', 'https://')):
+        dest = workdir / 'download.zip'
+        with urllib.request.urlopen(source, timeout=120) as resp, open(dest, 'wb') as f:
+            while chunk := resp.read(1 << 20):
+                f.write(chunk)
+        return dest
+    path = Path(source)
+    if not path.is_file():
+        raise FileNotFoundError(f'ファイルが見つかりません: {source}')
+    return path
+
+
+def import_export(source: str, service: Any, folder_id: str) -> int:
+    """export zip を検証し、Drive の elitehrv_export.zip を作成または上書きする。終了コードを返す"""
+    with tempfile.TemporaryDirectory(prefix='elitehrv-import-') as tmp:
+        workdir = Path(tmp)
+        try:
+            zip_path = _fetch_source(source, workdir)
+            new_names = set(validate_export_zip(zip_path))
+        except (ExportZipError, OSError) as e:
+            print(f'エラー: {e}', file=sys.stderr)
+            return 1
+
+        file_id = find_file_id(service, folder_id, DRIVE_ZIP_NAME)
+        if file_id is None:
+            create_file(service, folder_id, zip_path, DRIVE_ZIP_NAME, ZIP_MIMETYPE)
+            print(f'Drive に {DRIVE_ZIP_NAME} を新規作成しました（{len(new_names)} readings）')
+            added = sorted(new_names)
+        else:
+            old_zip = workdir / 'drive.zip'
+            old_zip.write_bytes(download_file_bytes(service, file_id))
+            old_names = _reading_names(old_zip)
+            missing = sorted(old_names - new_names)
+            if missing:
+                print(
+                    f'エラー: 新しい zip に既存の reading が {len(missing)} 件ありません。上書きしません',
+                    file=sys.stderr,
+                )
+                for name in missing:
+                    print(f'  missing: {name}', file=sys.stderr)
+                return 1
+            update_file_content(service, file_id, zip_path, ZIP_MIMETYPE)
+            print(f'Drive の {DRIVE_ZIP_NAME} を上書きしました（{len(new_names)} readings）')
+            added = sorted(new_names - old_names)
+
+    print(f'新しい reading: {len(added)} 件')
+    for name in added:
+        print(f'  new: {name}')
+    return 0
+
+
+def analyze_drive(
+    service: Any,
+    folder_id: str,
+    log_path: Optional[Path] = None,
+    reprocess_all: bool = False,
+    verbose: bool = True,
+) -> int:
+    """Drive の zip を落とし、CSV に無い reading（reprocess_all なら全部）を analyze する"""
+    log = Path(log_path) if log_path is not None else default_log_path()
+    file_id = find_file_id(service, folder_id, DRIVE_ZIP_NAME)
+    if file_id is None:
+        print(f'エラー: Drive に {DRIVE_ZIP_NAME} がありません。先に import してください', file=sys.stderr)
+        return 1
+
+    failed = 0
+    with tempfile.TemporaryDirectory(prefix='elitehrv-drive-') as tmp:
+        workdir = Path(tmp)
+        zip_path = workdir / DRIVE_ZIP_NAME
+        zip_path.write_bytes(download_file_bytes(service, file_id))
+        try:
+            readings = validate_export_zip(zip_path)
+        except ExportZipError as e:
+            print(f'エラー: Drive の zip が不正です: {e}', file=sys.stderr)
+            return 1
+
+        done: Set[str] = set() if reprocess_all else set(
+            _read_log(log)['timestamp'].dropna().astype(str)
+        )
+        targets = []
+        for base in sorted(readings):
+            start = parse_elite_hrv_timestamp(base)
+            if start is not None and start.strftime(TS_FORMAT) not in done:
+                targets.append(base)
+
+        print(f'{len(targets)} / {len(readings)} readings を処理します')
+        extract_dir = workdir / 'readings'
+        extract_dir.mkdir()
+        with zipfile.ZipFile(zip_path) as zf:
+            for base in targets:
+                txt = extract_dir / base
+                txt.write_bytes(zf.read(readings[base]))
+                if verbose:
+                    print()
+                    print('=' * 60)
+                try:
+                    analyze_file(str(txt), log_path=log, verbose=verbose)
+                except (ValueError, OSError) as e:
+                    failed += 1
+                    print(f'エラー: {base}: {e}', file=sys.stderr)
+    return 1 if failed else 0
+
+
+def _drive_service() -> Tuple[Any, str]:
+    """環境変数から Drive service とフォルダ ID を用意する"""
+    folder_id = os.environ.get('GDRIVE_FOLDER_ID_ELITEHRV')
+    if not folder_id:
+        raise RuntimeError('GDRIVE_FOLDER_ID_ELITEHRV が設定されていません')
+    client = Path(os.environ.get('GDRIVE_OAUTH_CLIENT', str(DEFAULT_OAUTH_CLIENT)))
+    token = Path(os.environ.get('GDRIVE_OAUTH_TOKEN', str(DEFAULT_TOKEN_PATH)))
+    if not client.exists():
+        raise RuntimeError(f'OAuth クライアントシークレットが見つかりません: {client}')
+    return authorize_gdrive(client, token), folder_id
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(description='Elite HRV reading の分析と記録')
     sub = parser.add_subparsers(dest='command', required=True)
-    p = sub.add_parser('analyze', help='txt 1本を分析して CSV に記録する')
-    p.add_argument('txt', help='Elite HRV の txt（YYYY-MM-DD HH-MM-SS.txt）')
+    p = sub.add_parser('analyze', help='reading を分析して CSV に記録する')
+    p.add_argument('txt', nargs='?', help='Elite HRV の txt（YYYY-MM-DD HH-MM-SS.txt）')
     p.add_argument('--practice', choices=['rf', 'rf+metta'], default=None)
     p.add_argument('--log', default=None, help='記録先 CSV（既定: logs/resonance_log.csv）')
+    p.add_argument('--drive', action='store_true',
+                   help=f'Drive の {DRIVE_ZIP_NAME} から CSV に無い reading をすべて分析する')
+    p.add_argument('--all', action='store_true', help='--drive と併用し、全 reading を再計算する')
+    imp = sub.add_parser('import', help=f'export zip を検証して Drive の {DRIVE_ZIP_NAME} に保存する')
+    imp.add_argument('source', help='export のリンク（https://app.elitehrv.com/export/...）または zip のパス')
     args = parser.parse_args(argv)
 
+    if args.command == 'import':
+        try:
+            service, folder_id = _drive_service()
+            return import_export(args.source, service, folder_id)
+        except Exception as e:
+            print(f'エラー: {e}', file=sys.stderr)
+            return 1
+
+    log_path = Path(args.log) if args.log else None
+    if args.drive:
+        if args.txt or args.practice:
+            parser.error('--drive は txt・--practice と同時に指定できません')
+        try:
+            service, folder_id = _drive_service()
+            return analyze_drive(service, folder_id, log_path=log_path, reprocess_all=args.all)
+        except Exception as e:
+            print(f'エラー: {e}', file=sys.stderr)
+            return 1
+    if args.all:
+        parser.error('--all は --drive と併用してください')
+    if not args.txt:
+        parser.error('txt か --drive を指定してください')
+
     try:
-        analyze_file(
-            args.txt, practice=args.practice,
-            log_path=Path(args.log) if args.log else None, verbose=True,
-        )
+        analyze_file(args.txt, practice=args.practice, log_path=log_path, verbose=True)
     except (ValueError, OSError) as e:
         print(f'エラー: {e}', file=sys.stderr)
         return 1
