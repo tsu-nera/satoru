@@ -11,7 +11,7 @@ from typing import Any, Dict, Optional
 import numpy as np
 import pandas as pd
 
-from .base import clean_rr_intervals, normalize_dataframe
+from .base import normalize_dataframe
 
 
 def parse_elite_hrv_timestamp(filename: str) -> Optional[datetime]:
@@ -62,6 +62,54 @@ def parse_elite_hrv_timestamp(filename: str) -> Optional[datetime]:
 
     except (ValueError, IndexError):
         return None
+
+
+def detect_rr_artifacts(
+    rr_ms: np.ndarray,
+    half_window: int = 5,
+    threshold: float = 0.2,
+) -> np.ndarray:
+    """
+    局所中央値から threshold 以上外れた拍を検出する
+
+    各拍 i について、前後 half_window 拍（i 自身を除く、端は切り詰め）の
+    中央値との相対差が threshold 以上なら artifact とする。
+    前の拍だけと比べる ``clean_rr_intervals`` と違い、欠落拍（RR が約2倍）
+    の次の拍を巻き込まない。
+
+    Returns
+    -------
+    np.ndarray[bool] : artifact の拍に True
+    """
+    rr = np.asarray(rr_ms, dtype=float)
+    n = len(rr)
+    mask = np.zeros(n, dtype=bool)
+    for i in range(n):
+        lo, hi = max(0, i - half_window), min(n, i + half_window + 1)
+        neighbors = np.concatenate([rr[lo:i], rr[i + 1:hi]])
+        if len(neighbors) == 0:
+            continue
+        median = np.median(neighbors)
+        mask[i] = abs(rr[i] - median) / median >= threshold
+    return mask
+
+
+def correct_rr_artifacts(rr_ms: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    artifact の拍を、非 artifact の拍から拍番号上で線形補間して置き換える
+
+    Returns
+    -------
+    (corrected_rr, artifact_mask)
+    """
+    rr = np.asarray(rr_ms, dtype=float)
+    mask = detect_rr_artifacts(rr)
+    if not mask.any() or mask.all():
+        return rr.copy(), mask
+    idx = np.arange(len(rr))
+    corrected = rr.copy()
+    corrected[mask] = np.interp(idx[mask], idx[~mask], rr[~mask])
+    return corrected, mask
 
 
 def load_elite_hrv_txt(
@@ -187,7 +235,7 @@ def get_hrv_data(
     df : pd.DataFrame
         Elite HRVデータフレーム（load_elite_hrv_txt()の戻り値）
     clean_artifacts : bool, default True
-        True: 外れ値・アーティファクトを除外（推奨）
+        True: 外れ値・アーティファクトを補正（推奨）
         False: 生データをそのまま使用
 
     Returns
@@ -197,6 +245,8 @@ def get_hrv_data(
             'rr_intervals': np.ndarray,     # R-R間隔（ms）- 生データ
             'rr_intervals_clean': np.ndarray,  # R-R間隔（ms）- クリーニング済み
             'hr': np.ndarray,               # 心拍数（bpm）
+            'artifact_count': int,          # 補正した拍の数
+            'artifact_pct': float,          # 補正した拍の割合（%）
             'time': np.ndarray,             # 相対時間（秒）
             'session_start': datetime,      # セッション開始時刻
             'breathing_rate': float,        # 呼吸レート（指定された場合のみ）
@@ -215,24 +265,24 @@ def get_hrv_data(
     rr_intervals = df['R-R (ms)'].values
 
     if clean_artifacts:
-        # R-R間隔の外れ値を検出・補正
-        rr_intervals_clean = clean_rr_intervals(
-            rr_intervals,
-            min_rr=300,   # 最小R-R間隔 (ms) → 200 bpm上限
-            max_rr=2000,  # 最大R-R間隔 (ms) → 30 bpm下限
-            max_diff_percent=20  # 前の値との最大変化率 (%)
-        )
+        # 局所中央値（前後5拍）から20%以上外れた拍を検出し、線形補間で補正
+        rr_intervals_clean, artifact_mask = correct_rr_artifacts(rr_intervals)
         # クリーニング済みR-R間隔から心拍数を計算
         hr = 60000.0 / rr_intervals_clean
     else:
         # 生データをそのまま使用
         rr_intervals_clean = rr_intervals
         hr = 60000.0 / rr_intervals
+        artifact_mask = np.zeros(len(rr_intervals), dtype=bool)
+
+    artifact_count = int(artifact_mask.sum())
 
     result = {
         'rr_intervals': rr_intervals,           # 生データ
         'rr_intervals_clean': rr_intervals_clean,  # クリーニング済み
         'hr': hr,
+        'artifact_count': artifact_count,
+        'artifact_pct': artifact_count / len(rr_intervals) * 100.0,
         'time': df['Time_sec'].values,
         'session_start': df.attrs.get('session_start'),
         'sampling_rate': 1000  # R-R間隔はms単位なので1000Hz相当
