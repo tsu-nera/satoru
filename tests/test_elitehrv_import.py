@@ -206,6 +206,27 @@ def test_analyze_drive_without_zip_fails(tmp_path: Path) -> None:
     assert elitehrv.analyze_drive(FakeService(), FOLDER, log_path=tmp_path / 'l.csv') != 0
 
 
+def test_analyze_drive_sets_practice_on_biofeedback_only(tmp_path: Path) -> None:
+    readiness = '2026-11-03 07-00-00.txt'
+    biofeedback = '2026-11-03 07-10-00.txt'
+    zip_path = _make_zip(tmp_path / 'e.zip', {
+        f'user/{readiness}': _rr_text(150.0), f'user/{biofeedback}': _rr_text(600.0),
+    })
+    service = FakeService({'elitehrv_export.zip': zip_path.read_bytes()})
+    log = tmp_path / 'resonance_log.csv'
+
+    assert elitehrv.analyze_drive(service, FOLDER, log_path=log, verbose=False, practice='rf+metta') == 0
+    df = pd.read_csv(log, dtype={'timestamp': str}).set_index('timestamp')
+    assert df.loc['2026-11-03 07:10:00', 'practice'] == 'rf+metta'
+    assert df.loc['2026-11-03 07:10:00', 'kind'] == 'biofeedback'
+    assert pd.isna(df.loc['2026-11-03 07:00:00', 'practice'])
+
+
+def test_main_rejects_drive_all_with_practice() -> None:
+    with pytest.raises(SystemExit):
+        elitehrv.main(['analyze', '--drive', '--all', '--practice', 'rf'])
+
+
 def test_main_rejects_drive_with_txt() -> None:
     with pytest.raises(SystemExit):
         elitehrv.main(['analyze', 'x.txt', '--drive'])

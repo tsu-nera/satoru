@@ -167,6 +167,9 @@ def analyze_file(
     rr = hrv['rr_intervals_clean']
     duration_min = float(np.sum(raw_rr) / 60000.0)
     kind = 'biofeedback' if duration_min >= BIOFEEDBACK_MIN_MIN else 'readiness'
+    if kind == 'readiness':
+        # practice describes a breathing session; a readiness reading has none
+        practice = None
 
     stats = calculate_hrv_basic_stats(rr, min_freq_duration_sec=BIOFEEDBACK_MIN_MIN * 60.0)
     row: Dict[str, Any] = {c: np.nan for c in COLUMNS}
@@ -350,8 +353,13 @@ def analyze_drive(
     log_path: Optional[Path] = None,
     reprocess_all: bool = False,
     verbose: bool = True,
+    practice: Optional[str] = None,
 ) -> int:
-    """Drive の zip を落とし、CSV に無い reading（reprocess_all なら全部）を analyze する"""
+    """
+    Drive の zip を落とし、CSV に無い reading（reprocess_all なら全部）を analyze する
+
+    practice は処理する biofeedback の reading に付ける（readiness には付けない）。
+    """
     log = Path(log_path) if log_path is not None else default_log_path()
     file_id = find_file_id(service, folder_id, DRIVE_ZIP_NAME)
     if file_id is None:
@@ -389,7 +397,7 @@ def analyze_drive(
                     print()
                     print('=' * 60)
                 try:
-                    analyze_file(str(txt), log_path=log, verbose=verbose)
+                    analyze_file(str(txt), practice=practice, log_path=log, verbose=verbose)
                 except (ValueError, OSError) as e:
                     failed += 1
                     print(f'エラー: {base}: {e}', file=sys.stderr)
@@ -413,7 +421,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('analyze', help='reading を分析して CSV に記録する')
     p.add_argument('txt', nargs='?', help='Elite HRV の txt（YYYY-MM-DD HH-MM-SS.txt）')
-    p.add_argument('--practice', choices=['rf', 'rf+metta'], default=None)
+    p.add_argument('--practice', choices=['rf', 'rf+metta'], default=None,
+                   help='biofeedback の reading に付ける練習の種類（readiness には付けない）')
     p.add_argument('--log', default=None, help='記録先 CSV（既定: logs/resonance_log.csv）')
     p.add_argument('--drive', action='store_true',
                    help=f'Drive の {DRIVE_ZIP_NAME} から CSV に無い reading をすべて分析する')
@@ -432,11 +441,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     log_path = Path(args.log) if args.log else None
     if args.drive:
-        if args.txt or args.practice:
-            parser.error('--drive は txt・--practice と同時に指定できません')
+        if args.txt:
+            parser.error('--drive は txt と同時に指定できません')
+        if args.all and args.practice:
+            parser.error('--all は --practice と同時に指定できません（全 reading の practice を上書きするため）')
         try:
             service, folder_id = _drive_service()
-            return analyze_drive(service, folder_id, log_path=log_path, reprocess_all=args.all)
+            return analyze_drive(
+                service, folder_id, log_path=log_path, reprocess_all=args.all, practice=args.practice,
+            )
         except Exception as e:
             print(f'エラー: {e}', file=sys.stderr)
             return 1
