@@ -20,7 +20,7 @@ import sys
 import zipfile
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
@@ -29,7 +29,8 @@ from googleapiclient.http import MediaIoBaseDownload
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from lib.env import load_env
-from lib.loaders.selfloops import rename_selfloops_file
+from lib.loaders.selfloops import parse_selfloops_timestamp, rename_selfloops_file
+from scripts.rename_gdrive_selfloops import fetch_first_line
 
 load_env()
 
@@ -269,17 +270,63 @@ def parse_filename_datetime(name: str) -> Optional[datetime]:
         return None
 
 
-def select_latest_file(files: List[Dict]) -> Optional[Dict]:
+# ファイル情報からセッション日時を返す関数（名前に日時が無いファイルの中身を読む用）
+ContentResolver = Callable[[Dict], Optional[datetime]]
+
+
+def resolve_session_datetime(file: Dict, content_resolver: Optional[ContentResolver] = None) -> Optional[datetime]:
+    """
+    ファイルのセッション日時を決める
+
+    ファイル名の日時を優先し、名前から取れない場合だけ content_resolver に
+    ファイル本体から日時を読ませる（SelfLoops の日付なし名 "SelfLoops HRV data" 対応）。
+
+    Args:
+        file: Driveのファイル情報（name を含む）
+        content_resolver: ファイル本体から日時を返す関数。Noneなら名前だけで判定
+
+    Returns:
+        セッション日時、名前にも中身にも無い場合はNone
+    """
+    timestamp = parse_filename_datetime(file['name'])
+    if timestamp is None and content_resolver is not None:
+        timestamp = content_resolver(file)
+    return timestamp
+
+
+def make_drive_content_resolver(service: Any) -> ContentResolver:
+    """
+    Driveからファイル1行目を取得し、SelfLoopsのタイムスタンプとして読むリゾルバを作る
+
+    ZIP（Muse）は1行目にタイムスタンプを持たないので読まない。
+
+    Args:
+        service: Google Drive APIサービス
+
+    Returns:
+        ファイル情報からセッション日時を返す関数
+    """
+    def resolve(file: Dict) -> Optional[datetime]:
+        if file['name'].endswith('.zip'):
+            return None
+        return parse_selfloops_timestamp(fetch_first_line(service, file['id']))
+
+    return resolve
+
+
+def select_latest_file(files: List[Dict], content_resolver: Optional[ContentResolver] = None) -> Optional[Dict]:
     """
     セッションが最も新しいファイルを選ぶ
 
     Driveの modifiedTime はアップロード順・リネーム・コピーで変わるため、
     セッションの新しさを表さない（過去分をまとめて上げ直すと順序が崩れる）。
-    ファイル名に埋め込まれた日時を優先し、名前から日時を取り出せるファイルが
+    ファイル名に埋め込まれた日時を優先し、名前から取れないファイルは
+    content_resolver でファイル本体の日時を使う。日時を取れるファイルが
     1つも無い場合のみ modifiedTime 降順の先頭にフォールバックする。
 
     Args:
         files: ファイル一覧（modifiedTime降順）
+        content_resolver: 名前に日時が無いファイルの本体から日時を返す関数
 
     Returns:
         選択されたファイル、一覧が空の場合はNone
@@ -287,33 +334,49 @@ def select_latest_file(files: List[Dict]) -> Optional[Dict]:
     if not files:
         return None
 
-    dated = [(parse_filename_datetime(f["name"]), f) for f in files]
+    dated = [(resolve_session_datetime(f, content_resolver), f) for f in files]
     parsed = [(timestamp, f) for timestamp, f in dated if timestamp is not None]
 
     if not parsed:
-        print("⚠️  ファイル名から日時を取得できませんでした。更新日時が最新のファイルを使用します")
+        print("⚠️  ファイル名・ファイル本体から日時を取得できませんでした。更新日時が最新のファイルを使用します")
         return files[0]
 
     if len(parsed) < len(files):
         skipped = len(files) - len(parsed)
-        print(f"⚠️  ファイル名から日時を取得できないファイルが {skipped} 個あります（選択対象から除外）")
+        print(f"⚠️  日時を取得できないファイルが {skipped} 個あります（選択対象から除外）")
 
     return max(parsed, key=lambda item: item[0])[1]
 
 
-def find_file_by_date(files: List[Dict], date_str: str) -> Optional[Dict]:
+def find_file_by_date(
+    files: List[Dict], date_str: str, content_resolver: Optional[ContentResolver] = None
+) -> Optional[Dict]:
     """
-    日付文字列を含むファイル名を検索
+    日付のファイルを検索
+
+    ファイル名に日付文字列を含むファイルを優先し、無ければ名前に日時が無い
+    ファイルを content_resolver で本体の日時から判定する。
 
     Args:
         files: ファイル一覧
         date_str: 日付文字列（例: "2025-11-04"）
+        content_resolver: 名前に日時が無いファイルの本体から日時を返す関数
 
     Returns:
         該当ファイル、見つからない場合はNone
     """
     for file in files:
         if date_str in file['name']:
+            return file
+
+    if content_resolver is None:
+        return None
+
+    for file in files:
+        if parse_filename_datetime(file['name']) is not None:
+            continue
+        timestamp = content_resolver(file)
+        if timestamp is not None and timestamp.strftime('%Y-%m-%d') == date_str:
             return file
     return None
 
@@ -393,19 +456,20 @@ def main():
 
         # --download: ダウンロード
         if args.download:
+            content_resolver = make_drive_content_resolver(service)
             target_file: Optional[Dict]
             if args.download.lower() == 'latest':
-                # 最新セッションのファイル（modifiedTimeではなくファイル名の日時で判定）
-                target_file = select_latest_file(files)
+                # 最新セッションのファイル（modifiedTimeではなくファイル名・本体の日時で判定）
+                target_file = select_latest_file(files, content_resolver)
                 if not target_file:
                     print("❌ ダウンロード対象のファイルがありません")
                     sys.exit(1)
                 print(f"\n最新ファイルを選択: {target_file['name']}")
             else:
                 # 日付指定
-                target_file = find_file_by_date(files, args.download)
+                target_file = find_file_by_date(files, args.download, content_resolver)
                 if not target_file:
-                    print(f"❌ 日付 '{args.download}' を含むファイルが見つかりませんでした")
+                    print(f"❌ 日付 '{args.download}' のファイルが見つかりませんでした")
                     sys.exit(1)
                 print(f"\n日付 '{args.download}' のファイルを選択: {target_file['name']}")
 

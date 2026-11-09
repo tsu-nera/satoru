@@ -121,6 +121,25 @@ def rename_selfloops_file(file_path: str) -> str:
         return file_path
 
 
+def has_selfloops_rows(csv_path: str) -> bool:
+    """
+    SelfloopsファイルにR-Rのデータ行が1行以上あるかを返す
+
+    1行目タイムスタンプ・2行目ヘッダーだけの空ファイル（記録失敗時に書き出される）を見分ける。
+
+    Args:
+        csv_path: Selfloopsファイルのパス
+
+    Returns:
+        3行目以降に空でない行があればTrue
+    """
+    with open(csv_path, 'r', encoding='utf-8') as f:
+        for line_number, line in enumerate(f):
+            if line_number >= 2 and line.strip():
+                return True
+    return False
+
+
 def load_selfloops_csv(csv_path: str, warmup_seconds: float = 0.0) -> pd.DataFrame:
     """
     Selfloops HRV CSVファイルを読み込む
