@@ -4,6 +4,7 @@
 
 同名ファイルが既にDrive上に存在する場合はスキップし、重複を作らない（冪等）。
 アップロードは追加のみで、Drive上のファイルを削除・上書きすることはない。
+（`update_file_content` 等は scripts/elitehrv.py の import 用で、このスクリプトの CLI からは使わない）
 
 認証は OAuth ユーザー認証（drive.file スコープ）を使う。サービスアカウントは
 保存容量枠を持たないため、ユーザー所有フォルダへの新規ファイル作成が
@@ -194,6 +195,44 @@ def upload_file(
     existing_names.add(name)
     print(f"✅ アップロード完了: {name}")
     return True
+
+
+def find_file_id(service: Any, folder_id: str, name: str) -> Optional[str]:
+    """
+    指定フォルダ内で name に一致するファイルの ID を返す（無ければ None）
+
+    drive.file スコープでは、このアプリが作成したファイルしか見えない。
+    """
+    escaped = name.replace('\\', '\\\\').replace("'", "\\'")
+    results = service.files().list(
+        q=f"'{folder_id}' in parents and name = '{escaped}' and trashed=false",
+        fields='files(id, name)',
+        pageSize=10,
+    ).execute()
+    files = results.get('files', [])
+    return str(files[0]['id']) if files else None
+
+
+def download_file_bytes(service: Any, file_id: str) -> bytes:
+    """Drive 上のファイルの中身をメモリに取得する"""
+    return bytes(service.files().get_media(fileId=file_id).execute())
+
+
+def create_file(service: Any, folder_id: str, path: Path, name: str, mimetype: str) -> str:
+    """ローカルファイルを name で新規作成し、作成したファイルの ID を返す"""
+    media = MediaFileUpload(str(path), mimetype=mimetype, resumable=False)
+    created = service.files().create(
+        body={'name': name, 'parents': [folder_id]},
+        media_body=media,
+        fields='id',
+    ).execute()
+    return str(created['id'])
+
+
+def update_file_content(service: Any, file_id: str, path: Path, mimetype: str) -> None:
+    """既存ファイルの中身をローカルファイルで置き換える（ID・名前・場所は変えない）"""
+    media = MediaFileUpload(str(path), mimetype=mimetype, resumable=False)
+    service.files().update(fileId=file_id, media_body=media, fields='id').execute()
 
 
 def create_folder(service: Any, name: str) -> str:
