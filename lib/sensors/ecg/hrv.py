@@ -15,7 +15,8 @@ import neurokit2 as nk
 import numpy as np
 import pandas as pd
 from scipy import signal
-from scipy.interpolate import interp1d
+from scipy.integrate import trapezoid
+from scipy.interpolate import CubicSpline
 from scipy.stats import linregress
 
 
@@ -816,182 +817,120 @@ def analyze_1f_fluctuation(hrv_data):
     }
 
 
-def calculate_rmssd(rr_intervals: np.ndarray) -> float:
+
+# ---------------------------------------------------------------------------
+# 共鳴呼吸（Elite HRV）向け HRV 基本統計
+# ---------------------------------------------------------------------------
+
+LF_BAND_HZ = (0.04, 0.15)
+HF_BAND_HZ = (0.15, 0.4)
+
+
+def resample_rr(rr_ms: np.ndarray, fs: float = 4.0) -> tuple[np.ndarray, np.ndarray]:
     """
-    RMSSD (Root Mean Square of Successive Differences) を計算
+    RR間隔を cubic spline で等間隔サンプリングに変換
 
-    時間領域HRV指標で、短期的な心拍変動を評価する。
-    副交感神経活動の指標として使用される。
-
-    Parameters
-    ----------
-    rr_intervals : np.ndarray
-        RR間隔データ（ms）
+    各 RR 値は区間の終端（拍の時刻 = cumsum(rr)/1000）に対応づける。
 
     Returns
     -------
-    float
-        RMSSD（ms）
-
-    Examples
-    --------
-    >>> rr = np.array([800, 820, 810, 830, 815])
-    >>> rmssd = calculate_rmssd(rr)
-    >>> print(f"RMSSD: {rmssd:.2f} ms")
+    (t_sec, rr_interp_ms) : 等間隔の時刻（秒）と補間した RR（ms）
     """
-    diff_rr = np.diff(rr_intervals)
-    rmssd = np.sqrt(np.mean(diff_rr ** 2))
-    return rmssd
+    rr = np.asarray(rr_ms, dtype=float)
+    t = np.cumsum(rr) / 1000.0
+    t_grid = np.arange(t[0], t[-1], 1.0 / fs)
+    return t_grid, CubicSpline(t, rr)(t_grid)
 
 
-def calculate_hr_stats(rr_intervals: np.ndarray) -> tuple[float, float]:
-    """
-    心拍数の統計を計算
+@dataclass
+class HRVBasicStats:
+    """1 reading 全体の HRV 基本統計（周波数領域が算出不能なら NaN）"""
 
-    Parameters
-    ----------
-    rr_intervals : np.ndarray
-        RR間隔データ（ms）
+    mean_hr_bpm: float
+    min_hr_bpm: float
+    max_hr_bpm: float
+    mean_rr_ms: float
+    rmssd_ms: float
+    ln_rmssd: float
+    sdnn_ms: float
+    pnn50_pct: float
+    lf_power_ms2: float = np.nan
+    hf_power_ms2: float = np.nan
+    total_power_ms2: float = np.nan
+    lf_hf_ratio: float = np.nan
+    lf_peak_hz: float = np.nan
+    hf_peak_hz: float = np.nan
 
-    Returns
-    -------
-    hr_mean : float
-        平均心拍数（bpm）
-    hr_max_min : float
-        最大-最小心拍数の差（bpm）
+    def to_dict(self) -> Dict[str, float]:
+        """CSV 列名をキーにした dict"""
+        return {
+            'mean_hr_bpm': self.mean_hr_bpm,
+            'min_hr_bpm': self.min_hr_bpm,
+            'max_hr_bpm': self.max_hr_bpm,
+            'mean_rr_ms': self.mean_rr_ms,
+            'rmssd_ms': self.rmssd_ms,
+            'ln_rmssd': self.ln_rmssd,
+            'sdnn_ms': self.sdnn_ms,
+            'pnn50_pct': self.pnn50_pct,
+            'lf_power_ms2': self.lf_power_ms2,
+            'hf_power_ms2': self.hf_power_ms2,
+            'total_power_ms2': self.total_power_ms2,
+            'lf_hf_ratio': self.lf_hf_ratio,
+            'lf_peak_hz': self.lf_peak_hz,
+            'hf_peak_hz': self.hf_peak_hz,
+        }
 
-    Examples
-    --------
-    >>> rr = np.array([800, 820, 810, 830, 815])
-    >>> hr_mean, hr_range = calculate_hr_stats(rr)
-    >>> print(f"Mean HR: {hr_mean:.1f} bpm, Range: {hr_range:.1f} bpm")
-    """
-    hr = 60000.0 / rr_intervals
-    hr_mean = np.mean(hr)
-    hr_max = np.max(hr)
-    hr_min = np.min(hr)
-    hr_max_min = hr_max - hr_min
-    return hr_mean, hr_max_min
+
+def _band_power(freqs: np.ndarray, psd: np.ndarray, band: tuple[float, float]) -> float:
+    """PSD をバンド内で台形積分（ms²）"""
+    mask = (freqs >= band[0]) & (freqs < band[1])
+    return float(trapezoid(psd[mask], freqs[mask]))
 
 
-def calculate_lf_power(
-    rr_intervals: np.ndarray,
+def calculate_hrv_basic_stats(
+    rr_ms: np.ndarray,
     fs: float = 4.0,
-    lf_band: tuple[float, float] = (0.04, 0.15)
-) -> tuple[float, np.ndarray, np.ndarray]:
+    min_freq_duration_sec: float = 240.0,
+) -> HRVBasicStats:
     """
-    LF Power (Low Frequency Power) を計算
+    補正済み RR から時間領域・周波数領域の基本統計を一度に計算する
 
-    LF帯域のパワーは共鳴周波数を特定するための主要指標。
-    最大LF Powerを示す呼吸レートが個人の共鳴周波数となる。
-
-    この関数はRF（共鳴周波数）分析専用で、前処理（デトレンド、窓関数）を
-    行わず、3次スプライン補間で滑らかな時系列を生成します。
-
-    Parameters
-    ----------
-    rr_intervals : np.ndarray
-        RR間隔データ（ms）
-    fs : float, default 4.0
-        リサンプリング周波数（Hz）
-    lf_band : tuple, default (0.04, 0.15)
-        LF帯域の周波数範囲（Hz）
-
-    Returns
-    -------
-    lf_power : float
-        LF帯域のパワー（ms²）
-    freqs : np.ndarray
-        周波数配列
-    psd : np.ndarray
-        パワースペクトル密度
-
-    Examples
-    --------
-    >>> rr = np.random.normal(800, 50, 300)
-    >>> lf_power, freqs, psd = calculate_lf_power(rr)
-    >>> print(f"LF Power: {lf_power:.2f} ms²")
-
-    References
-    ----------
-    - Lehrer, P., & Gevirtz, R. (2014). Heart rate variability biofeedback.
-      Frontiers in psychology, 5, 756.
-    - Steffen, P. R., et al. (2017). A Practical Guide to Resonance Frequency
-      Assessment for Heart Rate Variability Biofeedback.
-      Frontiers in Neuroscience, 14, 570400.
+    周波数領域は等間隔化（cubic spline）→ 平均除去 → Welch（nperseg=記録全長,
+    hann, density）。LF 0.04-0.15 Hz / HF 0.15-0.4 Hz を台形積分し
+    Total = LF + HF（VLF を含めない）。単位は ms²。
+    記録長が min_freq_duration_sec 未満なら周波数領域は NaN。
     """
-    # RR間隔を時系列に変換（各RR間隔の開始時刻）
-    rr_sec = rr_intervals / 1000.0
-    cumulative_time = np.cumsum(rr_sec)
-    cumulative_time = np.insert(cumulative_time, 0, 0)[:-1]
-
-    # 等間隔にリサンプリング（3次スプライン補間）
-    time_interp = np.arange(0, cumulative_time[-1], 1/fs)
-    interp_func = interp1d(
-        cumulative_time,
-        rr_intervals,
-        kind='cubic',
-        fill_value='extrapolate'
+    rr = np.asarray(rr_ms, dtype=float)
+    hr = 60000.0 / rr
+    diffs = np.diff(rr)
+    rmssd = float(np.sqrt(np.mean(diffs**2)))
+    stats = HRVBasicStats(
+        mean_hr_bpm=float(np.mean(hr)),
+        min_hr_bpm=float(np.min(hr)),
+        max_hr_bpm=float(np.max(hr)),
+        mean_rr_ms=float(np.mean(rr)),
+        rmssd_ms=rmssd,
+        ln_rmssd=float(np.log(rmssd)),
+        sdnn_ms=float(np.std(rr, ddof=1)),
+        pnn50_pct=float(np.sum(np.abs(diffs) > 50) / len(diffs) * 100),
     )
-    rr_interp = interp_func(time_interp)
 
-    # パワースペクトル密度の計算（前処理なし）
+    if rr.sum() / 1000.0 < min_freq_duration_sec:
+        return stats
+
+    _, series = resample_rr(rr, fs)
     freqs, psd = signal.welch(
-        rr_interp,
-        fs=fs,
-        nperseg=min(256, len(rr_interp))
+        series - series.mean(), fs=fs, nperseg=len(series),
+        window='hann', scaling='density',
     )
-
-    # LF帯域のパワーを計算
-    lf_mask = (freqs >= lf_band[0]) & (freqs <= lf_band[1])
-    lf_power = np.trapz(psd[lf_mask], freqs[lf_mask])
-
-    return lf_power, freqs, psd
-
-
-def analyze_measurement_order_effect(
-    lf_powers: list[float] | np.ndarray | pd.Series
-) -> tuple[float, bool]:
-    """
-    測定順序効果を分析
-
-    連続測定でLF Powerが測定順序に依存しているかを評価する。
-    測定順序効果がある場合、ウォーミングアップ効果や疲労などの
-    時間依存的な要因が結果に影響している可能性がある。
-
-    Parameters
-    ----------
-    lf_powers : list, np.ndarray, or pd.Series
-        測定順に並んだLF Powerの値
-
-    Returns
-    -------
-    correlation : float
-        測定順序とLF Powerの相関係数（Pearson）
-    has_effect : bool
-        測定順序効果があるか（|相関係数| >= 0.5）
-
-    Examples
-    --------
-    >>> lf_powers = [100, 120, 140, 160, 180]  # 増加傾向
-    >>> corr, has_effect = analyze_measurement_order_effect(lf_powers)
-    >>> print(f"Correlation: {corr:.3f}, Effect: {has_effect}")
-    Correlation: 1.000, Effect: True
-
-    Notes
-    -----
-    - 相関係数の絶対値が0.5以上の場合、測定順序効果ありと判定
-    - 正の相関: 測定が進むにつれてLF Powerが増加（ウォーミングアップ効果）
-    - 負の相関: 測定が進むにつれてLF Powerが減少（疲労効果）
-
-    References
-    ----------
-    - Steffen, P. R., et al. (2017). A Practical Guide to Resonance Frequency
-      Assessment for Heart Rate Variability Biofeedback.
-      Frontiers in Neuroscience, 14, 570400.
-    """
-    measurement_order = list(range(1, len(lf_powers) + 1))
-    correlation = pd.Series(measurement_order).corr(pd.Series(lf_powers))
-    has_effect = abs(correlation) >= 0.5
-
-    return correlation, has_effect
+    stats.lf_power_ms2 = _band_power(freqs, psd, LF_BAND_HZ)
+    stats.hf_power_ms2 = _band_power(freqs, psd, HF_BAND_HZ)
+    stats.total_power_ms2 = stats.lf_power_ms2 + stats.hf_power_ms2
+    stats.lf_hf_ratio = (
+        stats.lf_power_ms2 / stats.hf_power_ms2 if stats.hf_power_ms2 > 0 else np.nan
+    )
+    lf_peak = find_peak_frequency(freqs, psd, LF_BAND_HZ)
+    hf_peak = find_peak_frequency(freqs, psd, HF_BAND_HZ)
+    stats.lf_peak_hz = float(lf_peak) if lf_peak is not None else np.nan
+    stats.hf_peak_hz = float(hf_peak) if hf_peak is not None else np.nan
+    return stats

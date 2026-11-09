@@ -14,6 +14,9 @@ import neurokit2 as nk
 import numpy as np
 import pandas as pd
 from scipy import interpolate
+from scipy.signal import find_peaks
+
+from .hrv import resample_rr
 
 # スペクトル法で呼吸ピークを探索する周波数帯域（Hz）
 # 下限0.04Hz=2.4bpm。瞑想の超低速呼吸（4-6bpm、0.07-0.10Hz）を含む一方、
@@ -642,3 +645,97 @@ def estimate_resonance_breathing_pace(
     )
 
     return resp_result, rbp_result
+
+
+# ---------------------------------------------------------------------------
+# 共鳴呼吸（Elite HRV）: 等間隔化 RR のピークから呼吸周期を検出して評価する
+# ---------------------------------------------------------------------------
+
+
+def detect_breath_cycles(
+    rr_ms: np.ndarray,
+    lf_peak_hz: float,
+    fs: float = 4.0,
+) -> np.ndarray:
+    """
+    等間隔化した RR のピーク時刻（秒）を呼吸1回の境界として返す
+
+    ピーク間の最小距離は、全長 Welch の LF peak から求めた周期の 0.6 倍。
+    戻り値は ``calculate_rsa_amplitude`` の ``cycle_bounds_sec`` にそのまま渡せる
+    （時刻は cumsum(rr)/1000 と同じ規約）。
+    """
+    t_sec, series = resample_rr(rr_ms, fs)
+    min_distance = max(1, int(round(0.6 * (1.0 / lf_peak_hz) * fs)))
+    peaks, _ = find_peaks(series, distance=min_distance)
+    return np.asarray(t_sec[peaks])
+
+
+@dataclass
+class ResonanceBreathingResult:
+    """
+    共鳴呼吸の評価結果
+
+    Attributes
+    ----------
+    breathing_rate_bpm : float
+        60 / 呼吸周期の中央値
+    breath_period_sd_s : float
+        呼吸周期の標準偏差（秒、ddof=0。session_log の breathing_rate_std とは別定義）
+    rsa_amplitude_ms : float
+        呼吸周期ごとの max(RR) - min(RR) の中央値
+    segments : pd.DataFrame
+        区間ごとの集計（列: Start (min), RSA Amplitude (ms), Breath Period (s), Mean HR (bpm)）
+    """
+
+    breathing_rate_bpm: float
+    breath_period_sd_s: float
+    rsa_amplitude_ms: float
+    segments: pd.DataFrame
+
+
+def analyze_resonance_breathing(
+    rr_ms: np.ndarray,
+    lf_peak_hz: float,
+    fs: float = 4.0,
+    segment_sec: float = 120.0,
+) -> ResonanceBreathingResult:
+    """補正済み RR から呼吸周期を検出し、呼吸数・周期ばらつき・RSA振幅を求める"""
+    rr = np.asarray(rr_ms, dtype=float)
+    rr_time_sec = np.cumsum(rr) / 1000.0
+    peaks = detect_breath_cycles(rr, lf_peak_hz, fs)
+    if len(peaks) < 3:
+        raise ValueError('呼吸周期を検出できませんでした（ピークが3未満）')
+
+    periods = np.diff(peaks)
+    cycles = calculate_rsa_amplitude(rr, rr_time_sec, peaks)
+    if cycles.empty:
+        raise ValueError('RSA振幅を算出できる呼吸周期がありません')
+
+    # 各周期の開始時刻（秒）と、その周期の長さ
+    starts = cycles['Time (min)'].to_numpy(dtype=float) * 60.0
+    cycle_periods = periods[np.searchsorted(peaks, starts - 1e-6)]
+    amplitudes = cycles['RSA Amplitude (ms)'].to_numpy(dtype=float)
+
+    hr = 60000.0 / rr
+    columns = ['Start (min)', 'RSA Amplitude (ms)', 'Breath Period (s)', 'Mean HR (bpm)']
+    rows = []
+    n_seg = int(np.ceil(rr_time_sec[-1] / segment_sec))
+    for k in range(n_seg):
+        lo, hi = k * segment_sec, (k + 1) * segment_sec
+        in_seg = (starts >= lo) & (starts < hi)
+        beat_mask = (rr_time_sec >= lo) & (rr_time_sec < hi)
+        if not in_seg.any() or not beat_mask.any():
+            continue
+        rows.append({
+            columns[0]: lo / 60.0,
+            columns[1]: float(np.median(amplitudes[in_seg])),
+            columns[2]: float(np.median(cycle_periods[in_seg])),
+            columns[3]: float(hr[beat_mask].mean()),
+        })
+
+    return ResonanceBreathingResult(
+        breathing_rate_bpm=float(60.0 / np.median(periods)),
+        breath_period_sd_s=float(np.std(periods)),
+        rsa_amplitude_ms=float(np.median(amplitudes)),
+        segments=pd.DataFrame(rows, columns=columns),
+    )
