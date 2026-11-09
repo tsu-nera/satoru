@@ -19,6 +19,7 @@ from lib import (
     get_heart_rate_data,
     get_optics_data,
 )
+from lib.loaders.selfloops import has_selfloops_rows
 from lib.visualization import (
     create_motion_stats_table,
     plot_fnirs_muse_style,
@@ -26,6 +27,11 @@ from lib.visualization import (
 )
 
 from .step import analysis_step
+
+
+def _usable_selfloops(selfloops_data):
+    """SelfLoopsファイルが存在しデータ行を持つか（ヘッダーだけの空ファイルは「無し」扱い）。"""
+    return bool(selfloops_data) and selfloops_data.exists() and has_selfloops_rows(str(selfloops_data))
 
 
 @analysis_step('fNIRS解析', exceptions=(KeyError,))
@@ -67,7 +73,7 @@ def analyze_fnirs(df, img_dir, results):
 def analyze_motion_and_hr(df, img_dir, results, selfloops_data):
     """心拍数データ取得・動作検出（加速度・ジャイロ）を行い、results に格納する。"""
     # 心拍数データ取得（Selfloops優先、なければMuse）
-    if selfloops_data and selfloops_data.exists():
+    if _usable_selfloops(selfloops_data):
         # Selfloopsデータから心拍数を取得
         print(f'Loading Selfloops HR data: {selfloops_data}')
         # 別名で束縛する。同名でimportするとget_heart_rate_dataが関数スコープの
@@ -116,7 +122,11 @@ def analyze_hrv(df, img_dir, results, selfloops_data, hr_data):
     hrv_result = None
     hrv_data = None
 
-    if selfloops_data and selfloops_data.exists():
+    if selfloops_data and selfloops_data.exists() and not _usable_selfloops(selfloops_data):
+        print(f'⚠️  HRV解析スキップ: SelfLoopsファイルにデータ行がありません（{selfloops_data.name}）')
+        return hrv_result, hrv_data
+
+    if _usable_selfloops(selfloops_data):
         print('計算中: HRV解析（自律神経系）...')
         from lib.loaders.selfloops import get_hrv_data, load_selfloops_csv
         from lib.sensors.ecg.hrv import calculate_hrv_standard_set
