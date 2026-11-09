@@ -63,6 +63,8 @@ HISTORY_N = 5
 DRIVE_ZIP_NAME = 'elitehrv_export.zip'
 ZIP_MIMETYPE = 'application/zip'
 READING_NAME_RE = re.compile(r'^\d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}\.txt$')
+# Readme that Elite HRV puts at the top level of every export
+EXPORT_README_NAME = '!About This Export.txt'
 
 COLUMNS = [
     'timestamp', 'kind', 'practice', 'duration_min', 'artifact_count', 'artifact_pct',
@@ -222,12 +224,14 @@ class ExportZipError(ValueError):
 
 
 def _check_entry_name(name: str) -> Optional[str]:
-    """zip エントリ名を検証し、reading ならファイル名を返す。ディレクトリなら None"""
+    """zip エントリ名を検証し、reading ならファイル名を返す。ディレクトリと export 付属の説明ファイルなら None"""
     if '\\' in name or name.startswith('/'):
         raise ExportZipError(f'不正なエントリ名: {name}')
     parts = PurePosixPath(name).parts
     if any(p in ('..', '.') for p in name.split('/')):
         raise ExportZipError(f'不正なエントリ名（パストラバーサル）: {name}')
+    if name == EXPORT_README_NAME:
+        return None
     if name.endswith('/'):
         if len(parts) != 1:
             raise ExportZipError(f'ディレクトリが2段以上あります: {name}')

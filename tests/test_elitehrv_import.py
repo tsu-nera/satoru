@@ -156,6 +156,18 @@ def test_validate_accepts_flat_and_one_level(tmp_path: Path) -> None:
     assert elitehrv.validate_export_zip(z) == {A: f'user/{A}', B: B}
 
 
+def test_validate_skips_export_readme(tmp_path: Path) -> None:
+    readme = 'This export is of all of your raw RR interval data.\n'
+    z = _make_zip(tmp_path / 'ok.zip', {'!About This Export.txt': readme, f'user/{A}': '800\n'})
+    assert elitehrv.validate_export_zip(z) == {A: f'user/{A}'}
+
+
+def test_validate_rejects_readme_name_in_subdirectory(tmp_path: Path) -> None:
+    z = _make_zip(tmp_path / 'bad.zip', {'user/!About This Export.txt': 'text\n', f'user/{A}': '800\n'})
+    with pytest.raises(elitehrv.ExportZipError):
+        elitehrv.validate_export_zip(z)
+
+
 def test_import_rejects_non_zip(tmp_path: Path) -> None:
     path = tmp_path / 'page.html'
     path.write_text('<html></html>')
