@@ -2,7 +2,8 @@
 TPのα・δ絶対パワー（入り/終わりの3分区間, dB）のテスト
 
 - 前半に大きなδ、全体に一定のαを持つ合成信号で、δは入り>終わり、αはほぼ一定になること
-- 区間内の有効窓が60秒未満のチャネルは除かれ、両チャネルとも不足ならNaNになること
+- 入りか終わりのどちらかで有効窓が60秒未満のチャネルは両区間から除かれ（入りと終わりで同じチャネル）、
+  共通に使えるチャネルが無ければ両方NaNになること
 """
 
 import numpy as np
@@ -65,7 +66,7 @@ def test_last_block_ignores_trailing_fraction():
 
 
 def test_channel_with_too_few_valid_windows_is_excluded():
-    """TP10の最初の区間を有効窓60秒未満にすると、入りの値はTP9だけで決まる。"""
+    """TP10の最初の区間を有効窓60秒未満にすると、入りも終わりもTP9だけで決まる。"""
     raw = make_raw()
     valid = np.ones((len(CHANNELS), N_WINDOWS), dtype=bool)
     tp9_only = valid.copy()
@@ -80,8 +81,8 @@ def test_channel_with_too_few_valid_windows_is_excluded():
     m = compute_tp_metrics(raw, few, WIN)
     assert m['tp_alpha_db_first'] == pytest.approx(expected['tp_alpha_db_first'])
     assert m['tp_delta_db_first'] == pytest.approx(expected['tp_delta_db_first'])
-    # 最後の区間はTP10も使われるので、TP9だけの値とは一致しない
-    assert m['tp_alpha_db_last'] != pytest.approx(expected['tp_alpha_db_last'])
+    # 終わりの区間でもTP10は使わない（入りと同じチャネルにそろえる）
+    assert m['tp_alpha_db_last'] == pytest.approx(expected['tp_alpha_db_last'])
 
 
 def test_both_channels_short_gives_nan():
@@ -90,8 +91,8 @@ def test_both_channels_short_gives_nan():
     for idx in (0, 3):
         valid[idx, min_windows - 1 : BLOCK] = False  # 最初の区間は60秒に1窓足りない
     m = compute_tp_metrics(make_raw(), valid, WIN)
-    assert np.isnan(m['tp_alpha_db_first']) and np.isnan(m['tp_delta_db_first'])
-    assert not np.isnan(m['tp_alpha_db_last'])
+    for key in ('tp_alpha_db_first', 'tp_alpha_db_last', 'tp_delta_db_first', 'tp_delta_db_last'):
+        assert np.isnan(m[key])
 
 
 def test_short_session_gives_nan():

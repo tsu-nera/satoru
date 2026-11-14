@@ -256,8 +256,10 @@ def _tp_block_band_db(tp_raw, tp_valid, window_samples):
     相対%ではδの減少がαの増加に見えてしまうため、深まりを絶対値で追う用途。
     チャネルごとに区間内の有効窓だけで線スペクトル除去後のPSDを平均し、
     帯域内パワー（μV²/Hz の和）を 10·log10 したdBを、使えるチャネルで平均する。
-    区間内の有効窓が TP_BLOCK_MIN_VALID_SEC 未満のチャネルは使わず、
-    どのチャネルも使えない区間・3分に満たないセッションはNaN。
+    入りと終わりの差（深まり）を比べるため、両区間とも有効窓が TP_BLOCK_MIN_VALID_SEC 以上の
+    チャネルだけを両区間で使う（片方の区間でしか使えないチャネルを混ぜると、チャネル間のゲイン差が
+    差に乗る。2026-11-04 は入りが TP9+TP10、終わりが TP9 だけだった）。
+    共通に使えるチャネルが無いとき・3分に満たないセッションはNaN。
     """
     out = _blank_tp_band_db()
     sfreq = tp_raw.info['sfreq']
@@ -268,12 +270,16 @@ def _tp_block_band_db(tp_raw, tp_valid, window_samples):
 
     data = tp_raw.get_data()
     min_valid_windows = TP_BLOCK_MIN_VALID_SEC * sfreq / window_samples
-    for pos, block in (('first', 0), ('last', n_blocks - 1)):
-        w0, w1 = block * block_windows, (block + 1) * block_windows
+    blocks = {'first': 0, 'last': n_blocks - 1}
+    spans = {pos: (b * block_windows, (b + 1) * block_windows) for pos, b in blocks.items()}
+    usable = np.logical_and.reduce(
+        [tp_valid[:, w0:w1].sum(axis=1) >= min_valid_windows for w0, w1 in spans.values()]
+    )
+    if not usable.any():
+        return out
+    for pos, (w0, w1) in spans.items():
         block_valid = tp_valid[:, w0:w1].copy()
-        block_valid[block_valid.sum(axis=1) < min_valid_windows] = False
-        if not block_valid.any():
-            continue
+        block_valid[~usable] = False
         block_raw = mne.io.RawArray(
             data[:, w0 * window_samples : w1 * window_samples], tp_raw.info, verbose=False
         )
