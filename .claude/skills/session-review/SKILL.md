@@ -155,6 +155,13 @@ rm "$CSV_PATH"   # run_analysis.sh が出力した「使用するCSVファイル
 
 `data/muse/` は空が平常。`--no-fetch` は「取得済みだが未レビュー」のファイルがあるときだけ意味を持つ。
 
+## Step 6: セッションログの反映
+
+**確認を取らずに実行する。** vaio の Grafana が vaio の satoru の `logs/session_log.csv` を読むので、push と vaio の pull までで1セットとする。
+
+1. `logs/session_log.csv` だけを main に直接 commit・push する（`/direct-commit`）。journal（`reports/journal/`）は PUBLIC リポジトリなので commit しない
+2. `ssh vaio 'git -C ~/repo/satoru pull --ff-only'`。失敗したら数秒おいて1回リトライし、それでも駄目なら報告だけして終える（vaio の daily-fetch でも pull される）
+
 ## スコープ（v1）
 
 - 単発セッションのレビューに絞る。
