@@ -79,6 +79,12 @@ uv run python scripts/annotate_session.py --timestamp latest --type samatha --fo
 
 注釈列は分析の再実行でも backfill でも上書きされない。
 
+注釈の後に評価の進みを出し、レビュー末尾の「次回」に使う。対照は4回に1回で、座った後では今日の回を対照に変えられないので、**次の回が対照の番なら必ず予告する**（座る前に分かるように）。
+
+```bash
+uv run python scripts/eval_progress.py
+```
+
 ## Step 3: AIレビュー
 
 `tmp/REPORT.md` を読み、下記観点で解釈する。レポートに含まれる図（`tmp/img/*.png`）は必要に応じて参照する。
@@ -87,7 +93,7 @@ uv run python scripts/annotate_session.py --timestamp latest --type samatha --fo
 
 計器が測っている構成概念を意識して読む。数値の羅列ではなく「このセッションで何が起きたか」を言語化する。
 
-- **脳波（EEG帯域）**: α・θ帯のパワー。瞑想が深まると α↑・θ↑ の傾向。FAA（前頭α非対称）は左右バランス — 左優位はポジティブ/接近傾向の目安。IAF/PAF は個人のαピーク周波数で、日による変動も見る。
+- **脳波（EEG帯域）**: セッション内の深まりは TP の α・δ の**絶対 dB の入り→終わり**（`tp_*_db_first/last`）で読む。相対 % の α 上昇は δ の減衰で起きるので深まりと読まない。前頭の α は `alpha_osc_db`、ゲインの上下は全帯域が一緒に動くかで見分ける。IAF は日による変動も見る。FAA はレポートに出ないので扱わない。
 - **自律神経（HRV）**: HRVトレンドは副交感神経の活性＝リラックス到達度の目安（上昇＝深いリラックス）。心拍推移、呼吸との同調。※SelfLoops欠落時はスキップ。
 - **前頭前野（fNIRS）**: 酸素化ヘモグロビンの推移。集中と弛緩のバランスを見る。
 - **時系列推移**: セッション内の状態変化（入り〜深まり〜終盤）。深い状態に入れた時間帯はどこか、後半で崩れていないか。
@@ -105,7 +111,7 @@ uv run python scripts/annotate_session.py --timestamp latest --type samatha --fo
 このセッションを一言で（例: 深く入れた / 浅め / 乱れあり）
 
 ### 脳波
-- α/θ の傾向、FAA、IAF/PAF の所感
+- TP の α・δ の入り→終わり、前頭 α、IAF の所感
 
 ### 自律神経（HRV）
 - リラックス到達度の傾向（SelfLoops が無い日はセクションごと省略する）
@@ -125,6 +131,9 @@ uv run python scripts/annotate_session.py --timestamp latest --type samatha --fo
 
 ### 気づき・次回への提案
 - 具体的に2-3個
+
+評価の進み: サマタ n/20・対照 n/6・主観あり n（`eval_progress.py` の出力）
+次回: サマタ / **対照の番**（技法を使わず目を閉じて座るだけ）
 
 ---
 レポート: `tmp/REPORT.md` / 図: `tmp/img/` / サマリー: `tmp/summary.csv`
