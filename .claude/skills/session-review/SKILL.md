@@ -35,6 +35,8 @@ cat reports/journal/$(date '+%Y-%m').md   # 無ければ前月を見る
 
 `scripts/run_analysis.sh` が「取得 → 最新Muse CSV選択 → 同一タイムスタンプのSelfLoops自動マッチング → レポート生成」を一括で担う。出力は `tmp/REPORT.md` と `tmp/img/*.png`。
 
+出力の読み手で役割を分ける。`tmp/REPORT.md` は agent が読む1回の詳細（区間・帯域・品質・図）で、本人には案内しない。本人が見るのは Grafana の瞑想画面（回をまたいだ推移と各回の要約の数字。dailybuild が `logs/session_log.csv` から作る）、解釈はチャットで伝える。
+
 ```bash
 cd /home/tsu-nera/repo/satoru
 bash scripts/run_analysis.sh --fetch          # 取得あり（--date指定時は下記）
@@ -87,7 +89,7 @@ uv run python scripts/eval_progress.py
 
 ## Step 3: AIレビュー
 
-`tmp/REPORT.md` を読み、下記観点で解釈する。レポートに含まれる図（`tmp/img/*.png`）は必要に応じて参照する。
+`tmp/REPORT.md` を読み、下記観点で解釈する。レポートに含まれる図（`tmp/img/*.png`）は必要に応じて参照する。本文で回をまたいだ比較に触れるときは、Grafana の瞑想画面のどのパネルで見られるかを一言添える（例: 「除外率のパネルで今回だけ高い」）。
 
 ### レビュー観点
 
@@ -137,13 +139,10 @@ uv run python scripts/eval_progress.py
 次回: サマタ / **対照の番**（技法を使わず目を閉じて座るだけ）
 
 ---
-レポート: `tmp/REPORT.md` / 図: `tmp/img/` / サマリー: `tmp/summary.csv`
-図込みで読む: `cd tmp && mdcat REPORT.md`
+画面: http://vaio:3000/d/meditation （Step 6 の反映後に今回の回が載る）
 ```
 
-`tmp/` は実行のたび上書きされる。mdcat の落とし穴は2つ:
-- `-p`（ページャ）を付けるとインライン画像が落ちてOSC 8リンクに置換される。画像を見たいなら付けない。
-- レポート内の画像参照は `img/*.png` の相対パスなので、リポジトリルートでなく `tmp/` 内で実行する。
+`tmp/` は実行のたび上書きされる。
 
 レビュー後はディスカッションに入る。
 
