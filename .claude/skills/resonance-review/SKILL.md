@@ -52,7 +52,7 @@ readiness（約2.5分）は時間領域だけ。同じ kind の過去と比べ�
 
 ## 4. 記録
 
-`reports/journal/YYYY-MM.md` に追記する（Muse のエントリと同じファイル、日付順）。数値は CSV にあるので再掲せず、判断を左右した値だけ引く。
+`journal` スキルの手順で `~/repo/dailybuild-private/reports/meditation/journal/YYYY-Wxx.md` に追記する（Muse のエントリと同じファイル、日付順）。数値は CSV にあるので再掲せず、判断を左右した値だけ引く。
 
 ```markdown
 ## YYYY-MM-DD HH:MM 共鳴呼吸 (10.0分, rf+metta)

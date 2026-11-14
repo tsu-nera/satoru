@@ -45,3 +45,6 @@ dashboard/
 # Claude Code のエージェント用 worktree
 .claude/worktrees/
 CLAUDE.local.md
+
+# 瞑想のセッション journal は dailybuild-private/reports/meditation/journal/（satoru は PUBLIC）
+reports/journal/

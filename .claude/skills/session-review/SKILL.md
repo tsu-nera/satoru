@@ -26,7 +26,8 @@ AIレビューの本体は Claude 自身がレポートの数値を読んで解�
 
 ```bash
 date '+%Y-%m-%d %H:%M %A'
-cat reports/journal/$(date '+%Y-%m').md   # 無ければ前月を見る
+git -C ~/repo/dailybuild-private pull --rebase --autostash -q
+ls ~/repo/dailybuild-private/reports/meditation/journal/*-W*.md | tail -2 | xargs cat   # 直近2週。無ければ凍結した月ファイル 2026-11.md の末尾
 ```
 
 前回の「次に試すこと」がどうなったかは、レビュー本文で扱う。読まずに始めると毎回同じ提案を出す。
@@ -148,7 +149,7 @@ uv run python scripts/eval_progress.py
 
 ## Step 4: ジャーナル記録
 
-レビューとディスカッションが一段落したら `journal` スキルを呼び、`reports/journal/YYYY-MM.md` に残す。**確認を取らずに実行する。**
+レビューとディスカッションが一段落したら `journal` スキルを呼び、dailybuild-private の瞑想 journal（週ファイル）に残して push する。**確認を取らずに実行する。**
 
 レポートの数値は `logs/session_log.csv` にあるので再掲しない。ジャーナルに書くのは文脈・解釈・次に試すことだけ。
 
@@ -168,11 +169,11 @@ rm "$CSV_PATH"   # run_analysis.sh が出力した「使用するCSVファイル
 
 **確認を取らずに実行する。** dailybuild（vaio）は satoru の `logs/session_log.csv` を読むだけのデータソースとして扱う。push・pull・瞑想画面の CSV の作り直しまでで1セット。
 
-1. `logs/session_log.csv` だけを main に直接 commit・push する（`/direct-commit`）。journal（`reports/journal/`）は PUBLIC リポジトリなので commit しない
+1. `logs/session_log.csv` だけを main に直接 commit・push する（`/direct-commit`）。journal は Step 4 で dailybuild-private に push 済み（satoru には置かない）
 2. `ssh vaio 'git -C ~/repo/satoru pull --ff-only && cd ~/repo/dailybuild && uv run python scripts/dashboard.py build --only meditation'`（Grafana の瞑想画面の CSV を作り直す）。失敗したら数秒おいて1回リトライし、それでも駄目なら報告だけして終える（vaio の daily-fetch でも pull・作り直しされる）
 
 ## スコープ（v1）
 
 - 単発セッションのレビューに絞る。
 - 過去セッションとの横断比較は `logs/session_log.csv` を読んで行う。生データから計算し直す必要があるときは `data/muse/` ではなく scratchpad に落とす（`fetch_from_gdrive.py --download <date> --output <scratchpad>`）。`data/muse/` に混ぜると消してよいものの区別がつかなくなる。ただしaperiodic系の列は2026-08-27以降の行にしか入っていない（Sheets運用時代に一度も書かれなかったため）。
-- レビュー結果は `journal` スキルで `reports/journal/YYYY-MM.md` に蓄積する（Step 4）。
+- レビュー結果は `journal` スキルで dailybuild-private の瞑想 journal（週ファイル）に蓄積する（Step 4）。

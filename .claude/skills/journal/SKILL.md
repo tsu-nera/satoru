@@ -1,6 +1,6 @@
 ---
 name: journal
-description: 瞑想セッションのレビュー結果とディスカッションを reports/journal/ に蓄積する。session-review の後に自動で呼ばれる。
+description: 瞑想セッションのレビュー結果とディスカッションを dailybuild-private の瞑想 journal（週ファイル）に蓄積する。session-review の後に自動で呼ばれる。
 argument-hint: "[YYYY-MM-DD]"
 user-invocable: true
 allowed-tools: Bash, Read, Write, Edit
@@ -8,7 +8,9 @@ allowed-tools: Bash, Read, Write, Edit
 
 # Journal Skill
 
-`session-review` の解釈・文脈・次に試すことを `reports/journal/YYYY-MM.md` に残す。月ファイル1本のみ。索引も状態ファイルも台帳も持たない。
+`session-review` の解釈・文脈・次に試すことを `~/repo/dailybuild-private/reports/meditation/journal/YYYY-Wxx.md`（ISO 週、`date +%G-W%V`）に残す。週ファイル1本のみ。索引も状態ファイルも台帳も持たない。
+
+置き場所は dailybuild-private（satoru は PUBLIC なので）。同じディレクトリの `2026-09.md` 〜 `2026-11.md` は月ファイル時代の凍結記録で、書き足さない。体調の週ジャーナル（`reports/journal/`）とは別のファイル。そちらへの瞑想の1行は gtd の `reviewing-health` が書く。
 
 **読み手は将来の agent。** 人が読み返す前提で書かない。
 
@@ -32,7 +34,7 @@ allowed-tools: Bash, Read, Write, Edit
 
 ## エントリ形式
 
-月ファイルが無ければ作る。H1 は `# YYYY-MM`。エントリは日付順。
+週ファイルが無ければ作る。H1 は `# YYYY-Wxx`。エントリは日付順。
 
 ```markdown
 ## YYYY-MM-DD HH:MM (N.N分)
@@ -50,9 +52,17 @@ allowed-tools: Bash, Read, Write, Edit
 **Discussion**: レビュー後の会話で深掘りした内容。無ければ省略
 ```
 
-アクションの追跡は隣接2エントリで閉じる。3.5〜7日に1本のペースなら「前回」は同じファイルのすぐ上にある。
+アクションの追跡は隣接2エントリで閉じる。週の最初のエントリでは「前回」は前の週ファイル（無ければ凍結した月ファイル）の最後にある。
 
 再レビューでは同じ `## YYYY-MM-DD HH:MM` セクションを書き換える。**Discussion は消さない。**
+
+## 保存
+
+書いたら dailybuild-private に commit・push する（vaio も毎日 commit するので rebase してから）。他の未コミット変更を巻き込まない。
+
+```bash
+cd ~/repo/dailybuild-private && git add reports/meditation/journal && git commit -q -m "journal(meditation): YYYY-MM-DD のセッション" -- reports/meditation/journal && git pull --rebase --autostash -q && git push -q
+```
 
 ## スコープ
 
