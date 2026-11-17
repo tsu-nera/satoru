@@ -70,7 +70,7 @@ uv run python scripts/upload_to_gdrive.py --file data/taps/<当日のタップ�
 
 レビュー出力の前に、次の3つを**1回だけまとめて**聞く（Step 4 の「文脈は聞かない」の例外）。
 
-- 瞑想の種類（既定 `samatha`。技法を使わず目を閉じて座るだけなら `control`）
+- 瞑想の種類（既定 `samatha`。ほかは `vipassana`・`metta` など技法の名前）
 - 集中の安定 1〜5（浮つき: 集中が保てないほど低い）
 - 眠気 1〜5（沈み込み: 眠いほど高い）
 
@@ -82,7 +82,7 @@ uv run python scripts/annotate_session.py --timestamp latest --type samatha --fo
 
 注釈列は分析の再実行でも backfill でも上書きされない。
 
-注釈の後に評価の進みを出し、レビュー末尾の「次回」に使う。対照は4回に1回で、座った後では今日の回を対照に変えられないので、**次の回が対照の番なら必ず予告する**（座る前に分かるように）。
+注釈の後に評価の進みを出し、レビュー末尾に添える。
 
 ```bash
 uv run python scripts/eval_progress.py
@@ -136,8 +136,7 @@ uv run python scripts/eval_progress.py
 ### 気づき・次回への提案
 - 具体的に2-3個
 
-評価の進み: サマタ n/20・対照 n/6・主観あり n（`eval_progress.py` の出力）
-次回: サマタ / **対照の番**（技法を使わず目を閉じて座るだけ）
+評価の進み: サマタ n/20・主観あり n（`eval_progress.py` の出力）
 
 ---
 画面: http://vaio:3000/d/meditation （Step 6 の反映後に今回の回が載る）

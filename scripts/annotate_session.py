@@ -6,7 +6,7 @@ session_log の既存行に手入力の注釈（瞑想の種類・主観評価�
 
 使い方:
     uv run python scripts/annotate_session.py --timestamp latest --type samatha --focus 4 --drowsiness 2
-    uv run python scripts/annotate_session.py --timestamp "2026-11-04 07:31:02" --type control
+    uv run python scripts/annotate_session.py --timestamp "2026-11-04 07:31:02" --type vipassana
 """
 
 import argparse
@@ -18,6 +18,7 @@ import pandas as pd
 
 # プロジェクトルートをパスに追加
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from lib.meditation_types import load_types
 from lib.session_log import _save, default_log_path
 
 RATING_MIN = 1
@@ -39,7 +40,7 @@ def annotate_session(
     timestamp : str
         'latest'（最新行）または '%Y-%m-%d %H:%M:%S'
     meditation_type : str, optional
-        瞑想の種類（samatha / control など。値は検証しない）
+        瞑想の種類。config/meditation_types.yaml にあるものだけ受け付ける
     focus, drowsiness : int, optional
         集中の安定・眠気（1〜5）
     csv_path : Path, optional
@@ -48,10 +49,15 @@ def annotate_session(
     Raises
     ------
     ValueError
-        rating が範囲外、該当行が無い、更新する列が1つも指定されていない場合
+        種類が定義に無い、rating が範囲外、該当行が無い、更新する列が1つも指定されていない場合
     """
     updates: Dict[str, object] = {}
     if meditation_type is not None:
+        types = load_types()
+        if meditation_type not in types:
+            raise ValueError(
+                f'瞑想の種類は {", ".join(types)} のどれか（config/meditation_types.yaml）: {meditation_type}'
+            )
         updates['meditation_type'] = meditation_type
     for col, value in (('focus_rating', focus), ('drowsiness_rating', drowsiness)):
         if value is None:
@@ -91,7 +97,7 @@ def main() -> int:
     parser.add_argument(
         '--timestamp', required=True, help='latest または "YYYY-MM-DD HH:MM:SS"'
     )
-    parser.add_argument('--type', dest='meditation_type', help='瞑想の種類（例: samatha, control）')
+    parser.add_argument('--type', dest='meditation_type', help='瞑想の種類（config/meditation_types.yaml のキー）')
     parser.add_argument('--focus', type=int, help='集中の安定（1〜5）')
     parser.add_argument('--drowsiness', type=int, help='眠気（1〜5）')
     parser.add_argument('--csv', type=Path, help='セッションログCSV（省略時 logs/session_log.csv）')

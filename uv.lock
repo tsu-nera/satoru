@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = "==3.12.*"
 resolution-markers = [
     "sys_platform == 'win32'",
@@ -1299,7 +1299,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "ptyprocess" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [
@@ -1749,6 +1749,7 @@ dependencies = [
     { name = "pandas" },
     { name = "python-dotenv" },
     { name = "python-osc" },
+    { name = "pyyaml" },
     { name = "scipy" },
     { name = "seaborn" },
     { name = "specparam" },
@@ -1776,6 +1777,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=3.0" },
     { name = "python-dotenv", specifier = ">=1.0.0" },
     { name = "python-osc", specifier = ">=1.8" },
+    { name = "pyyaml", specifier = ">=6.0.3" },
     { name = "scipy", specifier = ">=1.11" },
     { name = "seaborn", specifier = ">=0.12" },
     { name = "specparam", specifier = "==2.0.0rc7" },

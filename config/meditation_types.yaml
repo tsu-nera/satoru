@@ -1,0 +1,11 @@
+# 瞑想の種類（session_log の meditation_type）の正本。種類は技法の名前で分ける。
+# 読む側: satoru の scripts/annotate_session.py（--type の検証）・scripts/eval_progress.py、
+#         dailybuild の src/lib/meditation.py（Grafana 瞑想画面の種類ごとのまとめ）
+# target: 判定に入る目安の回数。無い種類は回数だけ数える
+samatha:
+  label: サマタ
+  target: 20
+vipassana:
+  label: ヴィパッサナー
+metta:
+  label: メッター

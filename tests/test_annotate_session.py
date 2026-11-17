@@ -36,12 +36,12 @@ def test_updates_only_given_columns_of_target_row(log):
 
 
 def test_latest_and_partial_update_keeps_earlier_annotation(log):
-    annotate_session('latest', meditation_type='control', focus=3, csv_path=log)
+    annotate_session('latest', meditation_type='metta', focus=3, csv_path=log)
     ts = annotate_session('latest', drowsiness=5, csv_path=log)
 
     after = pd.read_csv(log).set_index('timestamp')
     assert ts == '2026-11-04 07:00:00'
-    assert after.loc[ts, 'meditation_type'] == 'control'
+    assert after.loc[ts, 'meditation_type'] == 'metta'
     assert after.loc[ts, 'focus_rating'] == 3
     assert after.loc[ts, 'drowsiness_rating'] == 5
     assert ',3,5,' in log.read_text()  # 整数で書かれる（3.000 にならない）
@@ -52,6 +52,13 @@ def test_out_of_range_rating_is_error(log, kwargs):
     before = log.read_text()
     with pytest.raises(ValueError):
         annotate_session('latest', csv_path=log, **kwargs)
+    assert log.read_text() == before
+
+
+def test_undefined_type_is_error(log):
+    before = log.read_text()
+    with pytest.raises(ValueError, match='meditation_types.yaml'):
+        annotate_session('latest', meditation_type='control', csv_path=log)
     assert log.read_text() == before
 
 

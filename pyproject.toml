@@ -21,6 +21,7 @@ dependencies = [
   "python-dotenv>=1.0.0",
   "python-osc>=1.8",
   "google-auth-oauthlib>=1.4.1",
+  "pyyaml>=6.0.3",
 ]
 
 [dependency-groups]
