@@ -170,7 +170,7 @@ rm "$CSV_PATH"   # run_analysis.sh が出力した「使用するCSVファイル
 **確認を取らずに実行する。** dailybuild（vaio）は satoru の `logs/session_log.csv` を読むだけのデータソースとして扱う。push・pull・瞑想画面の CSV の作り直しまでで1セット。
 
 1. `logs/session_log.csv` だけを main に直接 commit・push する（`/direct-commit`）。journal は Step 4 で dailybuild-private に push 済み（satoru には置かない）
-2. `ssh vaio 'git -C ~/repo/satoru pull --ff-only && cd ~/repo/dailybuild && uv run python scripts/dashboard.py build --only meditation'`（Grafana の瞑想画面の CSV を作り直す）。失敗したら数秒おいて1回リトライし、それでも駄目なら報告だけして終える（vaio の daily-fetch でも pull・作り直しされる）
+2. `ssh vaio 'git -C ~/repo/satoru pull --ff-only && cd ~/repo/dailybuild && uv run python scripts/toggl.py push --days 1 && uv run python scripts/toggl.py fetch-focus && uv run python scripts/dashboard.py build --only meditation'`（Grafana の瞑想画面の CSV を作り直す）。時間・回数のグラフは session_log ではなく Toggl Focus の「瞑想」を数えるので、push（`satoru_meditation` ソース）と fetch-focus を飛ばすと回ごとの表だけ載って時間は 0 のまま。失敗したら数秒おいて1回リトライし、それでも駄目なら報告だけして終える（vaio の daily-fetch でも pull・作り直しされる）
 
 ## スコープ（v1）
 
