@@ -7,7 +7,7 @@ allowed-tools: Bash, Read, Glob
 
 # 瞑想セッションレビュースキル
 
-データ取得 → レポート生成 → AIレビュー を1フローで実行し、レビュー後に対話する。
+データ取得 → レポート生成 → AIレビュー → journal・生データ削除・Grafana 反映（Step 4〜6）までを1回の起動で終え、その後に対話する。
 AIレビューの本体は Claude 自身がレポートの数値を読んで解釈すること。ローカルで完結させる（GitHub Actions は使わない）。
 
 ## オプション
@@ -144,11 +144,11 @@ uv run python scripts/eval_progress.py
 
 `tmp/` は実行のたび上書きされる。
 
-レビュー後はディスカッションに入る。
+レビューを出したら、話し合いを待たずに同じ応答の中で Step 4〜6 まで済ませる（本人の要望）。話し合いで出た内容は、後から同じエントリの Discussion に足して push し直す。
 
 ## Step 4: ジャーナル記録
 
-レビューとディスカッションが一段落したら `journal` スキルを呼び、dailybuild-private の瞑想 journal（週ファイル）に残して push する。**確認を取らずに実行する。**
+レビューを出したらすぐ `journal` スキルを呼び、dailybuild-private の瞑想 journal（週ファイル）に残して push する。**確認を取らずに実行する。**
 
 レポートの数値は `logs/session_log.csv` にあるので再掲しない。ジャーナルに書くのは文脈・解釈・次に試すことだけ。
 
